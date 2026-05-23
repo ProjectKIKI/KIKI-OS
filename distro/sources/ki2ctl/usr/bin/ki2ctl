@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+echo "ki2ctl: package installation is not implemented in this seed image yet" >&2
+echo "ki2ctl: use the build host to assemble rootfs images from .ki2 packages" >&2
+exit 2

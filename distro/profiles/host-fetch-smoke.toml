@@ -1,0 +1,8 @@
+[profile]
+name = "host-fetch-smoke"
+description = "Fetch-and-package smoke profile for validating network source builds"
+arch = "x86_64"
+packages = [
+  "base-files",
+  "ca-certificates",
+]

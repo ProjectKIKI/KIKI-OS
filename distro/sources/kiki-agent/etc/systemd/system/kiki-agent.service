@@ -1,0 +1,13 @@
+[Unit]
+Description=KIKI node registration agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=30s
+ExecStart=/usr/bin/kiki-agent
+
+[Install]
+WantedBy=multi-user.target
