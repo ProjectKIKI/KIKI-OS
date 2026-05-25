@@ -8,7 +8,7 @@
 [[recipe]]
 name = "base-files"
 version = "0.1.0"
-release = 15
+release = 16
 summary = "KIKI filesystem skeleton, os-release, and default system layout"
 license = "GPL-3.0-or-later"
 tier = "base"
@@ -682,7 +682,7 @@ configure_options = ["--without-selinux", "--without-acl", "--without-libbsd"]
 [[recipe]]
 name = "sudo"
 version = "1.9.15p5"
-release = 1
+release = 2
 summary = "Privilege escalation tool for delegated administration"
 license = "ISC"
 tier = "base"
@@ -693,15 +693,20 @@ url = "https://www.sudo.ws/dist/sudo-1.9.15p5.tar.gz"
 sha256 = "TODO"
 [recipe.dependencies]
 build = []
-runtime = ["glibc", "zlib"]
+runtime = ["glibc", "libxcrypt", "zlib"]
 [recipe.build]
 system = "gnu"
 configure_options = [
   "--sysconfdir=/etc",
   "--with-rundir=/run/sudo",
+  "--disable-log-server",
+  "--disable-openssl",
   "--without-pam",
   "--without-ldap"
 ]
+configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --sysconfdir=/etc --with-rundir=/run/sudo --disable-log-server --disable-openssl --without-pam --without-ldap"]
+compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
+install = ["make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} INSTALL_OWNER= install"]
 
 [[recipe]]
 name = "iproute2"

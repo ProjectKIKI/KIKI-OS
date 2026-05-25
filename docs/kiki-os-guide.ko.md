@@ -351,7 +351,7 @@ network:
 설치기는 기본적으로 다음 정책을 따른다.
 
 - 기본 hostname: `localhost.localdomain`
-- 기본 관리자 사용자: `admin`
+- 기본 관리자 사용자: `kiki`
 - lab 기본 암호: `kiki`
 - root 직접 로그인: 잠금
 - 관리자 사용자는 `sudo` 그룹에 추가

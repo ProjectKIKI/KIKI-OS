@@ -35,6 +35,7 @@ class Ki2BuildTests(unittest.TestCase):
             (root / "distro/sources/base/root").mkdir(parents=True)
             (root / "distro/sources/base/tmp").mkdir(parents=True)
             (root / "distro/sources/base/var/tmp").mkdir(parents=True)
+            (root / "distro/sources/base/usr/bin").mkdir(parents=True)
             (root / "distro/sources/base/usr/lib/systemd/system").mkdir(parents=True)
             (root / "distro/sources/middle").mkdir(parents=True)
             (root / "distro/sources/app/usr/bin").mkdir(parents=True)
@@ -44,6 +45,7 @@ class Ki2BuildTests(unittest.TestCase):
             (root / "distro/sources/base/etc/shadow").write_text("root:*:1:0:99999:7:::\n", encoding="utf-8")
             (root / "distro/sources/base/etc/sudoers").write_text("%sudo ALL=(ALL:ALL) ALL\n", encoding="utf-8")
             (root / "distro/sources/base/etc/sudoers.d/kiki-admin").write_text("%sudo ALL=(ALL:ALL) ALL\n", encoding="utf-8")
+            (root / "distro/sources/base/usr/bin/sudo").write_text("#!/bin/sh\n", encoding="utf-8")
             loader_source = root / "distro/sources/base/lib64/ld-linux-x86-64.so.2"
             loader_source.write_bytes(b"fake-loader")
             loader_source.chmod(0o644)
@@ -180,6 +182,7 @@ enable = ["test.service"]
                 self.assertEqual(tar.getmember("rootfs/etc/sudoers").mode, 0o440)
                 self.assertEqual(tar.getmember("rootfs/etc/sudoers.d").mode, 0o750)
                 self.assertEqual(tar.getmember("rootfs/etc/sudoers.d/kiki-admin").mode, 0o440)
+                self.assertEqual(tar.getmember("rootfs/usr/bin/sudo").mode, 0o4755)
                 self.assertEqual(tar.getmember("rootfs/root").mode, 0o700)
                 self.assertEqual(tar.getmember("rootfs/tmp").mode, 0o1777)
                 self.assertEqual(tar.getmember("rootfs/var/tmp").mode, 0o1777)

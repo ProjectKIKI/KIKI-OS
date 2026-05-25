@@ -186,7 +186,7 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn("Press Enter or type yes to continue", ki2bootiso.INIT_C)
         self.assertIn("Hostname [localhost.localdomain]", ki2bootiso.INIT_C)
         self.assertIn("User setup", ki2bootiso.INIT_C)
-        self.assertIn("Admin username [admin]", ki2bootiso.INIT_C)
+        self.assertIn("Admin username [kiki]", ki2bootiso.INIT_C)
         self.assertIn("Disable direct root login", ki2bootiso.INIT_C)
         self.assertIn("KIKI_LAB_PASSWORD_HASH", ki2bootiso.INIT_C)
         self.assertIn("Writing lab default admin account directly", ki2bootiso.INIT_C)

@@ -1,7 +1,7 @@
 KIKI OS \r (\l)
 
-Login with the admin account created during installation.
+Login with the KIKI administrator account created during installation.
 
 Lab default when unchanged by the installer:
-  user: admin
+  user: kiki
   password: kiki

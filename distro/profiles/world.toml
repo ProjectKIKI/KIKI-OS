@@ -37,6 +37,7 @@ packages = [
   "perl",
   "e2fsprogs",
   "shadow",
+  "sudo",
   "iproute2",
   "ca-certificates",
   "openssh",

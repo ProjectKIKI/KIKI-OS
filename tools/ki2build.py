@@ -982,6 +982,8 @@ def package_entry_mode(rel: str, path: Path) -> int:
         return 0o750
     if rel == "etc/sudoers" or rel.startswith("etc/sudoers.d/"):
         return 0o440
+    if rel == "usr/bin/sudo":
+        return 0o4755
     if path.is_dir():
         mode = stat.S_IMODE(path.stat().st_mode)
         return mode if mode & 0o7000 else 0o755

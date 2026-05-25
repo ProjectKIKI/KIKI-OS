@@ -2234,19 +2234,19 @@ static int is_valid_username(const char *value) {
 static void collect_account_setup(struct account_setup *account, int quick_mode) {
     char input[128];
     char confirm[128];
-    copy_string(account->admin_user, sizeof(account->admin_user), "admin");
+    copy_string(account->admin_user, sizeof(account->admin_user), "kiki");
     copy_string(account->admin_password, sizeof(account->admin_password), "kiki");
     account->lock_root = 1;
 
     say("\nUser setup\n");
     say("----------\n");
-    say("Root login is disabled by default. The admin user is added to the sudo group.\n");
+    say("Root login is disabled by default. The kiki user is added to the sudo group.\n");
     say("Password input is visible on this early installer console.\n");
-    say("Admin username [admin]: ");
+    say("Admin username [kiki]: ");
     if (read_line(input, sizeof(input)) == 0 && input[0]) {
         if (!is_valid_username(input)) {
             say("Invalid username. Use lowercase letters, digits, '_' or '-', and do not use root.\n");
-            say("Using default admin user: admin\n");
+            say("Using default admin user: kiki\n");
         } else {
             copy_string(account->admin_user, sizeof(account->admin_user), input);
         }
@@ -2555,7 +2555,7 @@ static int write_target_login_notice(const char *target_root, const struct accou
     size_t out = 0;
     path3(path, sizeof(path), target_root, "/etc/issue", "");
     out = append_string(text, sizeof(text), out, "KIKI OS \\r (\\l)\n\n");
-    out = append_string(text, sizeof(text), out, "Login with the admin account created by the installer:\n");
+    out = append_string(text, sizeof(text), out, "Login with the KIKI administrator account created by the installer:\n");
     out = append_string(text, sizeof(text), out, "  user: ");
     out = append_string(text, sizeof(text), out, account->admin_user);
     out = append_string(text, sizeof(text), out, "\n");

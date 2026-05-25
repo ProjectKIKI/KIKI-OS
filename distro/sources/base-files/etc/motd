@@ -1,7 +1,7 @@
 KIKI OS stage-1 system
 
-Use the admin account created during installation.
-Lab default: admin / kiki
+Use the KIKI administrator account created during installation.
+Lab default: kiki / kiki
 
 Useful commands:
   systemctl status
