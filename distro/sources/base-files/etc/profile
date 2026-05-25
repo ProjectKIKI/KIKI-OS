@@ -1,0 +1,15 @@
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export HISTFILESIZE=2000
+export HISTSIZE=2000
+export LESS=-R
+export EDITOR=vi
+
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+
+if [ "$(id -u 2>/dev/null)" = "0" ]; then
+    export PS1='kiki:\w # '
+else
+    export PS1='kiki:\w $ '
+fi

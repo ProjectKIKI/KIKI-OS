@@ -1,0 +1,10 @@
+[Unit]
+Description=KIKI virtual console setup compatibility
+DefaultDependencies=no
+Before=sysinit.target
+ConditionPathExists=/etc/kiki/enable-vconsole
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/busybox true

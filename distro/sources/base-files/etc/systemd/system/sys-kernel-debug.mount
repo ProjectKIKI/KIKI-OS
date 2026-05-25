@@ -1,0 +1,12 @@
+[Unit]
+Description=Kernel Debug File System
+DefaultDependencies=no
+Before=sysinit.target
+ConditionPathExists=/etc/kiki/enable-api-mounts
+ConditionPathExists=/sys/kernel/debug
+
+[Mount]
+What=debugfs
+Where=/sys/kernel/debug
+Type=debugfs
+Options=nosuid,nodev,noexec

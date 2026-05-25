@@ -1,0 +1,17 @@
+distro/sources/my-os-config/
+  etc/
+    sysctl.d/
+      90-my-os.conf
+    systemd/
+      system/
+        my-service.service
+  usr/
+    bin/
+      my-command
+    lib/
+      tmpfiles.d/
+        my-os.conf
+
+이 소스 트리의 모든 내용은 패키지 rootfs payload로 복사된다.
+예를 들어 usr/bin/my-command는 .ki2 아카이브 안에서
+rootfs/usr/bin/my-command가 되고, rootfs 조립 후에는 /usr/bin/my-command가 된다.

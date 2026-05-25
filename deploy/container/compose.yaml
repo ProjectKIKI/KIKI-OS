@@ -1,0 +1,22 @@
+services:
+  kiki-buildd:
+    build:
+      context: ../..
+      dockerfile: deploy/container/Containerfile
+      args:
+        UID: ${KIKI_UID:-1000}
+        GID: ${KIKI_GID:-1000}
+    image: kiki-buildd:rocky9
+    container_name: kiki-buildd
+    working_dir: /work
+    ports:
+      - "${KIKI_PORT:-8090}:8090"
+    environment:
+      KIKI_JOBS: ${KIKI_JOBS:-4}
+      KIKI_PORT: 8090
+      KIKI_TOOLCHAIN_ID: ${KIKI_TOOLCHAIN_ID:-container-rocky9-stage0-gcc11-v1}
+      KIKI_ARTIFACT_ROOT: /work/build/ki2ci
+      KIKI_PUBLISH_DIR: /work/dist/publish
+    volumes:
+      - ../..:/work
+    restart: unless-stopped

@@ -1,0 +1,48 @@
+diff --git a/src/basic/missing_syscall.h b/src/basic/missing_syscall.h
+--- a/src/basic/missing_syscall.h
++++ b/src/basic/missing_syscall.h
+@@ -4,6 +4,13 @@
+ 
+ #include <errno.h>
+ #include <fcntl.h>
++/*
++ * Linux 6.9 headers expose fsconfig command names as enum constants in
++ * linux/mount.h. Include that UAPI before the fallback macros below so later
++ * transitive includes do not expand those enum identifiers into numbers.
++ */
++#include <linux/mount.h>
++
+ #if HAVE_LINUX_TIME_TYPES_H
+ /* This header defines __kernel_timespec for us, but is only available since Linux 5.1, hence conditionally
+  * include this. */
+diff --git a/src/udev/udev-builtin-keyboard.c b/src/udev/udev-builtin-keyboard.c
+--- a/src/udev/udev-builtin-keyboard.c
++++ b/src/udev/udev-builtin-keyboard.c
+@@ -15,6 +15,15 @@
+ #include "strxcpyx.h"
+ #include "udev-builtin.h"
+ 
++/* Linux 6.9 headers do not yet carry these newer HID usage key codes. */
++#ifndef KEY_ACCESSIBILITY
++#define KEY_ACCESSIBILITY 0x24e
++#endif
++
++#ifndef KEY_DO_NOT_DISTURB
++#define KEY_DO_NOT_DISTURB 0x24f
++#endif
++
+ static const struct key_name *keyboard_lookup_key(const char *str, GPERF_LEN_TYPE len);
+ #include "keyboard-keys-from-name.h"
+ 
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -2676,7 +2676,7 @@ run_target(
+ alias_target('update-dbus-docs', update_dbus_docs)
+ alias_target('update-man-rules', update_man_rules)
+ 
+-if not meson.is_cross_build()
++if dbus_interfaces_dir != 'no' and not meson.is_cross_build()
+         custom_target(
+                 'export-dbus-interfaces',
+                 output : fs.name(dbus_interfaces_dir),

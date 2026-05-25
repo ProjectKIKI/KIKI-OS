@@ -6,6 +6,7 @@ packages = [
   "base-files",
   "linux",
   "glibc",
+  "libxcrypt",
   "zlib",
   "expat",
   "openssl",
@@ -31,6 +32,7 @@ packages = [
   "python",
   "e2fsprogs",
   "shadow",
+  "sudo",
   "iproute2",
   "ca-certificates",
   "openssh",
@@ -45,6 +47,10 @@ kernel = "/boot/vmlinuz-kiki"
 
 [profile.services]
 enable = [
+  "dbus.service",
+  "kiki-boot-prepare.service",
+  "getty@tty1.service",
+  "systemd-logind.service",
   "systemd-networkd.service",
   "systemd-resolved.service",
   "sshd.service",

@@ -1,0 +1,103 @@
+schema: kiki-install-plan-spec-v1
+name: kiki-install-plan-v1
+status: draft
+description: stage-1 TUI 설치기와 향후 웹 설치기가 공유할 선언형 설치 계획서 계약.
+
+document:
+  root: install_plan
+  encoding: utf-8-yaml
+  generated_runtime_path: /run/kiki/install-plan.yaml
+  installed_copy_path: /var/lib/ki2/install-plan.yaml
+
+required:
+  - schema
+  - api_version
+  - kind
+  - mode
+  - source
+  - target
+  - identity
+  - network
+  - users
+  - packages
+  - services
+  - boot
+
+fields:
+  schema: kiki-install-plan-v1이어야 한다.
+  api_version: 설치기 API 버전. 현재 값은 kiki.io/v1alpha1이다.
+  kind: InstallPlan이어야 한다.
+  generated_by: 계획서를 만든 도구. 예: kiki-stage1-tui.
+  mode: guided 또는 quick-vm.
+
+source:
+  type: local-installer-media, remote-repository, mirror 중 하나.
+  media_root: disconnected 설치에서 사용하는 설치 미디어 mount root.
+  repo_index: 설치기가 사용할 패키지 저장소 인덱스.
+  disconnected_install: 네트워크 없이 계획을 완료할 수 있는지 여부.
+
+target:
+  disk: 자동 파티셔닝에 사용할 전체 디스크 경로. 수동 파티션 모드에서는 null.
+  partitioning: auto-whole-disk 또는 manual-existing-partitions.
+  partition_table: mbr, gpt, operator-managed 중 하나.
+  disk_mib: 계획 생성 시점의 디스크 크기.
+  memory_mib: swap 크기 계산에 사용한 메모리 크기.
+  filesystems:
+    esp:
+      path: EFI System Partition 경로.
+      type: vfat.
+      mountpoint: /boot/efi.
+      size_mib: 계획된 ESP 크기.
+    swap:
+      enabled: swap을 포맷하고 fstab에 기록할지 여부.
+      path: swap 파티션 경로 또는 null.
+      size_mib: 계획된 swap 크기.
+    root:
+      path: root 파티션 경로.
+      type: ext4.
+      mountpoint: /.
+      size_mib: 계획된 root 크기.
+
+identity:
+  hostname: 대상 시스템 hostname. 기본값은 localhost.localdomain이다.
+
+network:
+  manager: 네트워크 관리 구성요소. 기본값은 systemd-networkd이다.
+  resolver: DNS resolver 구성요소. 기본값은 systemd-resolved이다.
+  mode: dhcp 또는 off. 기본값은 dhcp이다.
+  interface_match: systemd-networkd Match Name 값. 기본값은 en* eth*이다.
+  dhcp4: DHCPv4 사용 여부.
+  ipv6_accept_ra: IPv6 Router Advertisement 수락 여부.
+
+users:
+  admin:
+    name: 초기 관리자 계정.
+    primary_group: 기본 그룹 이름.
+    supplementary_groups: 추가 그룹. 일반적으로 sudo.
+    shell: 로그인 shell.
+    password: placeholder여야 한다. 실제 비밀번호는 런타임 입력값으로만 처리한다.
+  root:
+    locked: root 직접 로그인을 비활성화할지 여부.
+    password: disabled 또는 런타임 전용 placeholder.
+
+packages:
+  profile: TUI가 사용하는 프로파일 이름.
+  dependency_resolution: 설치기가 의존성을 자동 해석했는지 여부.
+  selected: 대상 rootfs에 추출할 패키지 이름 목록.
+
+services:
+  enable: 패키지 추출 후 활성화할 systemd 유닛 목록.
+
+boot:
+  loader: 부트로더 전략. 현재 기본값은 uefi-fallback-bootx64.
+  kernel: 설치된 커널 경로.
+  initramfs: 설치된 initramfs 경로.
+  root: 부트로더에 전달할 root 파티션.
+
+safety:
+  rules:
+    - TUI는 파괴적 확인 전에 계획서를 기록한다.
+    - 비밀번호 값은 계획서에 저장하지 않는다.
+    - 자동 모드는 /dev/sda1 같은 파티션 경로를 대상 디스크로 거부해야 한다.
+    - 수동 모드는 운영자가 명시한 파티션 경로만 포맷할 수 있다.
+    - 생성된 계획서는 패키지 추출 후 /var/lib/ki2/install-plan.yaml에 복사해야 한다.

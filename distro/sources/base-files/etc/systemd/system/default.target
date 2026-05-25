@@ -1,0 +1,6 @@
+[Unit]
+Description=KIKI default multi-user target
+Documentation=man:systemd.special(7)
+Requires=multi-user.target
+After=multi-user.target
+AllowIsolate=yes

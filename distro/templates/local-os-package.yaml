@@ -1,0 +1,18 @@
+recipes:
+  - name: my-os-config
+    version: "0.1.0"
+    release: 1
+    summary: 대상 rootfs에 설치되는 OS 설정 패키지
+    license: GPL-3.0-or-later
+    tier: kiki
+    architectures:
+      - all
+    source:
+      type: local
+      path: distro/sources/my-os-config
+    depends:
+      build: []
+      runtime:
+        - systemd
+    build:
+      system: copy

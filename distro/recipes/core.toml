@@ -8,7 +8,7 @@
 [[recipe]]
 name = "base-files"
 version = "0.1.0"
-release = 1
+release = 15
 summary = "KIKI filesystem skeleton, os-release, and default system layout"
 license = "GPL-3.0-or-later"
 tier = "base"
@@ -25,7 +25,7 @@ system = "copy"
 [[recipe]]
 name = "linux"
 version = "6.9.9"
-release = 1
+release = 2
 summary = "Linux kernel for KIKI OS"
 license = "GPL-2.0-only"
 tier = "kernel"
@@ -39,6 +39,7 @@ build = []
 runtime = []
 [recipe.build]
 system = "kernel"
+config_fragments = ["distro/kernel/x86_64-vm-stage1.config"]
 strip_module_build_links = true
 
 [[recipe]]
@@ -103,6 +104,30 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
+
+[[recipe]]
+name = "libxcrypt"
+version = "4.4.36"
+release = 3
+summary = "Modern password hashing library providing libcrypt"
+license = "LGPL-2.1-or-later"
+tier = "base"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz"
+sha256 = "e5e1f4caee0a01de2aee26e3138807d6d3ca2b8e67287966d1fefd65e1fd8943"
+[recipe.dependencies]
+build = []
+runtime = ["glibc"]
+[recipe.build]
+system = "gnu"
+configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --enable-hashes=strong,glibc"]
+compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
+install = [
+  "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
+  "ln -sf libcrypt.so.1.1.0 ${KI2_DESTDIR}/usr/lib/libcrypt.so.2"
+]
 
 [[recipe]]
 name = "expat"
@@ -218,7 +243,7 @@ system = "gnu"
 [[recipe]]
 name = "util-linux"
 version = "2.40.2"
-release = 1
+release = 2
 summary = "Essential Linux system utilities and libmount"
 license = "GPL-2.0-or-later AND LGPL-2.1-or-later"
 tier = "base"
@@ -228,8 +253,8 @@ type = "url"
 url = "https://www.kernel.org/pub/linux/utils/util-linux/v2.40/util-linux-2.40.2.tar.xz"
 sha256 = "d78b37a66f5922d70edf3bdfb01a6b33d34ed3c3cafd6628203b2a2b67c8e8b3"
 [recipe.dependencies]
-build = []
-runtime = ["glibc", "zlib"]
+build = ["libxcrypt"]
+runtime = ["glibc", "zlib", "libxcrypt"]
 [recipe.build]
 system = "gnu"
 configure_options = ["--disable-makeinstall-chown", "--disable-liblastlog2", "--disable-pam-lastlog2", "--without-python"]
@@ -255,7 +280,7 @@ system = "gnu"
 [[recipe]]
 name = "dbus"
 version = "1.14.10"
-release = 1
+release = 2
 summary = "System message bus"
 license = "AFL-2.1 OR GPL-2.0-or-later"
 tier = "base"
@@ -274,7 +299,7 @@ configure_options = ["--localstatedir=/var", "--runstatedir=/run", "--with-syste
 [[recipe]]
 name = "systemd"
 version = "255.7"
-release = 1
+release = 2
 summary = "System and service manager for KIKI OS"
 license = "LGPL-2.1-or-later"
 tier = "base"
@@ -285,20 +310,24 @@ url = "https://github.com/systemd/systemd-stable/archive/refs/tags/v255.7.tar.gz
 sha256 = "da29f2490c192ca743511098b1d15e385b1b5e7744979661dc30514c1ac61f0e"
 [recipe.dependencies]
 build = []
-runtime = ["glibc", "acl", "dbus", "kmod", "libcap", "libseccomp", "openssl", "util-linux"]
+runtime = ["glibc", "acl", "dbus", "kmod", "libcap", "libseccomp", "libxcrypt", "openssl", "util-linux", "xz", "zlib", "zstd"]
 [recipe.build]
 system = "meson"
+patches = ["distro/patches/systemd/0001-include-linux-mount-before-fallback-macros.patch"]
+env.CFLAGS = "--sysroot=${KI2_SYSROOT}"
+env.LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -L${KI2_SYSROOT}/usr/lib64 -L${KI2_SYSROOT}/lib64 -L${KI2_SYSROOT}/usr/lib -Wl,-rpath-link=${KI2_SYSROOT}/lib64 -Wl,-rpath-link=${KI2_SYSROOT}/usr/lib64 -Wl,-rpath-link=${KI2_SYSROOT}/usr/lib"
 configure_options = [
   "-Ddefault-dnssec=no",
   "-Dfirstboot=false",
   "-Dman=false",
   "-Dtests=false",
+  "-Ddbus-interfaces-dir=no",
   "-Dc_args=-Wno-error=shift-overflow"
 ]
 
 [[recipe]]
 name = "bash"
-version = "5.2.26"
+version = "5.2"
 release = 1
 summary = "GNU Bourne Again Shell"
 license = "GPL-3.0-or-later"
@@ -306,8 +335,8 @@ tier = "shell"
 architectures = ["x86_64"]
 [recipe.source]
 type = "url"
-url = "https://ftp.gnu.org/gnu/bash/bash-5.2.26.tar.gz"
-sha256 = "TODO"
+url = "https://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz"
+sha256 = "a139c166df7ff4471c5e0733051642ee5556c1cc8a4a78f145583c5c81ab32fb"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -331,7 +360,10 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "make"
-configure = ["make -C ${KI2_SOURCE_DIR} defconfig"]
+configure = [
+  "make -C ${KI2_SOURCE_DIR} defconfig",
+  "sed -i 's/^CONFIG_TC=y/# CONFIG_TC is not set/' ${KI2_SOURCE_DIR}/.config"
+]
 compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
 install = ["make -C ${KI2_SOURCE_DIR} CONFIG_PREFIX=${KI2_DESTDIR} install"]
 
@@ -496,6 +528,8 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "make"
+compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
+install = ["make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} prefix=/usr PREFIX=/usr install"]
 
 [[recipe]]
 name = "make"
@@ -629,7 +663,7 @@ system = "gnu"
 [[recipe]]
 name = "shadow"
 version = "4.15.1"
-release = 1
+release = 2
 summary = "Account and password management tools"
 license = "BSD-3-Clause"
 tier = "base"
@@ -640,10 +674,34 @@ url = "https://github.com/shadow-maint/shadow/releases/download/4.15.1/shadow-4.
 sha256 = "TODO"
 [recipe.dependencies]
 build = []
-runtime = ["glibc", "acl"]
+runtime = ["glibc", "acl", "libxcrypt"]
 [recipe.build]
 system = "gnu"
-configure_options = ["--without-selinux", "--without-acl"]
+configure_options = ["--without-selinux", "--without-acl", "--without-libbsd"]
+
+[[recipe]]
+name = "sudo"
+version = "1.9.15p5"
+release = 1
+summary = "Privilege escalation tool for delegated administration"
+license = "ISC"
+tier = "base"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://www.sudo.ws/dist/sudo-1.9.15p5.tar.gz"
+sha256 = "TODO"
+[recipe.dependencies]
+build = []
+runtime = ["glibc", "zlib"]
+[recipe.build]
+system = "gnu"
+configure_options = [
+  "--sysconfdir=/etc",
+  "--with-rundir=/run/sudo",
+  "--without-pam",
+  "--without-ldap"
+]
 
 [[recipe]]
 name = "iproute2"
@@ -688,7 +746,7 @@ install = [
 [[recipe]]
 name = "openssh"
 version = "9.8p1"
-release = 1
+release = 2
 summary = "OpenSSH server and client"
 license = "BSD-2-Clause AND ISC"
 tier = "network"
@@ -743,7 +801,7 @@ system = "copy"
 [[recipe]]
 name = "kiki-agent"
 version = "0.1.0"
-release = 1
+release = 2
 summary = "KIKI node registration and heartbeat agent"
 license = "GPL-3.0-or-later"
 tier = "kiki"

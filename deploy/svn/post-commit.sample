@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# SVN post-commit hook example.
+# Copy this into the SVN repository hooks directory, then adjust the host.
+#
+# The build console has no built-in authentication. Keep it on a private
+# network or put it behind a reverse proxy with authentication.
+
+BUILD_URL="${BUILD_URL:-http://127.0.0.1:8090/jobs}"
+PIPELINE="${PIPELINE:-smoke}"
+
+curl -fsS -X POST \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data "pipeline=${PIPELINE}" \
+  "${BUILD_URL}" >/dev/null

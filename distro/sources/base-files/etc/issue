@@ -1,1 +1,7 @@
-KIKI OS 0.1 \n \l
+KIKI OS \r (\l)
+
+Login with the admin account created during installation.
+
+Lab default when unchanged by the installer:
+  user: admin
+  password: kiki

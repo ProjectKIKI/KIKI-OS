@@ -14,11 +14,14 @@ needs to run, keeps package artifacts, and can dry-run every destructive step.
 from __future__ import annotations
 
 import argparse
+import ast
 import datetime as dt
 import hashlib
 import json
 import os
+import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -36,6 +39,7 @@ except ModuleNotFoundError:  # Python 3.9-3.10 on common builder distros.
 
 PIN_PLACEHOLDERS = {"", "TODO", "UNPINNED", "REPLACE_ME"}
 DEFAULT_TOOLCHAIN_ID = "host-bootstrap-v0"
+PACKAGE_FORMAT_REV = "ki2-package-format-v2"
 UTC = dt.timezone.utc
 
 
@@ -101,6 +105,191 @@ def read_toml(path: Path) -> dict[str, Any]:
         return tomllib.load(handle)
 
 
+def strip_yaml_comment(line: str) -> str:
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if quote == '"' and char == "\\":
+            escaped = True
+            continue
+        if char in {"'", '"'}:
+            if quote is None:
+                quote = char
+            elif quote == char:
+                quote = None
+            continue
+        if char == "#" and quote is None:
+            return line[:index].rstrip()
+    return line.rstrip()
+
+
+def split_inline_yaml_list(value: str) -> list[Any]:
+    inner = value[1:-1].strip()
+    if not inner:
+        return []
+    result: list[str] = []
+    quote: str | None = None
+    escaped = False
+    start = 0
+    for index, char in enumerate(inner):
+        if escaped:
+            escaped = False
+            continue
+        if quote == '"' and char == "\\":
+            escaped = True
+            continue
+        if char in {"'", '"'}:
+            if quote is None:
+                quote = char
+            elif quote == char:
+                quote = None
+            continue
+        if char == "," and quote is None:
+            result.append(inner[start:index].strip())
+            start = index + 1
+    result.append(inner[start:].strip())
+    return [parse_yaml_scalar(item) for item in result if item]
+
+
+def parse_yaml_scalar(value: str) -> Any:
+    value = value.strip()
+    if value == "":
+        return None
+    lowered = value.lower()
+    if lowered in {"yes", "no", "on", "off"}:
+        raise Ki2Error(f"ambiguous YAML boolean {value!r}; use true/false or quote the value")
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    if lowered in {"null", "~"}:
+        return None
+    if value.startswith("[") and value.endswith("]"):
+        return split_inline_yaml_list(value)
+    if value.startswith("{") and value.endswith("}"):
+        raise Ki2Error("inline YAML maps are not supported in ki2 YAML files")
+    if value[0:1] in {"'", '"'}:
+        try:
+            return ast.literal_eval(value)
+        except (SyntaxError, ValueError) as exc:
+            raise Ki2Error(f"invalid quoted YAML scalar {value!r}") from exc
+    try:
+        return int(value)
+    except ValueError:
+        return value
+
+
+def split_yaml_key_value(text: str, origin: Path, lineno: int) -> tuple[str, str | None]:
+    if ":" not in text:
+        raise Ki2Error(f"{origin}:{lineno}: expected key: value")
+    key, value = text.split(":", 1)
+    key = key.strip()
+    if not key:
+        raise Ki2Error(f"{origin}:{lineno}: empty YAML key")
+    return key, value.strip() if value.strip() else None
+
+
+def read_yaml(path: Path) -> dict[str, Any]:
+    lines: list[tuple[int, int, str]] = []
+    for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if "\t" in raw:
+            raise Ki2Error(f"{path}:{lineno}: tabs are not allowed in ki2 YAML files")
+        stripped = strip_yaml_comment(raw)
+        if not stripped.strip():
+            continue
+        indent = len(stripped) - len(stripped.lstrip(" "))
+        if indent % 2 != 0:
+            raise Ki2Error(f"{path}:{lineno}: indentation must use two-space steps")
+        text = stripped.strip()
+        if text.startswith(("---", "...")):
+            continue
+        if text.startswith(("&", "*")):
+            raise Ki2Error(f"{path}:{lineno}: YAML anchors and aliases are not supported")
+        lines.append((lineno, indent, text))
+
+    if not lines:
+        return {}
+
+    def parse_value_or_child(index: int, indent: int, value: str | None) -> tuple[Any, int]:
+        if value is not None:
+            return parse_yaml_scalar(value), index
+        if index < len(lines) and lines[index][1] > indent:
+            return parse_block(index, lines[index][1])
+        return {}, index
+
+    def parse_mapping(index: int, indent: int) -> tuple[dict[str, Any], int]:
+        result: dict[str, Any] = {}
+        while index < len(lines):
+            lineno, current_indent, text = lines[index]
+            if current_indent < indent:
+                break
+            if current_indent > indent:
+                raise Ki2Error(f"{path}:{lineno}: unexpected indentation")
+            if text.startswith("- "):
+                break
+            key, value = split_yaml_key_value(text, path, lineno)
+            index += 1
+            result[key], index = parse_value_or_child(index, current_indent, value)
+        return result, index
+
+    def parse_sequence(index: int, indent: int) -> tuple[list[Any], int]:
+        result: list[Any] = []
+        while index < len(lines):
+            lineno, current_indent, text = lines[index]
+            if current_indent < indent:
+                break
+            if current_indent > indent:
+                raise Ki2Error(f"{path}:{lineno}: unexpected indentation")
+            if not text.startswith("-"):
+                break
+            item_text = text[1:].strip()
+            index += 1
+            if not item_text:
+                if index < len(lines) and lines[index][1] > current_indent:
+                    item, index = parse_block(index, lines[index][1])
+                else:
+                    item = None
+            elif ":" in item_text and not item_text.startswith(("'", '"')):
+                key, value = split_yaml_key_value(item_text, path, lineno)
+                item: dict[str, Any] = {}
+                item[key], index = parse_value_or_child(index, current_indent, value)
+                if index < len(lines) and lines[index][1] > current_indent:
+                    extra, index = parse_mapping(index, lines[index][1])
+                    item.update(extra)
+            else:
+                item = parse_yaml_scalar(item_text)
+                if index < len(lines) and lines[index][1] > current_indent:
+                    raise Ki2Error(f"{path}:{lines[index][0]}: scalar list item cannot have children")
+            result.append(item)
+        return result, index
+
+    def parse_block(index: int, indent: int) -> tuple[Any, int]:
+        if lines[index][2].startswith("-"):
+            return parse_sequence(index, indent)
+        return parse_mapping(index, indent)
+
+    data, index = parse_block(0, lines[0][1])
+    if index != len(lines):
+        lineno = lines[index][0]
+        raise Ki2Error(f"{path}:{lineno}: could not parse YAML block")
+    if not isinstance(data, dict):
+        raise Ki2Error(f"{path}: top-level YAML document must be a mapping")
+    return data
+
+
+def read_structured_file(path: Path) -> dict[str, Any]:
+    if path.suffix == ".toml":
+        return read_toml(path)
+    if path.suffix in {".yaml", ".yml"}:
+        return read_yaml(path)
+    raise Ki2Error(f"{path}: unsupported file extension")
+
+
+def iter_config_files(root: Path) -> list[Path]:
+    return sorted([*root.rglob("*.toml"), *root.rglob("*.yaml"), *root.rglob("*.yml")])
+
+
 def stable_hash(value: Any) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -114,8 +303,76 @@ def file_sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def natural_version_key(value: Any) -> tuple[tuple[int, Any], ...]:
+    parts: list[tuple[int, Any]] = []
+    for part in re.split(r"([0-9]+)", str(value)):
+        if not part:
+            continue
+        if part.isdigit():
+            parts.append((0, int(part)))
+        else:
+            parts.append((1, part))
+    return tuple(parts)
+
+
+def package_manifest_sort_key(manifest: dict[str, Any], path: Path) -> tuple[Any, ...]:
+    return (
+        str(manifest.get("name", "")),
+        natural_version_key(manifest.get("version", "")),
+        natural_version_key(manifest.get("release", "")),
+        path.name,
+    )
+
+
+def package_latest_sort_key(manifest: dict[str, Any], path: Path) -> tuple[Any, ...]:
+    return (
+        natural_version_key(manifest.get("version", "")),
+        natural_version_key(manifest.get("release", "")),
+        path.name,
+    )
+
+
+def string_list(value: Any, *, field: str, recipe: str) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if not isinstance(value, list):
+        raise Ki2Error(f"{recipe}: build.{field} must be a string or a list of strings")
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise Ki2Error(f"{recipe}: build.{field} entries must be strings")
+        if item:
+            result.append(item)
+    return result
+
+
+def repo_relative_path(repo_root: Path, value: str) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else repo_root / path
+
+
+def build_file_inputs(ctx: BuildContext, recipe: Recipe, field: str) -> list[dict[str, str]]:
+    inputs: list[dict[str, str]] = []
+    for value in string_list(recipe.build.get(field), field=field, recipe=recipe.name):
+        path = repo_relative_path(ctx.repo_root, value)
+        if not path.exists():
+            raise Ki2Error(f"{recipe.name}: build.{field} file not found: {path}")
+        inputs.append(
+            {
+                "field": field,
+                "path": str(path.relative_to(ctx.repo_root) if path.is_relative_to(ctx.repo_root) else path),
+                "sha256": file_sha256(path),
+            }
+        )
+    return inputs
+
+
 def normalize_dependencies(raw: dict[str, Any], origin: Path, name: str) -> dict[str, list[str]]:
-    source = raw.get("dependencies", {})
+    if "dependencies" in raw and "depends" in raw:
+        raise Ki2Error(f"{origin}: {name} must use dependencies or depends, not both")
+    source = raw.get("dependencies", raw.get("depends", {}))
     if not isinstance(source, dict):
         raise Ki2Error(f"{origin}: {name} dependencies must be a table")
 
@@ -148,7 +405,10 @@ def normalize_recipe(raw: dict[str, Any], origin: Path) -> Recipe:
         raise Ki2Error(f"{origin}: recipe missing required field(s): {', '.join(missing)}")
 
     release = str(raw.get("release", "1"))
-    architectures = tuple(raw.get("architectures", ["x86_64"]))
+    raw_architectures = raw.get("architectures", raw.get("arches", raw.get("arch", ["x86_64"])))
+    if isinstance(raw_architectures, str):
+        raw_architectures = [raw_architectures]
+    architectures = tuple(raw_architectures)
     if not architectures:
         raise Ki2Error(f"{origin}: recipe {raw['name']} has no architectures")
 
@@ -193,17 +453,23 @@ def load_recipes(recipe_dir: Path) -> dict[str, Recipe]:
     if not recipe_dir.exists():
         raise Ki2Error(f"recipe directory not found: {recipe_dir}")
 
-    for path in sorted(recipe_dir.rglob("*.toml")):
-        data = read_toml(path)
+    for path in iter_config_files(recipe_dir):
+        data = read_structured_file(path)
         raw_recipes: list[dict[str, Any]]
-        if "recipe" in data:
+        if "recipes" in data:
+            raw_recipes = data["recipes"]
+        elif "recipe" in data:
             raw_recipes = data["recipe"]
         elif "package" in data:
             raw_recipes = [data["package"]]
         else:
-            raise Ki2Error(f"{path}: expected [[recipe]] or [package]")
+            raise Ki2Error(f"{path}: expected recipes, [[recipe]], or [package]")
+        if not isinstance(raw_recipes, list):
+            raise Ki2Error(f"{path}: recipes must be a list")
 
         for raw in raw_recipes:
+            if not isinstance(raw, dict):
+                raise Ki2Error(f"{path}: recipe entries must be mappings")
             recipe = normalize_recipe(raw, path)
             if recipe.name in recipes:
                 raise Ki2Error(
@@ -214,14 +480,21 @@ def load_recipes(recipe_dir: Path) -> dict[str, Recipe]:
 
 
 def load_profile(path: Path) -> dict[str, Any]:
-    data = read_toml(path)
-    if "profile" not in data:
-        raise Ki2Error(f"{path}: expected [profile]")
-    profile = data["profile"]
+    data = read_structured_file(path)
+    if "profile" in data:
+        profile = data["profile"]
+    elif {"name", "packages"}.issubset(data):
+        profile = data
+    else:
+        raise Ki2Error(f"{path}: expected profile mapping")
+    if not isinstance(profile, dict):
+        raise Ki2Error(f"{path}: profile must be a mapping")
     if not profile.get("name"):
         raise Ki2Error(f"{path}: profile.name is required")
     if not profile.get("packages"):
         raise Ki2Error(f"{path}: profile.packages is required")
+    if not isinstance(profile["packages"], list) or not all(isinstance(item, str) for item in profile["packages"]):
+        raise Ki2Error(f"{path}: profile.packages must be a list of package names")
     return profile
 
 
@@ -232,7 +505,7 @@ def validate_recipes(
     max_packages: int | None,
 ) -> list[str]:
     warnings: list[str] = []
-    if max_packages is not None and len(recipes) > max_packages:
+    if max_packages is not None and profile is None and len(recipes) > max_packages:
         raise Ki2Error(f"recipe catalog has {len(recipes)} packages; limit is {max_packages}")
 
     for recipe in recipes.values():
@@ -251,6 +524,12 @@ def validate_recipes(
         for package in profile["packages"]:
             if package not in recipes:
                 raise Ki2Error(f"profile {profile['name']}: unknown package {package!r}")
+        if max_packages is not None:
+            plan = dependency_closure(recipes, list(profile["packages"]), arch, include_build_deps=False)
+            if len(plan) > max_packages:
+                raise Ki2Error(
+                    f"profile {profile['name']} has {len(plan)} runtime packages; limit is {max_packages}"
+                )
     return warnings
 
 
@@ -312,13 +591,18 @@ def save_state(ctx: BuildContext, state: dict[str, BuildRecord]) -> None:
 
 
 def build_key(recipe: Recipe, ctx: BuildContext, dep_keys: dict[str, str]) -> str:
+    extra_inputs: list[dict[str, str]] = []
+    extra_inputs.extend(build_file_inputs(ctx, recipe, "config_fragments"))
+    extra_inputs.extend(build_file_inputs(ctx, recipe, "patches"))
     return stable_hash(
         {
             "schema": "ki2-build-key-v1",
+            "package_format": PACKAGE_FORMAT_REV,
             "recipe": recipe.digest,
             "arch": ctx.arch,
             "toolchain": ctx.toolchain_id,
             "deps": dep_keys,
+            "extra_inputs": extra_inputs,
         }
     )
 
@@ -368,11 +652,12 @@ def shell_quote(value: str) -> str:
 def command_env(ctx: BuildContext, recipe: Recipe, work: Path, source: Path, build: Path, dest: Path) -> dict[str, str]:
     target = target_triple(ctx.arch)
     sysroot = sysroot_path(ctx)
-    return {
+    env = {
         "KI2_ARCH": ctx.arch,
         "KI2_BUILD_TRIPLE": "x86_64-kiki-linux-gnu",
         "KI2_TARGET_TRIPLE": target,
         "KI2_PACKAGE": recipe.name,
+        "KI2_REPO_ROOT": str(ctx.repo_root),
         "KI2_VERSION": recipe.version,
         "KI2_RELEASE": recipe.release,
         "KI2_WORK": str(work),
@@ -392,7 +677,45 @@ def command_env(ctx: BuildContext, recipe: Recipe, work: Path, source: Path, bui
                 str(sysroot / "lib64" / "pkgconfig"),
             ]
         ),
+        "KI2_SYSROOT_CPPFLAGS": f"-I{sysroot / 'usr' / 'include'} -I{sysroot / 'include'}",
+        "KI2_SYSROOT_LDFLAGS": " ".join(
+            [
+                f"-L{sysroot / 'usr' / 'lib'}",
+                f"-L{sysroot / 'usr' / 'lib64'}",
+                f"-L{sysroot / 'lib'}",
+                f"-L{sysroot / 'lib64'}",
+                f"-Wl,-rpath-link,{sysroot / 'usr' / 'lib'}",
+                f"-Wl,-rpath-link,{sysroot / 'usr' / 'lib64'}",
+                f"-Wl,-rpath-link,{sysroot / 'lib'}",
+                f"-Wl,-rpath-link,{sysroot / 'lib64'}",
+            ]
+        ),
+        "KI2_SYSROOT_LIBRARY_PATH": os.pathsep.join(
+            [
+                str(sysroot / "usr" / "lib"),
+                str(sysroot / "usr" / "lib64"),
+                str(sysroot / "lib"),
+                str(sysroot / "lib64"),
+            ]
+        ),
+        "KI2_SYSROOT_C_INCLUDE_PATH": os.pathsep.join(
+            [
+                str(sysroot / "usr" / "include"),
+                str(sysroot / "include"),
+            ]
+        ),
     }
+    extra_env = recipe.build.get("env", {})
+    if extra_env:
+        if not isinstance(extra_env, dict):
+            raise Ki2Error(f"{recipe.name}: build.env must be a table")
+        for key, value in extra_env.items():
+            if not isinstance(key, str) or not key:
+                raise Ki2Error(f"{recipe.name}: build.env keys must be non-empty strings")
+            if not isinstance(value, str):
+                raise Ki2Error(f"{recipe.name}: build.env.{key} must be a string")
+            env[key] = format_command(value, env)
+    return env
 
 
 def target_triple(arch: str) -> str:
@@ -412,7 +735,7 @@ def format_command(command: str, env: dict[str, str]) -> str:
 
 def default_commands(recipe: Recipe, env: dict[str, str]) -> list[str]:
     system = recipe.build.get("system", "gnu")
-    options = " ".join(recipe.build.get("configure_options", []))
+    options = " ".join(format_command(str(option), env) for option in recipe.build.get("configure_options", []))
     source = shell_quote(env["KI2_SOURCE_DIR"])
     build = shell_quote(env["KI2_BUILD_DIR"])
     dest = shell_quote(env["KI2_DESTDIR"])
@@ -442,12 +765,28 @@ def default_commands(recipe: Recipe, env: dict[str, str]) -> list[str]:
             f"make -C {source} DESTDIR={dest} PREFIX=/usr install",
         ]
     if system == "kernel":
+        fragments = string_list(recipe.build.get("config_fragments"), field="config_fragments", recipe=recipe.name)
         commands = [
             f"make -C {source} O={build}/kernel defconfig",
-            f"make -C {source} O={build}/kernel -j{jobs}",
-            f"mkdir -p {dest}/boot && cp {build}/kernel/arch/x86/boot/bzImage {dest}/boot/vmlinuz-kiki",
-            f"make -C {source} O={build}/kernel INSTALL_MOD_PATH={dest} modules_install",
         ]
+        if fragments:
+            repo_root = Path(env["KI2_REPO_ROOT"])
+            quoted_fragments = " ".join(
+                shell_quote(str(repo_relative_path(repo_root, fragment))) for fragment in fragments
+            )
+            commands.extend(
+                [
+                    f"cd {source} && ./scripts/kconfig/merge_config.sh -m -O {build}/kernel {build}/kernel/.config {quoted_fragments}",
+                    f"make -C {source} O={build}/kernel olddefconfig",
+                ]
+            )
+        commands.extend(
+            [
+                f"make -C {source} O={build}/kernel -j{jobs}",
+                f"mkdir -p {dest}/boot && cp {build}/kernel/arch/x86/boot/bzImage {dest}/boot/vmlinuz-kiki",
+                f"make -C {source} O={build}/kernel INSTALL_MOD_PATH={dest} modules_install",
+            ]
+        )
         if recipe.build.get("strip_module_build_links", False):
             commands.append(f"find {dest}/lib/modules -type l \\( -name build -o -name source \\) -delete")
         return commands
@@ -458,13 +797,35 @@ def default_commands(recipe: Recipe, env: dict[str, str]) -> list[str]:
 
 def recipe_commands(recipe: Recipe, env: dict[str, str]) -> list[str]:
     explicit: list[str] = []
-    for key in ("prepare", "configure", "compile", "install"):
+    for key in ("commands", "prepare", "configure", "compile", "install"):
         values = recipe.build.get(key)
         if values:
             explicit.extend(values)
     if explicit:
         return [format_command(command, env) for command in explicit]
     return default_commands(recipe, env)
+
+
+def recipe_patch_strip(recipe: Recipe) -> int:
+    raw = recipe.build.get("patch_strip", 1)
+    try:
+        strip = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise Ki2Error(f"{recipe.name}: build.patch_strip must be a non-negative integer") from exc
+    if strip < 0:
+        raise Ki2Error(f"{recipe.name}: build.patch_strip must be a non-negative integer")
+    return strip
+
+
+def recipe_patch_commands(ctx: BuildContext, recipe: Recipe, source_dir: Path) -> list[str]:
+    strip = recipe_patch_strip(recipe)
+    commands: list[str] = []
+    for value in string_list(recipe.build.get("patches"), field="patches", recipe=recipe.name):
+        patch = repo_relative_path(ctx.repo_root, value)
+        if not patch.exists():
+            raise Ki2Error(f"{recipe.name}: patch file not found: {patch}")
+        commands.append(f"patch -d {shell_quote(str(source_dir))} -p{strip} -i {shell_quote(str(patch))}")
+    return commands
 
 
 def fetch_source(ctx: BuildContext, recipe: Recipe, work: Path) -> Path:
@@ -485,7 +846,7 @@ def fetch_source(ctx: BuildContext, recipe: Recipe, work: Path) -> Path:
             print(f"[source] {recipe.name}: {local}")
             return source_dir
         if source_dir.exists():
-            shutil.rmtree(source_dir)
+            remove_tree(source_dir)
         if local.is_dir():
             shutil.copytree(local, source_dir)
         else:
@@ -527,7 +888,7 @@ def fetch_source(ctx: BuildContext, recipe: Recipe, work: Path) -> Path:
         extract_archive(archive, source_dir)
     else:
         if source_dir.exists():
-            shutil.rmtree(source_dir)
+            remove_tree(source_dir)
         source_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(archive, source_dir / archive.name)
     children = [child for child in source_dir.iterdir()]
@@ -538,11 +899,14 @@ def fetch_source(ctx: BuildContext, recipe: Recipe, work: Path) -> Path:
 
 def extract_archive(archive: Path, target: Path) -> None:
     if target.exists():
-        shutil.rmtree(target)
+        remove_tree(target)
     target.mkdir(parents=True, exist_ok=True)
     if tarfile.is_tarfile(archive):
         with tarfile.open(archive) as tar:
-            tar.extractall(target, filter="data")
+            try:
+                tar.extractall(target, filter="data")
+            except TypeError:
+                tar.extractall(target)
         return
     raise Ki2Error(f"unsupported archive format: {archive}")
 
@@ -566,14 +930,95 @@ def copy_source_to_dest(source_dir: Path, destdir: Path) -> None:
             shutil.copy2(child, target)
 
 
+def remove_tree(path: Path) -> None:
+    def make_writable_and_retry(function: Any, target: str, _exc_info: Any) -> None:
+        os.chmod(target, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+        function(target)
+
+    shutil.rmtree(path, onerror=make_writable_and_retry)
+
+
+def package_file_manifest(destdir: Path) -> list[dict[str, Any]]:
+    files: list[dict[str, Any]] = []
+    if not destdir.exists():
+        return files
+    for path in sorted(destdir.rglob("*")):
+        rel = path.relative_to(destdir).as_posix()
+        mode = package_entry_mode(rel, path)
+        info: dict[str, Any] = {
+            "path": "/" + rel,
+            "mode": oct(mode),
+        }
+        if path.is_symlink():
+            info["type"] = "symlink"
+            info["target"] = os.readlink(path)
+        elif path.is_dir():
+            info["type"] = "dir"
+        else:
+            info["type"] = "file"
+            info["size"] = path.stat().st_size
+            info["sha256"] = file_sha256(path)
+        files.append(info)
+    return files
+
+
+def package_entry_mode(rel: str, path: Path) -> int:
+    if path.is_symlink():
+        return 0o777
+    if rel in {"tmp", "var/tmp"}:
+        return 0o1777
+    if rel in {"etc/shadow", "etc/gshadow"}:
+        return 0o600
+    if rel == "root" or rel.startswith("root/"):
+        return 0o700 if path.is_dir() else 0o600
+    if rel in {
+        "lib64/ld-linux-x86-64.so.2",
+        "lib/ld-linux-x86-64.so.2",
+        "lib/ld-linux.so.2",
+        "usr/lib64/ld-linux-x86-64.so.2",
+    }:
+        return 0o755
+    if rel == "etc/sudoers.d":
+        return 0o750
+    if rel == "etc/sudoers" or rel.startswith("etc/sudoers.d/"):
+        return 0o440
+    if path.is_dir():
+        mode = stat.S_IMODE(path.stat().st_mode)
+        return mode if mode & 0o7000 else 0o755
+    if rel.startswith(("etc/", "usr/etc/")):
+        return 0o644
+    if rel.startswith(("etc/systemd/system/", "usr/lib/systemd/system/", "lib/systemd/system/")):
+        return 0o644
+    if rel.startswith(("usr/lib/tmpfiles.d/", "lib/tmpfiles.d/")):
+        return 0o644
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode & 0o7000:
+        return mode
+    if rel.startswith(("bin/", "sbin/", "usr/bin/", "usr/sbin/", "usr/local/bin/")):
+        return 0o755
+    if rel.startswith(("usr/libexec/", "libexec/", "usr/lib/systemd/", "lib/systemd/")) and mode & 0o111:
+        return 0o755
+    return 0o644
+
+
+def normalize_tar_owner(info: tarfile.TarInfo) -> None:
+    info.uid = 0
+    info.gid = 0
+    info.uname = "root"
+    info.gname = "root"
+
+
 def create_package(ctx: BuildContext, recipe: Recipe, destdir: Path, output: Path, key: str, dep_keys: dict[str, str]) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     dependencies = {
         "build": recipe.dependencies.get("build", []),
         "runtime": recipe.dependencies.get("runtime", []),
     }
+    files = package_file_manifest(destdir)
+    regular_file_count = sum(1 for item in files if item.get("type") != "dir")
     manifest = {
         "schema": "ki2-package-v1",
+        "package_format": PACKAGE_FORMAT_REV,
         "name": recipe.name,
         "version": recipe.version,
         "release": recipe.release,
@@ -583,6 +1028,13 @@ def create_package(ctx: BuildContext, recipe: Recipe, destdir: Path, output: Pat
         "tier": recipe.tier,
         "dependencies": dependencies,
         "runtime_dependencies": recipe.dependencies.get("runtime", []),
+        "payload": {
+            "rootfs_prefix": "rootfs/",
+            "contains_os_tree": True,
+            "file_count": regular_file_count,
+            "entry_count": len(files),
+        },
+        "files": files,
         "build_key": key,
         "recipe_digest": recipe.digest,
         "dependency_keys": dep_keys,
@@ -600,6 +1052,7 @@ def create_package(ctx: BuildContext, recipe: Recipe, destdir: Path, output: Pat
         info = tarfile.TarInfo("manifest.json")
         info.size = len(manifest_bytes)
         info.mode = 0o644
+        normalize_tar_owner(info)
         tar.addfile(info, manifest_file)
         manifest_file.close()
 
@@ -608,17 +1061,29 @@ def create_package(ctx: BuildContext, recipe: Recipe, destdir: Path, output: Pat
                 rel = path.relative_to(destdir).as_posix()
                 arcname = "rootfs/" + rel
                 info = tar.gettarinfo(str(path), arcname=arcname)
+                info.mode = package_entry_mode(rel, path)
+                normalize_tar_owner(info)
                 if path.is_dir():
-                    info.mode = 0o755
                     tar.addfile(info)
                     continue
-                if rel.startswith(("bin/", "sbin/", "usr/bin/", "usr/sbin/", "usr/local/bin/")):
-                    info.mode = 0o755
-                else:
-                    info.mode = 0o644
+                if path.is_symlink():
+                    tar.addfile(info)
+                    continue
                 with path.open("rb") as handle:
                     tar.addfile(info, handle)
     tmp.replace(output)
+
+
+def prepare_rootfs_member_target(target: Path, rel: str, member: tarfile.TarInfo) -> None:
+    path = target / rel
+    if member.isdir():
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            path.unlink()
+        return
+    if path.is_dir() and not path.is_symlink():
+        raise Ki2Error(f"package entry {rel}: cannot replace an existing directory")
+    if path.exists() or path.is_symlink():
+        path.unlink()
 
 
 def extract_package_rootfs(package: Path, target: Path) -> None:
@@ -629,10 +1094,109 @@ def extract_package_rootfs(package: Path, target: Path) -> None:
             rel = member.name.removeprefix("rootfs/")
             if not rel:
                 continue
+            prepare_rootfs_member_target(target, rel, member)
+            mode = member.mode
             member.name = rel
             if member.linkname.startswith("rootfs/"):
                 member.linkname = member.linkname.removeprefix("rootfs/")
             tar.extract(member, target, filter="data")
+            extracted = target / rel
+            if not extracted.is_symlink():
+                os.chmod(extracted, mode)
+
+
+def systemd_unit_path(rootfs: Path, unit: str) -> Path | None:
+    candidates = [
+        rootfs / "etc" / "systemd" / "system" / unit,
+        rootfs / "usr" / "lib" / "systemd" / "system" / unit,
+        rootfs / "lib" / "systemd" / "system" / unit,
+    ]
+    if "@" in unit:
+        prefix, suffix = unit.split("@", 1)
+        if "." in suffix:
+            template = f"{prefix}@.{suffix.rsplit('.', 1)[1]}"
+            candidates.extend(
+                [
+                    rootfs / "etc" / "systemd" / "system" / template,
+                    rootfs / "usr" / "lib" / "systemd" / "system" / template,
+                    rootfs / "lib" / "systemd" / "system" / template,
+                ]
+            )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def systemd_install_fields(unit_file: Path) -> dict[str, list[str]]:
+    fields: dict[str, list[str]] = {"WantedBy": [], "Alias": [], "Also": []}
+    section = ""
+    for raw in unit_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("#", ";")):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1]
+            continue
+        if section == "Install" and line.startswith("WantedBy="):
+            fields["WantedBy"].extend(item for item in line.removeprefix("WantedBy=").split() if item)
+        elif section == "Install" and line.startswith("Alias="):
+            fields["Alias"].extend(item for item in line.removeprefix("Alias=").split() if item)
+        elif section == "Install" and line.startswith("Also="):
+            fields["Also"].extend(item for item in line.removeprefix("Also=").split() if item)
+    return fields
+
+
+def systemd_wanted_by(unit_file: Path, unit: str) -> list[str]:
+    wanted = systemd_install_fields(unit_file)["WantedBy"]
+    if wanted:
+        return wanted
+    if unit.startswith("getty@"):
+        return ["getty.target"]
+    if unit.endswith(".service"):
+        return ["multi-user.target"]
+    return []
+
+
+def relative_symlink_target(link: Path, target: Path) -> str:
+    return os.path.relpath(target, start=link.parent).replace(os.sep, "/")
+
+
+def enable_systemd_units(rootfs: Path, units: list[str], seen: set[str] | None = None) -> None:
+    if seen is None:
+        seen = set()
+    for unit in units:
+        if unit in seen:
+            continue
+        seen.add(unit)
+        unit_file = systemd_unit_path(rootfs, unit)
+        if unit_file is None:
+            print(f"[rootfs] warning: systemd unit not found for enable: {unit}")
+            continue
+        install_fields = systemd_install_fields(unit_file)
+        for target in systemd_wanted_by(unit_file, unit):
+            wants_dir = rootfs / "etc" / "systemd" / "system" / f"{target}.wants"
+            wants_dir.mkdir(parents=True, exist_ok=True)
+            link = wants_dir / unit
+            if link.exists() or link.is_symlink():
+                continue
+            try:
+                link.symlink_to(relative_symlink_target(link, unit_file))
+            except OSError:
+                shutil.copy2(unit_file, link)
+            print(f"[rootfs] enable {unit} -> {target}")
+        for alias in install_fields["Alias"]:
+            alias_link = rootfs / "etc" / "systemd" / "system" / alias
+            alias_link.parent.mkdir(parents=True, exist_ok=True)
+            if alias_link.exists() or alias_link.is_symlink():
+                continue
+            try:
+                alias_link.symlink_to(relative_symlink_target(alias_link, unit_file))
+            except OSError:
+                shutil.copy2(unit_file, alias_link)
+            print(f"[rootfs] alias {alias} -> {unit}")
+        if install_fields["Also"]:
+            enable_systemd_units(rootfs, install_fields["Also"], seen)
 
 
 def read_package_manifest(path: Path) -> dict[str, Any]:
@@ -664,12 +1228,12 @@ def dependency_package_path(
 
 
 def package_artifact_by_name(ctx: BuildContext, name: str) -> Path | None:
-    matches: list[Path] = []
+    matches: list[tuple[tuple[Any, ...], Path]] = []
     for path in sorted((ctx.packages_dir / ctx.arch).glob(f"{name}-*.{ctx.arch}.ki2")):
         manifest = read_package_manifest(path)
         if manifest.get("name") == name:
-            matches.append(path)
-    return matches[-1] if matches else None
+            matches.append((package_latest_sort_key(manifest, path), path))
+    return max(matches, key=lambda item: item[0])[1] if matches else None
 
 
 def prepare_sysroot(
@@ -680,7 +1244,7 @@ def prepare_sysroot(
 ) -> None:
     sysroot = sysroot_path(ctx)
     if sysroot.exists():
-        shutil.rmtree(sysroot)
+        remove_tree(sysroot)
     sysroot.mkdir(parents=True, exist_ok=True)
 
     deps = dependency_closure(recipes, dependency_names(recipe), ctx.arch, include_build_deps=True)
@@ -720,8 +1284,10 @@ def build_recipes(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list[s
         print(f"[build] {name} {recipe.version}-{recipe.release} ({ctx.arch}) key={key[:12]}")
         if ctx.dry_run:
             work = ctx.build_dir / ctx.arch / "work" / name
-            env = command_env(ctx, recipe, work, work / "source", work / "build", work / "dest")
-            _ = fetch_source(ctx, recipe, work)
+            source_dir = fetch_source(ctx, recipe, work)
+            env = command_env(ctx, recipe, work, source_dir, work / "build", work / "dest")
+            for command in recipe_patch_commands(ctx, recipe, source_dir):
+                print("+ " + command)
             for command in recipe_commands(recipe, env):
                 print("+ " + command)
             print(f"[package] {output}")
@@ -729,7 +1295,7 @@ def build_recipes(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list[s
 
         work = ctx.build_dir / ctx.arch / "work" / name
         if work.exists():
-            shutil.rmtree(work)
+            remove_tree(work)
         build_dir = work / "build"
         destdir = work / "dest"
         build_dir.mkdir(parents=True, exist_ok=True)
@@ -738,6 +1304,9 @@ def build_recipes(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list[s
         prepare_sysroot(ctx, recipe, recipes, state)
         source_dir = fetch_source(ctx, recipe, work)
         env = command_env(ctx, recipe, work, source_dir, build_dir, destdir)
+
+        for command in recipe_patch_commands(ctx, recipe, source_dir):
+            run_shell(command, env, work, dry_run=False)
 
         commands = recipe_commands(recipe, env)
         if recipe.build.get("system") == "copy" and not commands:
@@ -773,8 +1342,10 @@ def write_repo_index(ctx: BuildContext) -> None:
                     "summary": manifest.get("summary", ""),
                     "dependencies": dependencies,
                     "runtime_dependencies": dependencies.get("runtime", []),
+                    "file_count": manifest.get("payload", {}).get("file_count", len(manifest.get("files", []))),
                 }
             )
+    packages.sort(key=lambda item: package_manifest_sort_key(item, Path(str(item.get("file", "")))))
 
     index = {
         "schema": "ki2-repository-v1",
@@ -788,7 +1359,7 @@ def write_repo_index(ctx: BuildContext) -> None:
     print(f"[repo] wrote {out} ({len(packages)} packages)")
 
 
-def assemble_rootfs(ctx: BuildContext, ordered: list[str]) -> None:
+def assemble_rootfs(ctx: BuildContext, ordered: list[str], profile: dict[str, Any] | None = None) -> None:
     if ctx.rootfs_dir is None:
         raise Ki2Error("--rootfs-dir is required for rootfs assembly")
     if ctx.dry_run:
@@ -809,6 +1380,12 @@ def assemble_rootfs(ctx: BuildContext, ordered: list[str]) -> None:
 
     if missing:
         raise Ki2Error("missing package artifacts: " + ", ".join(missing))
+
+    services = profile.get("services", {}) if profile else {}
+    if isinstance(services, dict):
+        enable = services.get("enable", [])
+        if isinstance(enable, list) and not ctx.dry_run:
+            enable_systemd_units(ctx.rootfs_dir, [unit for unit in enable if isinstance(unit, str)])
 
 
 def command_list(args: argparse.Namespace) -> None:
@@ -871,7 +1448,7 @@ def command_rootfs(args: argparse.Namespace) -> None:
     recipes = load_recipes(args.recipe_dir)
     profile = load_profile(args.profile)
     ordered = dependency_closure(recipes, list(profile["packages"]), args.arch, include_build_deps=False)
-    assemble_rootfs(make_context(args), ordered)
+    assemble_rootfs(make_context(args), ordered, profile)
 
 
 def add_common_options(parser: argparse.ArgumentParser) -> None:

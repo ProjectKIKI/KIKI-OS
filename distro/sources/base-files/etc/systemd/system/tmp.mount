@@ -1,0 +1,17 @@
+[Unit]
+Description=Temporary Directory /tmp
+DefaultDependencies=no
+Conflicts=umount.target
+Before=local-fs.target umount.target
+ConditionPathIsDirectory=/tmp
+ConditionPathIsSymbolicLink=!/tmp
+ConditionPathExists=/etc/kiki/enable-tmpfs-tmp
+
+[Mount]
+What=tmpfs
+Where=/tmp
+Type=tmpfs
+Options=mode=1777,strictatime,nosuid,nodev,size=50%,nr_inodes=1m
+
+[Install]
+WantedBy=local-fs.target

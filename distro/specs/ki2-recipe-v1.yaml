@@ -1,0 +1,96 @@
+schema: ki2-recipe-spec-v1
+name: ki2-recipe-v1
+status: draft
+description: .ki2 패키지를 빌드하기 위한 운영자용 YAML 레시피 계약.
+
+top_level:
+  recipes:
+    type: list
+    item: recipe
+
+recipe:
+  required:
+    - name
+    - version
+    - summary
+    - license
+    - source
+    - depends
+    - build
+  optional:
+    - release
+    - tier
+    - arch
+    - architectures
+    - arches
+
+fields:
+  name: 패키지 이름. 소문자, 숫자, dash, dot를 사용한다.
+  version: upstream 버전. YAML에서는 버전 문자열을 따옴표로 감싼다.
+  release: KIKI 패키지 릴리스. 기본값은 1이다.
+  summary: 한 줄 패키지 설명.
+  license: SPDX와 유사한 라이선스 표현식.
+  tier: base, kernel, network, kubernetes, kiki, build, shell, archive, runtime, storage 중 하나.
+  arch: 단일 아키텍처 단축 필드.
+  architectures: 지원 아키텍처 목록. 아키텍처 독립 패키지는 all을 사용한다.
+
+source:
+  local:
+    type: local
+    path: distro/sources/my-package
+  url:
+    type: url
+    url: https://example.invalid/source.tar.gz
+    sha256: REPLACE_ME
+  virtual:
+    type: virtual
+
+depends:
+  build: sysroot에 들어가는 빌드 시점 대상 패키지.
+  runtime: 이 패키지보다 먼저 설치되어야 하는 런타임 패키지.
+
+build:
+  system_values:
+    - copy
+    - virtual
+    - gnu
+    - make
+    - cmake
+    - meson
+    - python
+    - kernel
+  command_groups:
+    - commands
+    - prepare
+    - configure
+    - compile
+    - install
+  environment:
+    - KI2_ARCH
+    - KI2_PACKAGE
+    - KI2_VERSION
+    - KI2_RELEASE
+    - KI2_SOURCE_DIR
+    - KI2_BUILD_DIR
+    - KI2_DESTDIR
+    - KI2_SYSROOT
+    - KI2_JOBS
+    - KI2_TARGET_TRIPLE
+
+yaml_rules:
+  allowed:
+    - mappings
+    - lists
+    - strings
+    - integers
+    - true
+    - false
+    - null
+  avoid:
+    - anchors
+    - aliases
+    - tabs
+    - yes
+    - no
+    - on
+    - off

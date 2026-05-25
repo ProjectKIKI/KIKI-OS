@@ -1,0 +1,12 @@
+[Unit]
+Description=Kernel Trace File System
+DefaultDependencies=no
+Before=sysinit.target
+ConditionPathExists=/etc/kiki/enable-api-mounts
+ConditionPathExists=/sys/kernel/tracing
+
+[Mount]
+What=tracefs
+Where=/sys/kernel/tracing
+Type=tracefs
+Options=nosuid,nodev,noexec

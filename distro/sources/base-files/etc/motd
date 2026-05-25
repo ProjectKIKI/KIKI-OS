@@ -1,0 +1,13 @@
+KIKI OS stage-1 system
+
+Use the admin account created during installation.
+Lab default: admin / kiki
+
+Useful commands:
+  systemctl status
+  loginctl
+  networkctl
+  resolvectl
+  journalctl -xb
+  ps
+  top

@@ -1,0 +1,12 @@
+[Unit]
+Description=KIKI bootstrap-stage1 nightly build
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=kiki-builder
+Group=kiki-builder
+WorkingDirectory=/srv/kiki/KIKI-OS
+Environment=KIKI_TOOLCHAIN_ID=rocky9-stage0-gcc11-v1
+ExecStart=/usr/bin/python3 tools/ki2ci.py run bootstrap --artifact-root /srv/kiki/build/ki2ci --jobs 8
