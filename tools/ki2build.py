@@ -369,6 +369,48 @@ def build_file_inputs(ctx: BuildContext, recipe: Recipe, field: str) -> list[dic
     return inputs
 
 
+def local_source_inputs(ctx: BuildContext, recipe: Recipe) -> list[dict[str, str]]:
+    source = recipe.source
+    if source.get("type") != "local":
+        return []
+    raw_path = source.get("path")
+    if not isinstance(raw_path, str) or not raw_path:
+        raise Ki2Error(f"{recipe.name}: local source requires source.path")
+    source_path = repo_relative_path(ctx.repo_root, raw_path)
+    if not source_path.exists():
+        raise Ki2Error(f"{recipe.name}: local source path not found: {source_path}")
+
+    def display_path(path: Path) -> str:
+        return str(path.relative_to(ctx.repo_root) if path.is_relative_to(ctx.repo_root) else path)
+
+    inputs: list[dict[str, str]] = []
+    if source_path.is_file():
+        inputs.append(
+            {
+                "field": "source",
+                "path": display_path(source_path),
+                "sha256": file_sha256(source_path),
+            }
+        )
+        return inputs
+
+    for path in sorted(source_path.rglob("*")):
+        if path.is_dir():
+            continue
+        item: dict[str, str] = {
+            "field": "source",
+            "path": display_path(path),
+        }
+        if path.is_symlink():
+            item["symlink"] = os.readlink(path)
+        elif path.is_file():
+            item["sha256"] = file_sha256(path)
+        else:
+            continue
+        inputs.append(item)
+    return inputs
+
+
 def normalize_dependencies(raw: dict[str, Any], origin: Path, name: str) -> dict[str, list[str]]:
     if "dependencies" in raw and "depends" in raw:
         raise Ki2Error(f"{origin}: {name} must use dependencies or depends, not both")
@@ -594,6 +636,7 @@ def build_key(recipe: Recipe, ctx: BuildContext, dep_keys: dict[str, str]) -> st
     extra_inputs: list[dict[str, str]] = []
     extra_inputs.extend(build_file_inputs(ctx, recipe, "config_fragments"))
     extra_inputs.extend(build_file_inputs(ctx, recipe, "patches"))
+    extra_inputs.extend(local_source_inputs(ctx, recipe))
     return stable_hash(
         {
             "schema": "ki2-build-key-v1",
@@ -792,6 +835,8 @@ def default_commands(recipe: Recipe, env: dict[str, str]) -> list[str]:
         return commands
     if system in {"copy", "virtual"}:
         return []
+    if system == "stage2-stub":
+        return [f"# stage2-stub payload for {recipe.name}"]
     raise Ki2Error(f"{recipe.name}: unknown build.system {system!r}")
 
 
@@ -928,6 +973,222 @@ def copy_source_to_dest(source_dir: Path, destdir: Path) -> None:
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(child, target)
+
+
+def parse_file_mode(value: Any, default: int = 0o644) -> int:
+    if value is None:
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return default
+        try:
+            return int(text, 8)
+        except ValueError as exc:
+            raise Ki2Error(f"invalid file mode {value!r}") from exc
+    raise Ki2Error(f"invalid file mode {value!r}")
+
+
+def rootfs_relative_path(value: str, *, field: str, recipe: str) -> Path:
+    if not value:
+        raise Ki2Error(f"{recipe}: {field} path is empty")
+    rel = Path(value.strip("/"))
+    if rel.is_absolute() or ".." in rel.parts or str(rel) in {"", "."}:
+        raise Ki2Error(f"{recipe}: unsafe {field} path {value!r}")
+    return rel
+
+
+def stage2_stub_list(value: Any, *, field: str, recipe: str) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [{"name": value}]
+    if not isinstance(value, list):
+        raise Ki2Error(f"{recipe}: build.stub.{field} must be a list")
+    result: list[dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, str):
+            result.append({"name": item})
+        elif isinstance(item, dict):
+            result.append(item)
+        else:
+            raise Ki2Error(f"{recipe}: build.stub.{field} entries must be strings or mappings")
+    return result
+
+
+def stage2_stub_string_list(value: Any, *, field: str, recipe: str) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise Ki2Error(f"{recipe}: build.stub.{field} must be a string or a list of strings")
+    return [item for item in value if item]
+
+
+def write_rootfs_text(destdir: Path, path: str, content: str, mode: int, *, field: str, recipe: str) -> None:
+    target = destdir / rootfs_relative_path(path, field=field, recipe=recipe)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8", newline="\n")
+    target.chmod(mode)
+
+
+def stage2_stub_script(recipe: Recipe, command_name: str, message: str | None = None) -> str:
+    detail = message or (
+        f"KIKI Stage 2 placeholder: {recipe.name} provides {command_name}, "
+        "but the source-backed binary is not bundled yet."
+    )
+    return (
+        "#!/bin/sh\n"
+        "case \"${1:-}\" in\n"
+        "  --version|-v|version)\n"
+        f"    echo \"{command_name} {recipe.version}-{recipe.release} (KIKI Stage 2 placeholder)\"\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "esac\n"
+        "cat >&2 <<'EOF'\n"
+        f"{detail}\n"
+        "This package reserves filesystem paths, dependencies, and service wiring for Stage 2 testing.\n"
+        f"Rebuild {recipe.name} from upstream source before production use.\n"
+        "EOF\n"
+        "exit 69\n"
+    )
+
+
+def stage2_stub_service(recipe: Recipe, entry: dict[str, Any]) -> str:
+    name = str(entry.get("name") or f"{recipe.name}.service")
+    description = str(entry.get("description") or f"KIKI Stage 2 placeholder for {recipe.name}")
+    condition_path = str(entry.get("condition_path") or "")
+    exec_start = str(entry.get("exec_start") or condition_path or f"/usr/bin/{recipe.name}")
+    service_type = str(entry.get("type") or "simple")
+    wanted_by = str(entry.get("wanted_by") or "multi-user.target")
+    after = stage2_stub_string_list(entry.get("after"), field=f"services.{name}.after", recipe=recipe.name)
+    wants = stage2_stub_string_list(entry.get("wants"), field=f"services.{name}.wants", recipe=recipe.name)
+
+    lines = [
+        "[Unit]",
+        f"Description={description}",
+        f"Documentation=file:/usr/share/doc/kiki-stage2/{recipe.name}.txt",
+    ]
+    if condition_path:
+        lines.append(f"ConditionPathExists={condition_path}")
+    if after:
+        lines.append("After=" + " ".join(after))
+    if wants:
+        lines.append("Wants=" + " ".join(wants))
+    lines.extend(
+        [
+            "",
+            "[Service]",
+            f"Type={service_type}",
+            f"ExecStart={exec_start}",
+            "",
+            "[Install]",
+            f"WantedBy={wanted_by}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def stage2_stub_file_content(entry: dict[str, Any], *, recipe: str) -> str:
+    if "content" in entry:
+        return str(entry.get("content") or "")
+    if "lines" in entry:
+        lines = entry["lines"]
+        if not isinstance(lines, list) or not all(isinstance(item, str) for item in lines):
+            raise Ki2Error(f"{recipe}: build.stub.files.lines must be a list of strings")
+        return "\n".join(lines) + "\n"
+    return ""
+
+
+def install_stage2_stub(ctx: BuildContext, recipe: Recipe, destdir: Path) -> None:
+    stub = recipe.build.get("stub", {})
+    if stub is None:
+        stub = {}
+    if not isinstance(stub, dict):
+        raise Ki2Error(f"{recipe.name}: build.stub must be a mapping")
+
+    binaries = stage2_stub_list(stub.get("binaries"), field="binaries", recipe=recipe.name)
+    services = stage2_stub_list(stub.get("services"), field="services", recipe=recipe.name)
+    files = stage2_stub_list(stub.get("files"), field="files", recipe=recipe.name)
+    directories = stage2_stub_string_list(stub.get("directories"), field="directories", recipe=recipe.name)
+
+    for directory in directories:
+        target = destdir / rootfs_relative_path(directory, field="directories", recipe=recipe.name)
+        target.mkdir(parents=True, exist_ok=True)
+
+    for entry in binaries:
+        name = str(entry.get("name") or "")
+        if not name:
+            raise Ki2Error(f"{recipe.name}: build.stub.binaries entry requires name")
+        path = str(entry.get("path") or f"/usr/bin/{name}")
+        mode = parse_file_mode(entry.get("mode"), default=0o755)
+        message = entry.get("message")
+        write_rootfs_text(
+            destdir,
+            path,
+            stage2_stub_script(recipe, name, str(message) if message else None),
+            mode,
+            field="binaries",
+            recipe=recipe.name,
+        )
+
+    for entry in services:
+        name = str(entry.get("name") or "")
+        if not name:
+            raise Ki2Error(f"{recipe.name}: build.stub.services entry requires name")
+        write_rootfs_text(
+            destdir,
+            f"/usr/lib/systemd/system/{name}",
+            stage2_stub_service(recipe, entry),
+            0o644,
+            field="services",
+            recipe=recipe.name,
+        )
+
+    for entry in files:
+        path = str(entry.get("path") or "")
+        if not path:
+            raise Ki2Error(f"{recipe.name}: build.stub.files entry requires path")
+        content = stage2_stub_file_content(entry, recipe=recipe.name)
+        write_rootfs_text(
+            destdir,
+            path,
+            content,
+            parse_file_mode(entry.get("mode"), default=0o644),
+            field="files",
+            recipe=recipe.name,
+        )
+
+    note = (
+        f"{recipe.name} {recipe.version}-{recipe.release}\n"
+        "\n"
+        "This is a KIKI Stage 2 packaging placeholder.\n"
+        "It is installable so dependency, repository, service, and installer flows can be tested.\n"
+        "It is not a production source-backed binary package yet.\n"
+    )
+    write_rootfs_text(destdir, f"/usr/share/doc/kiki-stage2/{recipe.name}.txt", note, 0o644, field="note", recipe=recipe.name)
+    metadata = {
+        "schema": "kiki-stage2-placeholder-v1",
+        "package": recipe.name,
+        "version": recipe.version,
+        "release": recipe.release,
+        "arch": ctx.arch,
+        "binaries": binaries,
+        "services": services,
+        "files": files,
+    }
+    write_rootfs_text(
+        destdir,
+        f"/usr/share/kiki/stage2/{recipe.name}.json",
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        0o644,
+        field="metadata",
+        recipe=recipe.name,
+    )
 
 
 def remove_tree(path: Path) -> None:
@@ -1313,6 +1574,8 @@ def build_recipes(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list[s
         commands = recipe_commands(recipe, env)
         if recipe.build.get("system") == "copy" and not commands:
             copy_source_to_dest(source_dir, destdir)
+        elif recipe.build.get("system") == "stage2-stub":
+            install_stage2_stub(ctx, recipe, destdir)
         else:
             for command in commands:
                 run_shell(command, env, work, dry_run=False)

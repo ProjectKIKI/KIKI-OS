@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,74 @@ class IsoError(RuntimeError):
 
 def default_repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def safe_filename_component(value: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in value.strip())
+    cleaned = cleaned.strip("-_")
+    return cleaned or "unknown"
+
+
+def git_output(repo_root: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repo_root,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def format_iso_build_stamp(build_date: str, revision: str) -> str:
+    clean_date = "".join(ch for ch in build_date if ch.isdigit())[:8] or "00000000"
+    clean_revision = "".join(ch for ch in revision if ch.isalnum() or ch in ("-", "_")) or "revunknown"
+    if not clean_revision.startswith("rev"):
+        clean_revision = f"rev{clean_revision}"
+    return f"{clean_date}-{clean_revision}"
+
+
+def iso_build_info(repo_root: Path) -> dict[str, Any]:
+    build_date = os.environ.get("KIKI_ISO_DATE") or dt.datetime.now().strftime("%Y%m%d")
+    revision = os.environ.get("KIKI_ISO_REV") or git_output(repo_root, "rev-list", "--count", "HEAD") or "unknown"
+    commit = git_output(repo_root, "rev-parse", "--short", "HEAD") or "unknown"
+    status = git_output(repo_root, "status", "--porcelain")
+    stamp = format_iso_build_stamp(build_date, revision)
+    return {
+        "date": build_date,
+        "revision": f"rev{revision}" if not str(revision).startswith("rev") else str(revision),
+        "commit": commit,
+        "dirty": bool(status),
+        "stamp": stamp,
+    }
+
+
+def read_repo_channel(repo_dir: Path, arch: str) -> str | None:
+    metadata = repo_dir / f"metadata.{arch}.json"
+    if not metadata.exists():
+        return None
+    try:
+        data = json.loads(metadata.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    channel = str(data.get("channel") or "").strip()
+    return channel or None
+
+
+def iso_release_name(repo_dir: Path, arch: str, profile: str, override: str | None = None) -> str:
+    if override:
+        return safe_filename_component(override)
+    return safe_filename_component(read_repo_channel(repo_dir, arch) or profile)
+
+
+def default_iso_output(repo_root: Path, release_name: str, arch: str, build_info: dict[str, Any]) -> Path:
+    return repo_root / "dist" / "iso" / f"kiki-{release_name}-{arch}-{build_info['stamp']}.iso"
 
 
 def copytree_contents(source: Path, target: Path) -> None:
@@ -53,6 +122,8 @@ def prepare_iso_tree(
     arch: str,
     profile: str,
     label: str,
+    build_info: dict[str, Any] | None = None,
+    release_name: str | None = None,
 ) -> dict[str, Any]:
     if not rootfs_dir.exists():
         raise IsoError(f"rootfs directory not found: {rootfs_dir}")
@@ -72,8 +143,10 @@ def prepare_iso_tree(
         "schema": "ki2-iso-v1",
         "arch": arch,
         "profile": profile,
+        "release": release_name or profile,
         "label": label,
         "created_at": dt.datetime.now(UTC).isoformat(),
+        "build": build_info or {},
         "rootfs": "kiki/rootfs.tar.gz",
         "repo": "kiki/repo",
         "bootable": False,
@@ -144,12 +217,23 @@ def command_build(args: argparse.Namespace) -> None:
     repo_root = args.repo_root.resolve()
     rootfs_dir = args.rootfs_dir or repo_root / "dist" / "rootfs" / args.profile
     repo_dir = args.repo_dir or repo_root / "dist" / "ki2" / "repo"
-    output = args.output or repo_root / "dist" / "iso" / f"kiki-{args.profile}-{args.arch}.iso"
+    build_info = iso_build_info(repo_root)
+    release_name = iso_release_name(repo_dir, args.arch, args.profile, args.release_name)
+    output = args.output or default_iso_output(repo_root, release_name, args.arch, build_info)
     label = args.label or f"KIKI_{args.profile}_{args.arch}".replace("-", "_").upper()
 
     if args.keep_tree:
         tree_dir = args.keep_tree
-        manifest = prepare_iso_tree(rootfs_dir, repo_dir, tree_dir, arch=args.arch, profile=args.profile, label=label)
+        manifest = prepare_iso_tree(
+            rootfs_dir,
+            repo_dir,
+            tree_dir,
+            arch=args.arch,
+            profile=args.profile,
+            label=label,
+            build_info=build_info,
+            release_name=release_name,
+        )
         if args.dry_run:
             print(f"prepared ISO tree: {tree_dir}")
             print(json.dumps(manifest, indent=2, sort_keys=True))
@@ -158,7 +242,16 @@ def command_build(args: argparse.Namespace) -> None:
     else:
         with tempfile.TemporaryDirectory(prefix="ki2iso-") as tmp:
             tree_dir = Path(tmp) / "iso-tree"
-            manifest = prepare_iso_tree(rootfs_dir, repo_dir, tree_dir, arch=args.arch, profile=args.profile, label=label)
+            manifest = prepare_iso_tree(
+                rootfs_dir,
+                repo_dir,
+                tree_dir,
+                arch=args.arch,
+                profile=args.profile,
+                label=label,
+                build_info=build_info,
+                release_name=release_name,
+            )
             if args.dry_run:
                 print(f"would build ISO: {output}")
                 print(json.dumps(manifest, indent=2, sort_keys=True))
@@ -173,6 +266,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo-root", type=Path, default=default_repo_root())
     parser.add_argument("--arch", default="x86_64")
     parser.add_argument("--profile", default="bootstrap-stage1")
+    parser.add_argument("--release-name", default=None, help="release/channel name for default ISO filenames; defaults to repository metadata channel")
     parser.add_argument("--rootfs-dir", type=Path, default=None)
     parser.add_argument("--repo-dir", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=None)

@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+FAILURES = 0
+WARNINGS = 0
+
+
+def line(state, name, detail):
+    print(f"[{state:<4}] {name:<24} {detail}")
+
+
+def fail(name, detail):
+    global FAILURES
+    FAILURES += 1
+    line("FAIL", name, detail)
+
+
+def warn(name, detail):
+    global WARNINGS
+    WARNINGS += 1
+    line("WARN", name, detail)
+
+
+def ok(name, detail):
+    line("OK", name, detail)
+
+
+def have_path(path):
+    return Path(path).exists()
+
+
+def have_cmd(name):
+    return shutil.which(name) is not None
+
+
+def run(cmd):
+    return subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+def check_path(name, *paths):
+    for path in paths:
+        if have_path(path):
+            ok(name, path)
+            return True
+    fail(name, "missing: " + ", ".join(paths))
+    return False
+
+
+def check_cmd(name):
+    path = shutil.which(name)
+    if path:
+        ok(name, path)
+        return True
+    fail(name, "not found in PATH")
+    return False
+
+
+def check_service(unit, required=True):
+    if not have_cmd("systemctl"):
+        fail(unit, "systemctl is missing")
+        return
+    result = run(["systemctl", "is-active", "--quiet", unit])
+    if result.returncode == 0:
+        ok(unit, "active")
+        return
+    message = "inactive or failed"
+    if required:
+        fail(unit, message)
+    else:
+        warn(unit, message)
+
+
+def check_networkctl():
+    if not have_cmd("networkctl"):
+        fail("networkctl", "not found in PATH")
+        return
+    result = run(["networkctl", "list", "--no-pager"])
+    if result.returncode == 0:
+        ok("networkctl", "link list available")
+    else:
+        warn("networkctl", result.stderr.strip() or "link list failed")
+
+
+def check_system_state():
+    if not have_cmd("systemctl"):
+        return
+    result = run(["systemctl", "is-system-running"])
+    state = result.stdout.strip() or result.stderr.strip() or "unknown"
+    if state in {"running", "degraded"}:
+        ok("system state", state)
+    else:
+        warn("system state", state)
+
+
+def main():
+    print("KIKI Stage 1 validation")
+    print("=======================")
+    check_path("systemd init", "/usr/lib/systemd/systemd", "/usr/sbin/init")
+    for cmd in ("systemctl", "journalctl", "loginctl", "networkctl", "resolvectl", "sudo", "ki2ctl"):
+        check_cmd(cmd)
+    check_path("install plan", "/var/lib/ki2/install-plan.yaml")
+
+    check_service("dbus.service")
+    check_service("systemd-logind.service")
+    check_service("systemd-networkd.service")
+    check_service("systemd-resolved.service")
+    check_service("getty@tty1.service", required=False)
+    check_networkctl()
+    check_system_state()
+
+    print()
+    print(f"summary: {FAILURES} failure(s), {WARNINGS} warning(s)")
+    return 1 if FAILURES else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

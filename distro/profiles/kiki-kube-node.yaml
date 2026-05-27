@@ -13,7 +13,9 @@ profile:
     - libseccomp
     - acl
     - attr
+    - ncurses
     - util-linux
+    - cfdisk
     - kmod
     - dbus
     - systemd
@@ -31,12 +33,14 @@ profile:
     - python
     - e2fsprogs
     - shadow
+    - sudo
     - iproute2
     - ca-certificates
     - openssh
     - curl
     - ki2ctl
     - kiki-agent
+    - kiki-installer-tui
     - cri-o
     - conmon
     - crun
@@ -48,6 +52,8 @@ profile:
     - conntrack-tools
     - iptables
     - nftables
+    - firewalld
+    - bridge-utils
     - socat
     - ethtool
     - chrony

@@ -3,8 +3,10 @@ Description=OpenSSH server daemon
 After=network.target
 
 [Service]
+ExecStartPre=/usr/bin/ssh-keygen -A
 ExecStart=/usr/sbin/sshd -D -e
 Restart=on-failure
+RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target

@@ -22,8 +22,14 @@
 - `tools/ki2bootiso.py`
   - BIOS/UEFI 부팅 가능한 VM 미디어 생성
   - stage-1 TUI 설치 미디어와 Hyper-V용 VHDX 출력 생성
+- `cmd/kiki-installer-tui`
+  - Stage 1부터 패키지로 포함하는 Go 기반 설치 계획서 TUI preview
+  - `/run/kiki/install-plan.yaml` 상태판 렌더링과 Stage 2 설치기 전환 검증
 - `tools/ki2publish.py`
   - 패키지, 저장소, ISO, 디스크 이미지를 정적 배포 트리로 복사
+- `distro/sources/ki2ctl/usr/bin/ki2ctl`
+  - HTTP 저장소 인덱스 다운로드
+  - 패키지 검색, 정보 조회, 의존성 해석, 설치/삭제 preview
 
 ## 패키지 범위
 
@@ -64,7 +70,7 @@
 
 - rootfs 추출 전 패키지 파일 충돌 탐지
 - install/remove script 실행
-- 설치된 시스템 내부 패키지 DB
+- 설치된 시스템 내부 패키지 DB 고도화
 - 패키지 업그레이드/롤백
 - 서명된 저장소 메타데이터
 
@@ -117,6 +123,10 @@
 현재 일부 레시피는 resolver-visible metadata 또는 local config 패키지다. 다음
 실제 패키지 작업은 `crun`, `conmon`, `cri-o`를 하나씩 source-backed build
 recipe로 바꾸는 것이다.
+
+네트워크와 방화벽 계층은 `nftables`, `iptables`, `conntrack-tools`를 먼저
+실제 패키지화하고, `firewalld`와 `bridge-utils`는 선택 프로파일로 둔다. 기본
+bridge 점검은 `iproute2`의 `bridge` 명령을 기준으로 한다.
 
 ## 다음 점검 항목
 

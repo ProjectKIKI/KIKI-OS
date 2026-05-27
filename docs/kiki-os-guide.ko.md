@@ -287,10 +287,27 @@ python tools/ki2bootiso.py --profile bootstrap-stage1
 python tools/ki2bootiso.py --profile bootstrap-stage1 --mode installer
 ```
 
+ISO 파일명 규칙:
+
+```text
+kiki-<release-channel>-<mode>-<arch>-YYYYMMDD-revN.iso
+kiki-<release-channel>-<arch>-YYYYMMDD-revN.iso
+```
+
+`release-channel`은 기본적으로 `dist/ki2/repo/metadata.<arch>.json`의
+`channel` 값이다. 현재 Stage 2 저장소에서는 `stage2`가 된다. `revN`은
+`git rev-list --count HEAD` 기준이다. `--release-name`으로 채널 이름만 바꾸거나
+`--output`으로 전체 파일명을 직접 지정할 수 있다.
+
 ## TUI 설치기
 
 설치기는 C로 작성된 syscall-only `/init` 바이너리로 동작한다. Go 런타임을
 초기 initramfs에 넣지 않아도 되므로 부팅 초기 환경에서 가볍게 실행된다.
+Stage 1에서는 이 C 설치기가 실제 설치 경로를 담당한다.
+
+동시에 Stage 1부터 Go 기반 `kiki-installer-tui` preview를 패키지로 포함한다.
+이 도구는 설치를 직접 실행하기보다 같은 선언형 설치 계획서를 상태판 형태로
+렌더링하고, Stage 2의 주 설치기로 승격하기 전에 테스트할 수 있는 기반이다.
 
 주요 기능:
 
@@ -299,8 +316,11 @@ python tools/ki2bootiso.py --profile bootstrap-stage1 --mode installer
 - 네트워크 인터페이스 확인
 - 네트워크 설정: 기본 DHCP, interface match 변경, autoconfiguration 비활성화
 - 디스크와 파티션 확인
+- Disk 메뉴에서 `cfdisk`/`fdisk` 즉시 실행
 - `minimal-systemd` 패키지 세트 선택
+- `kiki-kube-node` 쿠버네티스 노드 패키지 세트 선택
 - 전체 패키지 선택
+- 저장소 인덱스의 패키지 record 수와 고유 패키지 이름 수 구분 표시
 - 개별 패키지 이름 추가
 - 자동 파티셔닝: ESP + swap + root
 - 수동 파티셔닝: shell에서 `fdisk`/`cfdisk` 사용 후 파티션 경로 입력
@@ -316,12 +336,24 @@ python tools/ki2bootiso.py --profile bootstrap-stage1 --mode installer
 - ESP: 디스크 크기에 따라 512-768 MiB
 - swap: 메모리 x2, 최대 16 GiB
 - root: 나머지 ext4
+- fstab은 `/dev/sdX` 이름 대신 `LABEL=KIKI_ROOT`, `LABEL=KIKI_EFI`,
+  `LABEL=KIKI_SWAP`을 우선 사용한다.
+- swap 항목에는 `nofail,x-systemd.device-timeout=10s`를 붙여 swap 장치 문제로
+  emergency mode에 빠지는 일을 줄인다.
 
 수동 파티셔닝 정책:
 
 - 사용자가 직접 ESP/root/swap 파티션을 만든다.
+- `1) Disk` 메뉴에서 `cfdisk`를 바로 실행할 수 있다.
+- Disk 메뉴에서 편집한 디스크는 설치 단계의 기본 후보로 기억한다.
+- 일반적인 `ESP + swap + root` 레이아웃이면 `/dev/sda1`, `/dev/sda2`,
+  `/dev/sda3` 같은 후보를 ESP/swap/root 기본값으로 제안한다.
 - 설치기는 입력된 파티션만 포맷한다.
 - 전체 디스크와 파티션 경로를 구분한다.
+- swap 후보가 제안되었지만 사용하지 않으려면 `none`을 입력한다.
+- `cfdisk` 명령은 별도 `cfdisk` convenience 패키지로 노출하고, 실제
+  파티션 편집 바이너리는 `util-linux`, TUI 런타임 라이브러리는 `ncurses`가
+  제공한다.
 
 설치 계획서:
 
@@ -333,6 +365,23 @@ python tools/ki2bootiso.py --profile bootstrap-stage1 --mode installer
 설치 전에는 `/run/kiki/install-plan.yaml`을 화면에 보여주고, 설치 후에는 같은
 계획서를 `/var/lib/ki2/install-plan.yaml`로 복사한다. 비밀번호는 계획서에
 저장하지 않는다.
+
+Go TUI preview:
+
+```bash
+kiki-installer-tui --render
+kiki-installer-tui --profile kiki-kube-node --render
+kiki-installer-tui --write --plan /run/kiki/install-plan.yaml
+```
+
+Go TUI는 다음 원칙을 따른다.
+
+- 첫 화면은 “상태판 + 편집 명령” 구조로 둔다.
+- TUI의 중심 데이터는 `/run/kiki/install-plan.yaml`이다.
+- 비밀번호 평문은 계획서에 저장하지 않는다.
+- `kiki-kube-node` 프로필은 기본적으로 swap을 끈다.
+- 방화벽 backend는 `nftables`로 기록하고, `firewalld`는 선택값으로 둔다.
+- bridge 점검 기본 도구는 `iproute2`의 `bridge` 명령이다.
 
 설치 계획서의 네트워크 섹션은 다음 값을 기록한다.
 
@@ -358,6 +407,15 @@ network:
 
 운영자가 설치 중 다른 관리자 이름과 암호를 입력할 수 있다. root 직접 로그인을
 허용하면 root도 같은 암호로 설정된다.
+
+설치 후 Stage 1 기본 상태는 다음 명령으로 점검한다.
+
+```bash
+kiki-stage1-check
+```
+
+이 명령은 `systemctl`, `journalctl`, `loginctl`, `networkctl`, `resolvectl`,
+`sudo`, `ki2ctl`, 주요 systemd 유닛, 설치 계획서 보존 여부를 확인한다.
 
 ## 패키지 작성 예제
 
@@ -432,9 +490,79 @@ python tools/ki2build.py build --profile distro/profiles/minimal-systemd.toml --
 python tools/ki2build.py repo-index
 ```
 
+## HTTP 패키지 관리자
+
+저장소 구성과 운영 절차는 [KIKI 패키지 저장소 구성 가이드](kiki-repository-setup.ko.md)에
+별도로 정리한다. 이 절은 자주 쓰는 명령만 요약한다.
+
+저장소 인덱스는 다음 명령으로 생성한다.
+
+```bash
+python tools/ki2build.py repo-index
+```
+
+개발 중에는 빌드 산출물 디렉터리를 그대로 HTTP로 열 수 있다.
+
+```bash
+python -m http.server 8080 --directory dist/ki2
+```
+
+운영용으로는 publish 트리를 만든 뒤 nginx, apache, caddy 같은 정적 HTTP 서버로
+제공한다.
+
+```bash
+python tools/ki2publish.py --target /srv/www/kiki
+```
+
+KIKI OS 안에서는 `ki2ctl`로 원격 저장소를 등록하고 인덱스를 내려받는다.
+
+```bash
+ki2ctl repo set http://repo.example.internal:8080
+ki2ctl update
+ki2ctl search curl
+ki2ctl info curl
+ki2ctl install curl --dry-run
+ki2ctl install curl
+ki2ctl upgrade --dry-run
+ki2ctl upgrade
+ki2ctl list
+```
+
+테스트 또는 설치 중 대상 rootfs에는 `--root`를 사용할 수 있다.
+
+```bash
+ki2ctl --root /mnt/target repo set http://repo.example.internal:8080
+ki2ctl --root /mnt/target update
+ki2ctl --root /mnt/target install openssh
+```
+
+현재 `ki2ctl`의 범위:
+
+- HTTP repository index 다운로드
+- 패키지 검색과 정보 조회
+- 런타임 의존성 해석
+- `.ki2` 다운로드와 sha256 검증
+- `rootfs/` payload 추출
+- `/var/lib/ki2/installed.json` 설치 기록
+- 설치된 패키지와 저장소 최신 버전 비교 후 `upgrade`
+- 설치 전 파일 충돌 탐지
+- `/var/lib/ki2/transactions/` 트랜잭션 기록과 기본 rollback
+- 설치 기록 기반 파일 제거
+
+아직 남은 작업:
+
+- 저장소 서명 검증
+- 완전한 디렉터리 정리 rollback
+- systemd unit enable/disable hook
+- 패키지 pre/post install script 정책
+
 ## 쿠버네티스 노드 방향
 
-`distro/profiles/kiki-kube-node.yaml`은 CRI-O 기반 쿠버네티스 노드 프로파일이다.
+Kubernetes 계열 프로필은 CRI-O 기반으로 나눈다.
+
+- `distro/profiles/kiki-kube-bootstrap.yaml`: 첫 control-plane 부트스트랩 노드
+- `distro/profiles/kiki-kube-controller.yaml`: 추가 control-plane/controller 노드
+- `distro/profiles/kiki-kube-node.yaml`: worker 노드
 
 핵심 패키지:
 
@@ -446,11 +574,43 @@ python tools/ki2build.py repo-index
 - `kubelet`
 - `kubeadm`
 - `kubectl`
+- `firewalld`
+- `bridge-utils`
 - `kube-node-config`
 
 쿠버네티스 노드에서도 기본 네트워크 관리는 `systemd-networkd`로 둔다. CNI는
 pod network 영역을 담당하고, 호스트 기본 링크/DHCP/DNS는 systemd 계열로
 단순하게 유지한다.
+
+Kubernetes 노드 프로필의 추가 정책:
+
+- cgroup driver는 `systemd`로 맞춘다.
+- CRI 런타임은 `CRI-O`를 기본 목표로 한다.
+- 기본 swap은 off이다. kubelet swap 지원은 별도 실험 옵션으로만 켠다.
+- 설치기는 Kubernetes 계열 프로필을 설치하기 직전에 필수 패키지 목록을 다시 확인한다.
+  `kubelet`, `kubeadm`, `kubectl`, `cri-o`, CNI, firewall/bridge 도구가 미디어에 없으면
+  설치를 중단한다.
+- 커널은 bridge netfilter, nftables, iptables 호환, IPVS, veth, vxlan, overlayfs를 포함한다.
+- userspace 네트워크 도구는 `nftables`, `iptables`, `conntrack-tools`, `socat`,
+  `ethtool`을 우선 source-backed 패키지로 전환한다.
+- `firewalld`와 `bridge-utils`를 Kubernetes 계열 프로필에 포함한다. 기본 bridge
+  조작은 `iproute2`의 `bridge` 명령을 기준으로 한다.
+
+## 코어 패키지와 OCI 확장 모델
+
+Stage 1 이후 KIKI OS의 패키지 경계는 다음처럼 나눈다.
+
+- `ki2`: OS 코어, 부팅, systemd, dbus, 로그인, 네트워크, sudo, ssh,
+  `ki2ctl`, CRI-O/kubelet 같은 기반 패키지
+- `CRI-O`: Kubernetes pod 실행 전용 CRI 런타임
+- `Podman`: 사용자가 추가하는 운영 도구, 개발 도구, 관리 서비스, 확장 앱 실행
+- 데스크톱 환경: GNOME 같은 전체 세션은 컨테이너가 아니라 `desktop-gnome`
+  계열 ki2 프로파일로 제공
+- GUI 앱: Podman/OCI app bundle 또는 향후 Flatpak 계열 모델로 분리
+
+즉, “OS가 부팅하고 복구되는 데 필요한 것”은 ki2에 남기고, “사용자가 선택해서
+추가하는 것”은 OCI 기반 확장으로 분리한다. 이렇게 하면 최소 서버 OS, Kubernetes
+노드, 데스크톱 프로파일을 같은 코어 위에서 단계적으로 키울 수 있다.
 
 ## 배포
 

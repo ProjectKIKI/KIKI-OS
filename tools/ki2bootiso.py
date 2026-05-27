@@ -117,6 +117,7 @@ static long ksys(long n, long a, long b, long c, long d, long e, long f) {
 }
 
 static char copy_buffer[1024 * 1024];
+static char preferred_install_disk[128];
 
 static size_t kstrlen(const char *text) {
     size_t len = 0;
@@ -788,11 +789,16 @@ static void write_mbr_entry(unsigned char *entry, unsigned char type, u64 start,
     put_le32(entry + 12, sectors);
 }
 
-static void calculate_auto_partition_layout(u64 total_mib, u64 mem_mib, u64 *esp_mib, u64 *swap_mib, u64 *root_mib) {
+static void calculate_auto_partition_layout(u64 total_mib, u64 mem_mib, int omit_swap, u64 *esp_mib, u64 *swap_mib, u64 *root_mib) {
     u64 root_min_mib = 2048ULL;
     u64 reserve_mib = 1ULL;
     u64 desired_swap = mem_mib ? mem_mib * 2ULL : 1024ULL;
     *esp_mib = total_mib >= 8192ULL ? 768ULL : 512ULL;
+    if (omit_swap) {
+        *swap_mib = 0;
+        *root_mib = total_mib > *esp_mib + reserve_mib ? total_mib - *esp_mib - reserve_mib : 0;
+        return;
+    }
     if (desired_swap < 512ULL) {
         desired_swap = 512ULL;
     }
@@ -812,7 +818,7 @@ static void calculate_auto_partition_layout(u64 total_mib, u64 mem_mib, u64 *esp
     *root_mib = total_mib - *esp_mib - *swap_mib - reserve_mib;
 }
 
-static void show_auto_partition_layout(const char *target, const char *esp_part, const char *swap_part, const char *root_part, u64 disk_mib, u64 mem_mib, u64 esp_mib, u64 swap_mib, u64 root_mib) {
+static void show_auto_partition_layout(const char *target, const char *esp_part, const char *swap_part, const char *root_part, u64 disk_mib, u64 mem_mib, u64 esp_mib, u64 swap_mib, u64 root_mib, int omit_swap) {
     char line[256];
     size_t out = 0;
     say("\nAutomatic partition plan\n");
@@ -858,11 +864,15 @@ static void show_auto_partition_layout(const char *target, const char *esp_part,
         out = append_u64(line, sizeof(line), out, root_mib);
         append_string(line, sizeof(line), out, " MiB\n");
         say(line);
-        say("  swap omitted because the disk is too small for a useful swap partition.\n");
+        if (omit_swap) {
+            say("  swap omitted by Kubernetes profile policy.\n");
+        } else {
+            say("  swap omitted because the disk is too small for a useful swap partition.\n");
+        }
     }
 }
 
-static int write_guided_mbr(const char *target, u64 *esp_start, u64 *esp_sectors, u64 *swap_start, u64 *swap_sectors, u64 *root_start, u64 *root_sectors, u64 *disk_mib, u64 *mem_mib, u64 *esp_mib, u64 *swap_mib, u64 *root_mib) {
+static int write_guided_mbr(const char *target, int omit_swap, u64 *esp_start, u64 *esp_sectors, u64 *swap_start, u64 *swap_sectors, u64 *root_start, u64 *root_sectors, u64 *disk_mib, u64 *mem_mib, u64 *esp_mib, u64 *swap_mib, u64 *root_mib) {
     u64 total_sectors = 0;
     if (!read_block_sectors(target, &total_sectors)) {
         say("Cannot read target disk size from sysfs.\n");
@@ -870,7 +880,7 @@ static int write_guided_mbr(const char *target, u64 *esp_start, u64 *esp_sectors
     }
     *disk_mib = total_sectors / 2048ULL;
     *mem_mib = read_mem_total_mib();
-    calculate_auto_partition_layout(*disk_mib, *mem_mib, esp_mib, swap_mib, root_mib);
+    calculate_auto_partition_layout(*disk_mib, *mem_mib, omit_swap, esp_mib, swap_mib, root_mib);
     if (*root_mib < 2048ULL) {
         say("Target disk is too small; need at least about 3 GiB for ESP + root.\n");
         return 0;
@@ -1026,6 +1036,20 @@ static int find_default_install_disk(char *out, size_t out_size) {
     pos = append_string(out, out_size, pos, "/dev/");
     append_string(out, out_size, pos, best);
     return 1;
+}
+
+static int get_default_install_disk(char *out, size_t out_size) {
+    if (preferred_install_disk[0] && is_whole_disk_path(preferred_install_disk)) {
+        copy_string(out, out_size, preferred_install_disk);
+        return 1;
+    }
+    return find_default_install_disk(out, out_size);
+}
+
+static void remember_preferred_install_disk(const char *target) {
+    if (target && target[0] && is_whole_disk_path(target)) {
+        copy_string(preferred_install_disk, sizeof(preferred_install_disk), target);
+    }
 }
 
 static int file_exists(const char *path) {
@@ -1396,10 +1420,11 @@ static void show_network_tools(void) {
 }
 
 static char package_index_buffer[128 * 1024];
-#define MAX_SELECTED_PACKAGES 64
+#define MAX_SELECTED_PACKAGES 96
 #define PACKAGE_NAME_LEN 64
 static char selected_packages[MAX_SELECTED_PACKAGES][PACKAGE_NAME_LEN];
 static int selected_package_count = 0;
+static char selected_package_profile[PACKAGE_NAME_LEN] = "minimal-systemd";
 
 static int read_small_file_raw(const char *path, char *buffer, size_t size, long *out_len) {
     if (size == 0) {
@@ -1430,13 +1455,18 @@ static void show_package_names_from_index(const char *path) {
         return;
     }
 
-    int count = 0;
+    char unique[MAX_SELECTED_PACKAGES][PACKAGE_NAME_LEN];
+    int records = 0;
+    int unique_count = 0;
     int shown = 0;
+    for (int i = 0; i < MAX_SELECTED_PACKAGES; i++) {
+        unique[i][0] = 0;
+    }
     for (long i = 0; i < len; i++) {
         if (!starts_with(package_index_buffer + i, "\"name\"")) {
             continue;
         }
-        count++;
+        records++;
         if (shown < 16) {
             char *p = package_index_buffer + i;
             while (*p && *p != ':') {
@@ -1457,15 +1487,44 @@ static void show_package_names_from_index(const char *path) {
             say("\n");
             shown++;
         }
+        char value[PACKAGE_NAME_LEN];
+        char *p = package_index_buffer + i;
+        while (*p && *p != ':') {
+            p++;
+        }
+        while (*p && *p != '"') {
+            p++;
+        }
+        if (*p == '"') {
+            p++;
+        }
+        size_t used = 0;
+        while (*p && *p != '"' && used + 1 < sizeof(value)) {
+            value[used++] = *p++;
+        }
+        value[used] = 0;
+        int seen = 0;
+        for (int j = 0; j < unique_count; j++) {
+            if (kstrcmp(unique[j], value) == 0) {
+                seen = 1;
+                break;
+            }
+        }
+        if (!seen && unique_count < MAX_SELECTED_PACKAGES) {
+            copy_string(unique[unique_count], PACKAGE_NAME_LEN, value);
+            unique_count++;
+        }
     }
 
     char line[96];
     size_t out = 0;
     out = append_string(line, sizeof(line), out, "package records: ");
-    out = append_u64(line, sizeof(line), out, (u64)count);
+    out = append_u64(line, sizeof(line), out, (u64)records);
+    out = append_string(line, sizeof(line), out, "\nunique package names: ");
+    out = append_u64(line, sizeof(line), out, (u64)unique_count);
     append_string(line, sizeof(line), out, "\n");
     say(line);
-    if (count > shown) {
+    if (records > shown) {
         say("  ...more packages are listed in the repository index.\n");
     }
 }
@@ -1552,6 +1611,14 @@ static void selected_clear(void) {
     for (int i = 0; i < MAX_SELECTED_PACKAGES; i++) {
         selected_packages[i][0] = 0;
     }
+}
+
+static void selected_set_profile(const char *profile) {
+    copy_string(selected_package_profile, sizeof(selected_package_profile), profile && profile[0] ? profile : "custom");
+}
+
+static int selected_profile_is_kubernetes(void) {
+    return starts_with(selected_package_profile, "kiki-kube-");
 }
 
 static int selected_add(const char *name) {
@@ -1642,32 +1709,113 @@ static int select_all_packages_from_index(const char *index_path) {
     return added;
 }
 
-static void select_minimal_systemd_packages(const char *index_path) {
-    const char *defaults[] = {
-        "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
-        "attr", "libcap", "libseccomp", "acl", "util-linux", "xz", "zstd",
-        "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
-        "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
-        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent",
-        NULL,
-    };
+static int select_package_set(const char *index_path, const char *profile, const char *label, const char *const packages[]) {
     int added = 0;
-    for (int i = 0; defaults[i]; i++) {
-        if (!index_path[0] || package_exists_in_index(index_path, defaults[i])) {
-            if (selected_add(defaults[i])) {
+    selected_set_profile(profile);
+    for (int i = 0; packages[i]; i++) {
+        if (!index_path[0] || package_exists_in_index(index_path, packages[i])) {
+            if (selected_add(packages[i])) {
                 added++;
             }
         }
     }
-    char line[96];
+    char line[128];
     size_t out = 0;
-    out = append_string(line, sizeof(line), out, "minimal-systemd package set selected: ");
+    out = append_string(line, sizeof(line), out, label);
+    out = append_string(line, sizeof(line), out, " selected: ");
     out = append_u64(line, sizeof(line), out, (u64)selected_package_count);
     append_string(line, sizeof(line), out, " packages\n");
     say(line);
     if (added == 0) {
         say("No new packages were added.\n");
     }
+    return added;
+}
+
+static void select_minimal_systemd_packages(const char *index_path) {
+    const char *const defaults[] = {
+        "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
+        "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
+        "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
+        "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
+        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-installer-tui",
+        NULL,
+    };
+    select_package_set(index_path, "minimal-systemd", "minimal-systemd package set", defaults);
+}
+
+static void select_kube_profile_packages(const char *index_path, const char *profile, const char *label) {
+    const char *const defaults[] = {
+        "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
+        "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
+        "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
+        "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
+        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-installer-tui",
+        "bridge-utils", "ethtool", "nftables", "iptables", "conntrack-tools", "firewalld",
+        "conmon", "crun", "cri-o", "cni-plugins", "cri-tools", "socat", "chrony",
+        "kubelet", "kubeadm", "kubectl", "kube-node-config",
+        NULL,
+    };
+    select_package_set(index_path, profile, label, defaults);
+    say("runtime default: CRI-O, cgroup driver systemd, swap off for Kubernetes.\n");
+}
+
+static void select_kube_bootstrap_packages(const char *index_path) {
+    select_kube_profile_packages(index_path, "kiki-kube-bootstrap", "kiki-kube-bootstrap package set (first control-plane bootstrap)");
+}
+
+static void select_kube_controller_packages(const char *index_path) {
+    select_kube_profile_packages(index_path, "kiki-kube-controller", "kiki-kube-controller package set (additional control-plane/controller)");
+}
+
+static void select_kube_node_packages(const char *index_path) {
+    select_kube_profile_packages(index_path, "kiki-kube-node", "kiki-kube-node package set (worker node)");
+}
+
+static int ensure_selected_profile_packages(const char *index_path) {
+    if (!selected_profile_is_kubernetes()) {
+        return 1;
+    }
+    const char *const required[] = {
+        "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
+        "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
+        "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
+        "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
+        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-installer-tui",
+        "bridge-utils", "ethtool", "nftables", "iptables", "conntrack-tools", "firewalld",
+        "conmon", "crun", "cri-o", "cni-plugins", "cri-tools", "socat", "chrony",
+        "kubelet", "kubeadm", "kubectl", "kube-node-config",
+        NULL,
+    };
+    int missing = 0;
+    int added = 0;
+    char line[160];
+    for (int i = 0; required[i]; i++) {
+        if (!package_exists_in_index(index_path, required[i])) {
+            size_t out = 0;
+            out = append_string(line, sizeof(line), out, "Required Kubernetes package missing from repository index: ");
+            out = append_string(line, sizeof(line), out, required[i]);
+            append_string(line, sizeof(line), out, "\n");
+            say(line);
+            missing++;
+            continue;
+        }
+        if (selected_add(required[i])) {
+            added++;
+        }
+    }
+    if (missing) {
+        say("Kubernetes profile cannot be installed until all required packages are present on the media.\n");
+        return 0;
+    }
+    if (added) {
+        size_t out = 0;
+        out = append_string(line, sizeof(line), out, "Added missing Kubernetes profile packages before install: ");
+        out = append_u64(line, sizeof(line), out, (u64)added);
+        append_string(line, sizeof(line), out, "\n");
+        say(line);
+    }
+    return 1;
 }
 
 static void show_package_media(void);
@@ -1693,11 +1841,14 @@ static void package_selection_menu(void) {
         say(line);
         say("1) Show package repository\n");
         say("2) Select minimal-systemd default package set\n");
-        say("3) Select every package on media\n");
-        say("4) Add one package by name\n");
-        say("5) Clear selected packages\n");
-        say("6) Show selected packages\n");
-        say("7) Save package selection and return\n");
+        say("3) Select kiki-kube-bootstrap package set\n");
+        say("4) Select kiki-kube-controller package set\n");
+        say("5) Select kiki-kube-node worker package set\n");
+        say("6) Select every package on media\n");
+        say("7) Add one package by name\n");
+        say("8) Clear selected packages\n");
+        say("9) Show selected packages\n");
+        say("10) Save package selection and return\n");
         say("\nSelect: ");
         if (read_line(choice, sizeof(choice)) != 0) {
             continue;
@@ -1709,29 +1860,41 @@ static void package_selection_menu(void) {
             select_minimal_systemd_packages(index_path);
         } else if (kstrcmp(choice, "3") == 0) {
             selected_clear();
+            select_kube_bootstrap_packages(index_path);
+        } else if (kstrcmp(choice, "4") == 0) {
+            selected_clear();
+            select_kube_controller_packages(index_path);
+        } else if (kstrcmp(choice, "5") == 0) {
+            selected_clear();
+            select_kube_node_packages(index_path);
+        } else if (kstrcmp(choice, "6") == 0) {
+            selected_clear();
+            selected_set_profile("world");
             int added = select_all_packages_from_index(index_path);
             out = 0;
-            out = append_string(line, sizeof(line), out, "selected all package records: ");
+            out = append_string(line, sizeof(line), out, "selected unique packages from media: ");
             out = append_u64(line, sizeof(line), out, (u64)added);
             append_string(line, sizeof(line), out, "\n");
             say(line);
-        } else if (kstrcmp(choice, "4") == 0) {
+        } else if (kstrcmp(choice, "7") == 0) {
             say("Package name: ");
             if (read_line(name, sizeof(name)) != 0 || !name[0]) {
                 say("No package name entered.\n");
             } else if (!package_exists_in_index(index_path, name)) {
                 say("Package not found in repository index.\n");
             } else if (selected_add(name)) {
+                selected_set_profile("custom");
                 say("Package selected.\n");
             } else {
                 say("Package is already selected or selection is full.\n");
             }
-        } else if (kstrcmp(choice, "5") == 0) {
+        } else if (kstrcmp(choice, "8") == 0) {
             selected_clear();
+            selected_set_profile("custom");
             say("Package selection cleared.\n");
-        } else if (kstrcmp(choice, "6") == 0) {
+        } else if (kstrcmp(choice, "9") == 0) {
             show_selected_packages();
-        } else if (kstrcmp(choice, "7") == 0) {
+        } else if (kstrcmp(choice, "10") == 0) {
             say("Package selection saved for this installer session.\n");
             return;
         } else {
@@ -1867,6 +2030,9 @@ static int install_selected_packages_to_target(const char *media_root, const cha
     if (selected_package_count == 0) {
         select_minimal_systemd_packages(index_path);
     }
+    if (!ensure_selected_profile_packages(index_path)) {
+        return 0;
+    }
     for (int i = 0; i < selected_package_count; i++) {
         size_t out = 0;
         if (!find_package_file_for_name(index_path, media_root, selected_packages[i], package_path, sizeof(package_path))) {
@@ -1957,16 +2123,15 @@ static int write_target_fstab_and_identity(const char *target_root, const char *
     char path[256];
     char fstab[768];
     size_t out = 0;
+    (void)esp_part;
+    (void)root_part;
     mkdir_p("/mnt/target/etc", 0755);
     path3(path, sizeof(path), target_root, "/etc/fstab", "");
     out = append_string(fstab, sizeof(fstab), out, "# KIKI installer generated fstab\n");
-    out = append_string(fstab, sizeof(fstab), out, root_part);
-    out = append_string(fstab, sizeof(fstab), out, " / ext4 defaults 0 1\n");
-    out = append_string(fstab, sizeof(fstab), out, esp_part);
-    out = append_string(fstab, sizeof(fstab), out, " /boot/efi vfat noauto,nofail,x-systemd.device-timeout=3s,umask=0077 0 0\n");
+    out = append_string(fstab, sizeof(fstab), out, "LABEL=KIKI_ROOT / ext4 defaults 0 1\n");
+    out = append_string(fstab, sizeof(fstab), out, "LABEL=KIKI_EFI /boot/efi vfat noauto,nofail,x-systemd.device-timeout=3s,umask=0077 0 0\n");
     if (swap_part && swap_part[0]) {
-        out = append_string(fstab, sizeof(fstab), out, swap_part);
-        out = append_string(fstab, sizeof(fstab), out, " none swap defaults 0 0\n");
+        out = append_string(fstab, sizeof(fstab), out, "LABEL=KIKI_SWAP none swap defaults,nofail,x-systemd.device-timeout=10s 0 0\n");
     }
     if (!write_text_file(path, fstab)) {
         return 0;
@@ -2087,6 +2252,19 @@ static void enable_default_systemd_units(void) {
     make_symlink("/usr/lib/systemd/system/systemd-resolved.service", "/mnt/target/etc/systemd/system/dbus-org.freedesktop.resolve1.service");
 }
 
+static void enable_kubernetes_systemd_units(void) {
+    mkdir_p("/mnt/target/etc/systemd/system/multi-user.target.wants", 0755);
+    if (file_exists("/mnt/target/usr/lib/systemd/system/crio.service")) {
+        make_symlink("/usr/lib/systemd/system/crio.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/crio.service");
+    }
+    if (file_exists("/mnt/target/usr/lib/systemd/system/kubelet.service")) {
+        make_symlink("/usr/lib/systemd/system/kubelet.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/kubelet.service");
+    }
+    if (file_exists("/mnt/target/usr/lib/systemd/system/chronyd.service")) {
+        make_symlink("/usr/lib/systemd/system/chronyd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/chronyd.service");
+    }
+}
+
 static int install_uefi_boot_files(const char *media_root, const char *target_root, const char *esp_root, const char *root_part) {
     char src[512];
     char dst[512];
@@ -2158,6 +2336,9 @@ static int run_partition_command(const char *command) {
         say("Partition command needs a disk path, for example: fdisk /dev/sda\n");
         return 0;
     }
+    if (is_whole_disk_path(device)) {
+        remember_preferred_install_disk(device);
+    }
     if (kstrcmp(tool, "fdisk") == 0) {
         char *argv[] = {"/sbin/fdisk", device, NULL};
         return run_program("/sbin/fdisk", argv) == 0;
@@ -2168,6 +2349,181 @@ static int run_partition_command(const char *command) {
     }
     say("Unsupported partition command. Use fdisk or cfdisk.\n");
     return 0;
+}
+
+static int prompt_whole_disk(char *target, size_t target_size) {
+    char default_target[128];
+    target[0] = 0;
+    default_target[0] = 0;
+    get_default_install_disk(default_target, sizeof(default_target));
+    if (default_target[0]) {
+        say("Target whole disk [");
+        say(default_target);
+        say("]: ");
+    } else {
+        say("Target whole disk, for example /dev/sda or /dev/vda: ");
+    }
+    if (read_line(target, target_size) != 0) {
+        return 0;
+    }
+    if (!target[0] && default_target[0]) {
+        copy_string(target, target_size, default_target);
+    }
+    if (!is_whole_disk_path(target)) {
+        say("Invalid target disk. Enter a whole disk such as /dev/sda, not a partition such as /dev/sda1.\n");
+        return 0;
+    }
+    remember_preferred_install_disk(target);
+    return 1;
+}
+
+static void run_partition_editor(const char *tool) {
+    char target[128];
+    char command[192];
+    size_t out = 0;
+    if (!prompt_whole_disk(target, sizeof(target))) {
+        return;
+    }
+    say("\nOpening ");
+    say(tool);
+    say(" for ");
+    say(target);
+    say(". Save/write inside the editor when you are done.\n");
+    say("After leaving the editor, the installer will refresh the kernel partition view.\n\n");
+    out = append_string(command, sizeof(command), out, tool);
+    out = append_string(command, sizeof(command), out, " ");
+    append_string(command, sizeof(command), out, target);
+    if (run_partition_command(command)) {
+        say("\nPartition editor exited successfully.\n");
+    } else {
+        say("\nPartition editor exited with an error or without changes.\n");
+    }
+    remember_preferred_install_disk(target);
+    ksys(SYS_sync, 0, 0, 0, 0, 0, 0);
+    int fd = kopen(target, O_RDONLY);
+    if (fd >= 0) {
+        ksys(SYS_ioctl, fd, BLKRRPART, 0, 0, 0, 0);
+        kclose(fd);
+    }
+    sleep_msec(600);
+    show_disk_tools();
+}
+
+static void disk_menu(void) {
+    char choice[16];
+    for (;;) {
+        tui_header("Disk");
+        show_disk_tools();
+        say("\nDisk actions\n");
+        say("------------\n");
+        say("1) Open cfdisk on a disk\n");
+        say("2) Open fdisk on a disk\n");
+        say("3) Refresh disk and partition status\n");
+        say("4) Back to installer\n");
+        say("\nSelect [1]: ");
+        if (read_line(choice, sizeof(choice)) != 0) {
+            continue;
+        }
+        if (!choice[0] || kstrcmp(choice, "1") == 0) {
+            run_partition_editor("cfdisk");
+            tui_wait();
+        } else if (kstrcmp(choice, "2") == 0) {
+            run_partition_editor("fdisk");
+            tui_wait();
+        } else if (kstrcmp(choice, "3") == 0) {
+            continue;
+        } else if (kstrcmp(choice, "4") == 0 || kstrcmp(choice, "b") == 0 || kstrcmp(choice, "B") == 0 || kstrcmp(choice, "q") == 0 || kstrcmp(choice, "Q") == 0) {
+            return;
+        } else {
+            say("Unknown selection.\n");
+            tui_wait();
+        }
+    }
+}
+
+static void detect_manual_partition_defaults(char *disk, size_t disk_size, char *esp_part, size_t esp_size, char *swap_part, size_t swap_size, char *root_part, size_t root_size) {
+    char candidate1[160];
+    char candidate2[160];
+    char candidate3[160];
+    disk[0] = 0;
+    esp_part[0] = 0;
+    swap_part[0] = 0;
+    root_part[0] = 0;
+    if (!get_default_install_disk(disk, disk_size)) {
+        return;
+    }
+    partition_path(disk, 1, candidate1, sizeof(candidate1));
+    partition_path(disk, 2, candidate2, sizeof(candidate2));
+    partition_path(disk, 3, candidate3, sizeof(candidate3));
+    if (is_partition_path(candidate1)) {
+        copy_string(esp_part, esp_size, candidate1);
+    }
+    if (is_partition_path(candidate3)) {
+        if (is_partition_path(candidate2)) {
+            copy_string(swap_part, swap_size, candidate2);
+        }
+        copy_string(root_part, root_size, candidate3);
+    } else if (is_partition_path(candidate2)) {
+        copy_string(root_part, root_size, candidate2);
+    }
+}
+
+static void show_manual_partition_defaults(const char *disk, const char *esp_part, const char *swap_part, const char *root_part) {
+    if (!disk[0] || (!esp_part[0] && !swap_part[0] && !root_part[0])) {
+        return;
+    }
+    say("\nDetected partition candidates from ");
+    say(disk);
+    say(":\n");
+    if (esp_part[0]) {
+        say("  ESP:  ");
+        say(esp_part);
+        say("\n");
+    }
+    if (swap_part[0]) {
+        say("  swap: ");
+        say(swap_part);
+        say("\n");
+    }
+    if (root_part[0]) {
+        say("  root: ");
+        say(root_part);
+        say("\n");
+    }
+}
+
+static int prompt_partition_path(const char *label, const char *example, const char *default_path, char *out, size_t out_size, int required) {
+    out[0] = 0;
+    say(label);
+    if (default_path && default_path[0] && is_partition_path(default_path)) {
+        say(" [");
+        say(default_path);
+        say("]");
+    } else if (example && example[0]) {
+        say(", for example ");
+        say(example);
+    }
+    if (!required) {
+        say(" or type none");
+    }
+    say(": ");
+    if (read_line(out, out_size) != 0) {
+        return 0;
+    }
+    if (!out[0] && default_path && default_path[0] && is_partition_path(default_path)) {
+        copy_string(out, out_size, default_path);
+    }
+    if (!required && (out[0] == 0 || kstrcmp(out, "none") == 0 || kstrcmp(out, "NONE") == 0 || kstrcmp(out, "no") == 0 || kstrcmp(out, "NO") == 0)) {
+        out[0] = 0;
+        return 1;
+    }
+    if (!out[0] || !starts_with(out, "/dev/") || !is_partition_path(out)) {
+        say("Invalid partition path. Enter a partition such as ");
+        say(example);
+        say(required ? ".\n" : ", or type none.\n");
+        return 0;
+    }
+    return 1;
 }
 
 struct account_setup {
@@ -2736,6 +3092,7 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "        ", "enabled", plan->has_swap);
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "        ", "path", plan->swap_part);
     out = append_yaml_kv_u64(yaml, sizeof(yaml), out, "        ", "size_mib", plan->has_swap ? plan->swap_mib : 0);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "        ", "policy", selected_profile_is_kubernetes() ? "kubernetes-off" : plan->has_swap ? "system" : "disabled");
     out = append_string(yaml, sizeof(yaml), out, "      root:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "        ", "path", plan->root_part);
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "        ", "type", "ext4");
@@ -2762,7 +3119,7 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "      ", "locked", plan->account.lock_root);
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "      ", "password", plan->account.lock_root ? "disabled" : "runtime-input-not-written-to-plan");
     out = append_string(yaml, sizeof(yaml), out, "  packages:\n");
-    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "profile", "minimal-systemd");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "profile", selected_package_profile);
     out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "    ", "dependency_resolution", 0);
     if (selected_package_count == 0) {
         out = append_string(yaml, sizeof(yaml), out, "    selected: []\n");
@@ -2783,11 +3140,24 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_string(yaml, sizeof(yaml), out, "      - systemd-resolved.service\n");
     out = append_string(yaml, sizeof(yaml), out, "      - sshd.service\n");
     out = append_string(yaml, sizeof(yaml), out, "      - kiki-agent.service\n");
+    if (selected_profile_is_kubernetes()) {
+        out = append_string(yaml, sizeof(yaml), out, "      - crio.service\n");
+        out = append_string(yaml, sizeof(yaml), out, "      - kubelet.service\n");
+        out = append_string(yaml, sizeof(yaml), out, "      - chronyd.service\n");
+    }
     out = append_string(yaml, sizeof(yaml), out, "  boot:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "loader", "uefi-fallback-bootx64");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "kernel", "/boot/vmlinuz-kiki");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "initramfs", "/boot/initramfs-kiki.img");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "root", plan->root_part);
+    out = append_string(yaml, sizeof(yaml), out, "  runtime:\n");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "container_runtime", selected_profile_is_kubernetes() ? "cri-o" : "none");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "cgroup_driver", "systemd");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "swap_policy", selected_profile_is_kubernetes() ? "kubernetes-off" : plan->has_swap ? "system" : "disabled");
+    out = append_string(yaml, sizeof(yaml), out, "  firewall:\n");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "backend", "nftables");
+    out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "    ", "firewalld", selected_profile_is_kubernetes());
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "bridge_tool", "iproute2 bridge");
     out = append_string(yaml, sizeof(yaml), out, "  artifacts:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "runtime_plan", INSTALL_PLAN_PATH);
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "installed_plan", "/var/lib/ki2/install-plan.yaml");
@@ -2798,10 +3168,60 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
 static void show_saved_install_plan(void) {
     if (!file_exists(INSTALL_PLAN_PATH)) {
         say("No install plan has been generated yet.\n");
-        say("Run Quick VM install or Guided install to create and review one.\n");
+        say("Use Start install to create and review one.\n");
         return;
     }
     show_file("install-plan.yaml", INSTALL_PLAN_PATH);
+}
+
+static void show_account_status(void) {
+    say("\nAccount\n");
+    say("-------\n");
+    say("default admin user: kiki\n");
+    say("sudo: enabled\n");
+    say("direct root login: locked by default\n");
+    say("password: collected during Start install and not written to install-plan.yaml\n");
+}
+
+static void show_runtime_status(void) {
+    say("\nRuntime\n");
+    say("-------\n");
+    say(selected_profile_is_kubernetes() ? "selected runtime: CRI-O\n" : "selected runtime: none\n");
+    say("Kubernetes bootstrap/controller/worker profiles use CRI-O with systemd cgroup driver.\n");
+    say("firewall backend direction: nftables/firewalld packages\n");
+    say("Kubernetes profiles keep swap off; minimal-systemd keeps normal swap.\n");
+}
+
+static void run_installer_shell(void) {
+    char *argv[] = {"/bin/sh", NULL};
+    say("\nStarting installer shell. Type exit to return to the installer.\n\n");
+    run_program("/bin/sh", argv);
+    say("\nReturned from shell.\n");
+}
+
+static void show_installer_dashboard(void) {
+    tui_clear();
+    say("KIKI OS Installer\n\n");
+    say("Install Plan: " INSTALL_PLAN_PATH "\n\n");
+    say("[!] Disk        auto partition: target disk, ESP + root, swap policy\n");
+    say("[OK] Network   DHCP, systemd-networkd, en* eth*\n");
+    say("[OK] Account   user: kiki, sudo enabled, root locked\n");
+    if (selected_package_count > 0) {
+        char line[96];
+        size_t out = 0;
+        out = append_string(line, sizeof(line), out, "[OK] Profile    ");
+        out = append_string(line, sizeof(line), out, selected_package_profile);
+        out = append_string(line, sizeof(line), out, ": ");
+        out = append_u64(line, sizeof(line), out, (u64)selected_package_count);
+        out = append_string(line, sizeof(line), out, " packages");
+        append_string(line, sizeof(line), out, "\n");
+        say(line);
+    } else {
+        say("[ ] Profile    minimal-systemd\n");
+    }
+    say(selected_profile_is_kubernetes() ? "[OK] Runtime    CRI-O, swap off for Kubernetes\n" : "[ ] Runtime    none\n");
+    say(file_exists(INSTALL_PLAN_PATH) ? "[OK] Review     ready\n" : "[ ] Review     not ready\n");
+    say("\n");
 }
 
 static void persist_install_plan_to_target(void) {
@@ -2820,7 +3240,6 @@ static void run_guided_package_installer(int quick_mode) {
     char media_root[256];
     char index_path[384];
     char target[128];
-    char default_target[128];
     char esp_part[160];
     char swap_part[160];
     char root_part[160];
@@ -2844,7 +3263,6 @@ static void run_guided_package_installer(int quick_mode) {
     u64 swap_mib = 0;
     u64 root_mib = 0;
     target[0] = 0;
-    default_target[0] = 0;
     esp_part[0] = 0;
     swap_part[0] = 0;
     root_part[0] = 0;
@@ -2904,27 +3322,8 @@ static void run_guided_package_installer(int quick_mode) {
     if (auto_layout) {
         u64 total_sectors = 0;
         list_disks();
-        find_default_install_disk(default_target, sizeof(default_target));
-        if (quick_mode && default_target[0]) {
-            say("\nTarget whole disk [");
-            say(default_target);
-            say("]: ");
-        } else {
-            say("\nTarget whole disk path, for example /dev/vda or /dev/sda: ");
-        }
-        if (read_line(target, sizeof(target)) != 0 || !is_whole_disk_path(target)) {
-            if (quick_mode && !target[0] && default_target[0]) {
-                copy_string(target, sizeof(target), default_target);
-            } else {
-                say("Invalid target disk. Enter a whole disk such as /dev/sda, not a partition such as /dev/sda1.\n");
-                return;
-            }
-        }
-        if (!target[0] && quick_mode && default_target[0]) {
-            copy_string(target, sizeof(target), default_target);
-        }
-        if (!is_whole_disk_path(target)) {
-            say("Invalid target disk. Enter a whole disk such as /dev/sda, not a partition such as /dev/sda1.\n");
+        say("\n");
+        if (!prompt_whole_disk(target, sizeof(target))) {
             return;
         }
         if (!read_block_sectors(target, &total_sectors)) {
@@ -2933,7 +3332,7 @@ static void run_guided_package_installer(int quick_mode) {
         }
         disk_mib = total_sectors / 2048ULL;
         mem_mib = read_mem_total_mib();
-        calculate_auto_partition_layout(disk_mib, mem_mib, &esp_mib, &swap_mib, &root_mib);
+        calculate_auto_partition_layout(disk_mib, mem_mib, selected_profile_is_kubernetes(), &esp_mib, &swap_mib, &root_mib);
         if (root_mib < 2048ULL) {
             say("Target disk is too small; need at least about 3 GiB for ESP + root.\n");
             return;
@@ -2946,9 +3345,13 @@ static void run_guided_package_installer(int quick_mode) {
         } else {
             partition_path(target, 2, root_part, sizeof(root_part));
         }
-        show_auto_partition_layout(target, esp_part, swap_part, root_part, disk_mib, mem_mib, esp_mib, swap_mib, root_mib);
+        show_auto_partition_layout(target, esp_part, swap_part, root_part, disk_mib, mem_mib, esp_mib, swap_mib, root_mib, selected_profile_is_kubernetes());
     } else {
         char run_shell[16];
+        char manual_disk[128];
+        char default_esp_part[160];
+        char default_swap_part[160];
+        char default_root_part[160];
         list_disks();
         say("\nManual mode keeps your partition table and only formats the partitions you enter.\n");
         say("Use a GPT disk with an EFI System Partition, an ext4 root partition, and optional swap.\n");
@@ -2968,24 +3371,20 @@ static void run_guided_package_installer(int quick_mode) {
                 say("\nReturned from shell.\n");
             }
         }
-        say("EFI/FAT32 partition path, for example /dev/sda1: ");
-        if (read_line(esp_part, sizeof(esp_part)) != 0 || !starts_with(esp_part, "/dev/") || !is_partition_path(esp_part)) {
-            say("Invalid ESP path. Enter a partition path such as /dev/sda1.\n");
+        ksys(SYS_sync, 0, 0, 0, 0, 0, 0);
+        sleep_msec(400);
+        detect_manual_partition_defaults(manual_disk, sizeof(manual_disk), default_esp_part, sizeof(default_esp_part), default_swap_part, sizeof(default_swap_part), default_root_part, sizeof(default_root_part));
+        show_manual_partition_defaults(manual_disk, default_esp_part, default_swap_part, default_root_part);
+        if (!prompt_partition_path("EFI/FAT32 partition path", "/dev/sda1", default_esp_part, esp_part, sizeof(esp_part), 1)) {
             return;
         }
-        say("Root ext4 partition path, for example /dev/sda3: ");
-        if (read_line(root_part, sizeof(root_part)) != 0 || !starts_with(root_part, "/dev/") || !is_partition_path(root_part)) {
-            say("Invalid root path. Enter a partition path such as /dev/sda3.\n");
+        if (!prompt_partition_path("Root ext4 partition path", "/dev/sda3", default_root_part, root_part, sizeof(root_part), 1)) {
             return;
         }
-        say("Swap partition path, or leave empty for no swap: ");
-        if (read_line(swap_part, sizeof(swap_part)) == 0 && swap_part[0]) {
-            if (!starts_with(swap_part, "/dev/") || !is_partition_path(swap_part)) {
-                say("Invalid swap path. Enter a partition path such as /dev/sda2, or leave it empty.\n");
-                return;
-            }
-            has_swap = 1;
+        if (!prompt_partition_path("Swap partition path", "/dev/sda2", default_swap_part, swap_part, sizeof(swap_part), 0)) {
+            return;
         }
+        has_swap = swap_part[0] ? 1 : 0;
     }
 
     say("Hostname [localhost.localdomain]: ");
@@ -2994,6 +3393,9 @@ static void run_guided_package_installer(int quick_mode) {
     }
     collect_network_setup(&network, quick_mode);
     collect_account_setup(&account, quick_mode);
+    if (!ensure_selected_profile_packages(index_path)) {
+        return;
+    }
 
     struct install_plan plan;
     build_install_plan(&plan, quick_mode, auto_layout, has_swap, media_root, index_path, target, esp_part, swap_part, root_part, hostname, disk_mib, mem_mib, esp_mib, swap_mib, root_mib, &account, &network);
@@ -3037,8 +3439,8 @@ static void run_guided_package_installer(int quick_mode) {
     }
 
     if (auto_layout) {
-        say("\nWriting MBR partition table: ESP + swap + ext4 root...\n");
-        if (!write_guided_mbr(target, &esp_start, &esp_sectors, &swap_start, &swap_sectors, &root_start, &root_sectors, &disk_mib, &mem_mib, &esp_mib, &swap_mib, &root_mib)) {
+        say(selected_profile_is_kubernetes() ? "\nWriting MBR partition table: ESP + ext4 root (Kubernetes swap off)...\n" : "\nWriting MBR partition table: ESP + swap + ext4 root...\n");
+        if (!write_guided_mbr(target, selected_profile_is_kubernetes(), &esp_start, &esp_sectors, &swap_start, &swap_sectors, &root_start, &root_sectors, &disk_mib, &mem_mib, &esp_mib, &swap_mib, &root_mib)) {
             return;
         }
         has_swap = swap_sectors > 0;
@@ -3094,6 +3496,9 @@ static void run_guided_package_installer(int quick_mode) {
         return;
     }
     enable_default_systemd_units();
+    if (selected_profile_is_kubernetes()) {
+        enable_kubernetes_systemd_units();
+    }
     if (!install_uefi_boot_files(media_root, "/mnt/target", "/mnt/esp", root_part)) {
         say("Boot file install failed. The root filesystem was installed but may not boot yet.\n");
     }
@@ -3248,46 +3653,48 @@ static int handoff_to_installed_system(void) {
 static void installer_menu(void) {
     char choice[16];
     for (;;) {
-        tui_header("Main menu");
-        say("  1) Quick VM install (auto disk, ESP + swap + root)\n");
-        say("  2) Guided install (partition mode and package review)\n");
-        say("  3) Review saved install plan\n");
-        say("  4) Select packages for install\n");
-        say("  5) Network status\n");
-        say("  6) Disk and partition status\n");
-        say("  7) Package media status\n");
-        say("  8) System status\n");
-        say("  9) Legacy stage-1 image writer\n");
-        say("  r) Reboot\n");
-        say("  0) Power off\n");
+        show_installer_dashboard();
+        say("1) Disk\n");
+        say("2) Network\n");
+        say("3) Account\n");
+        say("4) Profile\n");
+        say("5) Runtime\n");
+        say("6) Review install plan\n");
+        say("7) Start install\n");
+        say("s) Shell\n");
+        say("q) Power off\n");
         say("\nSelect: ");
         if (read_line(choice, sizeof(choice)) != 0) {
             continue;
         }
         if (kstrcmp(choice, "1") == 0) {
-            run_guided_package_installer(1);
-            tui_wait();
+            disk_menu();
         } else if (kstrcmp(choice, "2") == 0) {
-            run_guided_package_installer(0);
+            tui_header("Network");
+            show_network_tools();
             tui_wait();
         } else if (kstrcmp(choice, "3") == 0) {
-            tui_header("Install plan");
-            show_saved_install_plan();
+            tui_header("Account");
+            show_account_status();
             tui_wait();
         } else if (kstrcmp(choice, "4") == 0) {
             package_selection_menu();
         } else if (kstrcmp(choice, "5") == 0) {
-            tui_header("Network status");
-            show_network_tools();
+            tui_header("Runtime");
+            show_runtime_status();
             tui_wait();
         } else if (kstrcmp(choice, "6") == 0) {
-            tui_header("Disk status");
-            show_disk_tools();
+            tui_header("Install plan");
+            show_saved_install_plan();
             tui_wait();
         } else if (kstrcmp(choice, "7") == 0) {
-            tui_header("Package media");
-            show_package_media();
+            run_guided_package_installer(0);
             tui_wait();
+        } else if (kstrcmp(choice, "s") == 0 || kstrcmp(choice, "S") == 0) {
+            run_installer_shell();
+            tui_wait();
+        } else if (kstrcmp(choice, "q") == 0 || kstrcmp(choice, "Q") == 0 || kstrcmp(choice, "0") == 0) {
+            poweroff_now();
         } else if (kstrcmp(choice, "8") == 0) {
             tui_header("System status");
             smoke_status();
@@ -3296,10 +3703,11 @@ static void installer_menu(void) {
         } else if (kstrcmp(choice, "9") == 0) {
             run_image_installer();
             tui_wait();
+        } else if (kstrcmp(choice, "x") == 0 || kstrcmp(choice, "X") == 0) {
+            run_guided_package_installer(1);
+            tui_wait();
         } else if (kstrcmp(choice, "r") == 0 || kstrcmp(choice, "R") == 0) {
             reboot_now();
-        } else if (kstrcmp(choice, "0") == 0) {
-            poweroff_now();
         } else {
             say("Unknown selection.\n");
             tui_wait();
@@ -3395,6 +3803,80 @@ class BootIsoError(RuntimeError):
 
 def default_repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def safe_filename_component(value: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in value.strip())
+    cleaned = cleaned.strip("-_")
+    return cleaned or "unknown"
+
+
+def git_output(repo_root: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repo_root,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def format_iso_build_stamp(build_date: str, revision: str) -> str:
+    clean_date = "".join(ch for ch in build_date if ch.isdigit())[:8] or "00000000"
+    clean_revision = "".join(ch for ch in revision if ch.isalnum() or ch in ("-", "_")) or "revunknown"
+    if not clean_revision.startswith("rev"):
+        clean_revision = f"rev{clean_revision}"
+    return f"{clean_date}-{clean_revision}"
+
+
+def iso_build_info(repo_root: Path) -> dict[str, Any]:
+    build_date = os.environ.get("KIKI_ISO_DATE") or dt.datetime.now().strftime("%Y%m%d")
+    revision = os.environ.get("KIKI_ISO_REV") or git_output(repo_root, "rev-list", "--count", "HEAD") or "unknown"
+    commit = git_output(repo_root, "rev-parse", "--short", "HEAD") or "unknown"
+    status = git_output(repo_root, "status", "--porcelain")
+    stamp = format_iso_build_stamp(build_date, revision)
+    return {
+        "date": build_date,
+        "revision": f"rev{revision}" if not str(revision).startswith("rev") else str(revision),
+        "commit": commit,
+        "dirty": bool(status),
+        "stamp": stamp,
+    }
+
+
+def read_repo_channel(repo_dir: Path, arch: str) -> str | None:
+    metadata = repo_dir / f"metadata.{arch}.json"
+    if not metadata.exists():
+        return None
+    try:
+        data = json.loads(metadata.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    channel = str(data.get("channel") or "").strip()
+    return channel or None
+
+
+def iso_release_name(repo_dir: Path, arch: str, profile: str, override: str | None = None) -> str:
+    if override:
+        return safe_filename_component(override)
+    return safe_filename_component(read_repo_channel(repo_dir, arch) or profile)
+
+
+def default_iso_output(
+    repo_root: Path,
+    release_name: str,
+    suffix: str,
+    arch: str,
+    build_info: dict[str, Any],
+) -> Path:
+    return repo_root / "dist" / "iso" / f"kiki-{release_name}-{suffix}-{arch}-{build_info['stamp']}.iso"
 
 
 def copytree_contents(source: Path, target: Path) -> None:
@@ -3567,11 +4049,15 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
     glibc = latest_package(packages_dir, "glibc")
     busybox = latest_package(packages_dir, "busybox")
     e2fsprogs = latest_package(packages_dir, "e2fsprogs")
+    util_linux = latest_package(packages_dir, "util-linux")
+    ncurses = latest_package(packages_dir, "ncurses")
 
     runtime["packages"] = {
         "glibc": glibc.name,
         "busybox": busybox.name,
         "e2fsprogs": e2fsprogs.name,
+        "util-linux": util_linux.name,
+        "ncurses": ncurses.name,
     }
 
     extract_package_members(
@@ -3584,6 +4070,35 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
     )
     chmod_dynamic_loaders(root)
     extract_package_members(busybox, root, {"bin/busybox"})
+    extract_package_members(
+        util_linux,
+        root,
+        {
+            "sbin/cfdisk",
+            "sbin/fdisk",
+            "sbin/sfdisk",
+            "lib/libblkid.so.1",
+            "lib/libblkid.so.1.1.0",
+            "lib/libfdisk.so.1",
+            "lib/libfdisk.so.1.1.0",
+            "lib/libmount.so.1",
+            "lib/libmount.so.1.1.0",
+            "lib/libsmartcols.so.1",
+            "lib/libsmartcols.so.1.1.0",
+            "lib/libuuid.so.1",
+            "lib/libuuid.so.1.3.0",
+        },
+    )
+    extract_package_members(
+        ncurses,
+        root,
+        set(),
+        prefixes=(
+            "lib/libncursesw.so",
+            "lib/libtinfo.so",
+            "usr/share/terminfo/",
+        ),
+    )
     extract_package_members(
         e2fsprogs,
         root,
@@ -3609,8 +4124,6 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
         root / "bin" / "sync": "busybox",
         root / "sbin" / "mdev": "../bin/busybox",
         root / "sbin" / "mkfs.vfat": "../bin/busybox",
-        root / "sbin" / "fdisk": "../bin/busybox",
-        root / "sbin" / "cfdisk": "../bin/busybox",
         root / "sbin" / "mkswap": "../bin/busybox",
         root / "sbin" / "swapon": "../bin/busybox",
     }
@@ -3952,6 +4465,8 @@ def prepare_boot_iso_tree(
     packages_dir: Path | None = None,
     installed_initramfs: Path | None = None,
     efi_bootloader: Path | None = None,
+    build_info: dict[str, Any] | None = None,
+    release_name: str | None = None,
 ) -> dict[str, Any]:
     if not rootfs_dir.exists():
         raise BootIsoError(f"rootfs directory not found: {rootfs_dir}")
@@ -4030,8 +4545,10 @@ def prepare_boot_iso_tree(
         "schema": "ki2-bootiso-v1",
         "arch": arch,
         "profile": profile,
+        "release": release_name or profile,
         "label": label,
         "created_at": dt.datetime.now(UTC).isoformat(),
+        "build": build_info or {},
         "bootable": True,
         "bootloader": "grub-mkrescue",
         "firmware": {
@@ -4262,7 +4779,9 @@ def command_build(args: argparse.Namespace) -> None:
     repo_dir = (args.repo_dir or repo_root / "dist" / "ki2" / "repo").resolve()
     packages_dir = (args.packages_dir or repo_root / "dist" / "ki2" / "packages" / args.arch).resolve()
     suffix = "installer" if args.mode == "installer" else "installed" if args.mode == "installed" else "boot"
-    output = (args.output or repo_root / "dist" / "iso" / f"kiki-{args.profile}-{suffix}-{args.arch}.iso").resolve()
+    build_info = iso_build_info(repo_root)
+    release_name = iso_release_name(repo_dir, args.arch, args.profile, args.release_name)
+    output = (args.output or default_iso_output(repo_root, release_name, suffix, args.arch, build_info)).resolve()
     label = args.label or f"KIKI_{args.profile}_{suffix}_{args.arch}".replace("-", "_").upper()
     installer = args.mode == "installer"
     installed = args.mode == "installed"
@@ -4304,6 +4823,8 @@ def command_build(args: argparse.Namespace) -> None:
                 include_payload=not args.no_payload,
                 installed=True,
                 packages_dir=packages_dir,
+                build_info=build_info,
+                release_name=release_name,
             )
             if not args.dry_run:
                 build_boot_iso(installed_tree, install_image)
@@ -4361,6 +4882,8 @@ def command_build(args: argparse.Namespace) -> None:
             packages_dir=packages_dir,
             installed_initramfs=installed_initramfs,
             efi_bootloader=efi_bootloader,
+            build_info=build_info,
+            release_name=release_name,
         )
         if args.dry_run:
             print(f"would build bootable ISO: {output}")
@@ -4380,6 +4903,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo-root", type=Path, default=default_repo_root())
     parser.add_argument("--arch", default="x86_64")
     parser.add_argument("--profile", default="bootstrap-stage1")
+    parser.add_argument("--release-name", default=None, help="release/channel name for default ISO filenames; defaults to repository metadata channel")
     parser.add_argument("--rootfs-dir", type=Path, default=None)
     parser.add_argument("--repo-dir", type=Path, default=None)
     parser.add_argument("--packages-dir", type=Path, default=None)

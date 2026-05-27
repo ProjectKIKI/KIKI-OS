@@ -11,6 +11,31 @@ import ki2bootiso
 
 
 class Ki2BootIsoTests(unittest.TestCase):
+    @staticmethod
+    def write_fake_package(path: Path, files: dict[str, bytes]) -> None:
+        with tarfile.open(path, "w:gz") as tar:
+            for rel, payload in files.items():
+                info = tarfile.TarInfo(f"rootfs/{rel}")
+                info.size = len(payload)
+                info.mode = 0o755
+                tar.addfile(info, io.BytesIO(payload))
+
+    def test_iso_default_output_uses_date_and_revision_stamp(self):
+        root = Path("/repo")
+        build_info = {"stamp": ki2bootiso.format_iso_build_stamp("2026-05-26", "42")}
+
+        output = ki2bootiso.default_iso_output(root, "stage2", "installer", "x86_64", build_info)
+
+        self.assertEqual(output, root / "dist/iso/kiki-stage2-installer-x86_64-20260526-rev42.iso")
+
+    def test_iso_release_name_prefers_repository_channel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "metadata.x86_64.json").write_text('{"channel":"stage2"}\n', encoding="utf-8")
+
+            self.assertEqual(ki2bootiso.iso_release_name(repo, "x86_64", "bootstrap-stage1"), "stage2")
+            self.assertEqual(ki2bootiso.iso_release_name(repo, "x86_64", "bootstrap-stage1", "testing"), "testing")
+
     def test_prepare_boot_iso_tree_writes_boot_files_and_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -165,10 +190,28 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn("Disk tools", ki2bootiso.INIT_C)
         self.assertIn("Package selection", ki2bootiso.INIT_C)
         self.assertIn("Select minimal-systemd default package set", ki2bootiso.INIT_C)
+        self.assertIn("Select kiki-kube-bootstrap package set", ki2bootiso.INIT_C)
+        self.assertIn("Select kiki-kube-controller package set", ki2bootiso.INIT_C)
+        self.assertIn("Select kiki-kube-node worker package set", ki2bootiso.INIT_C)
+        self.assertIn("kiki-kube-bootstrap package set (first control-plane bootstrap)", ki2bootiso.INIT_C)
+        self.assertIn("kiki-kube-controller package set (additional control-plane/controller)", ki2bootiso.INIT_C)
+        self.assertIn("kiki-kube-node package set (worker node)", ki2bootiso.INIT_C)
+        self.assertIn("Kubernetes profiles keep swap off", ki2bootiso.INIT_C)
+        self.assertIn("ensure_selected_profile_packages", ki2bootiso.INIT_C)
+        self.assertIn("Required Kubernetes package missing from repository index", ki2bootiso.INIT_C)
+        self.assertIn("Kubernetes profile cannot be installed until all required packages are present", ki2bootiso.INIT_C)
+        self.assertIn('"kubelet"', ki2bootiso.INIT_C)
+        self.assertIn('"kubeadm"', ki2bootiso.INIT_C)
+        self.assertIn('"kubectl"', ki2bootiso.INIT_C)
+        self.assertIn('"cri-o"', ki2bootiso.INIT_C)
+        self.assertIn("unique package names", ki2bootiso.INIT_C)
         self.assertIn("KIKI OS installer TUI", ki2bootiso.INIT_C)
-        self.assertIn("Quick VM install (auto disk, ESP + swap + root)", ki2bootiso.INIT_C)
-        self.assertIn("Guided install (partition mode and package review)", ki2bootiso.INIT_C)
-        self.assertIn("Review saved install plan", ki2bootiso.INIT_C)
+        self.assertIn("KIKI OS Installer", ki2bootiso.INIT_C)
+        self.assertIn("1) Disk", ki2bootiso.INIT_C)
+        self.assertIn("7) Start install", ki2bootiso.INIT_C)
+        self.assertIn("s) Shell", ki2bootiso.INIT_C)
+        self.assertIn("q) Power off", ki2bootiso.INIT_C)
+        self.assertIn("Review install plan", ki2bootiso.INIT_C)
         self.assertIn("Declarative install plan preview", ki2bootiso.INIT_C)
         self.assertIn("kiki-install-plan-v1", ki2bootiso.INIT_C)
         self.assertIn("/run/kiki/install-plan.yaml", ki2bootiso.INIT_C)
@@ -198,13 +241,28 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn('"sudo"', ki2bootiso.INIT_C)
         self.assertIn("Automatic whole-disk layout: ESP + swap + root", ki2bootiso.INIT_C)
         self.assertIn("Manual partitions: use shell/fdisk/cfdisk first", ki2bootiso.INIT_C)
+        self.assertIn("Disk actions", ki2bootiso.INIT_C)
+        self.assertIn("Open cfdisk on a disk", ki2bootiso.INIT_C)
+        self.assertIn("Open fdisk on a disk", ki2bootiso.INIT_C)
+        self.assertIn("prompt_whole_disk", ki2bootiso.INIT_C)
+        self.assertIn("run_partition_editor", ki2bootiso.INIT_C)
+        self.assertIn('"ncurses"', ki2bootiso.INIT_C)
+        self.assertIn('"cfdisk"', ki2bootiso.INIT_C)
+        self.assertIn("preferred_install_disk", ki2bootiso.INIT_C)
+        self.assertIn("Detected partition candidates from", ki2bootiso.INIT_C)
+        self.assertIn("prompt_partition_path", ki2bootiso.INIT_C)
+        self.assertIn("type none", ki2bootiso.INIT_C)
+        self.assertIn("BLKRRPART", ki2bootiso.INIT_C)
         self.assertIn("fdisk /dev/<disk>", ki2bootiso.INIT_C)
         self.assertIn("Running partition command", ki2bootiso.INIT_C)
         self.assertIn("not a partition such as /dev/sda1", ki2bootiso.INIT_C)
         self.assertIn("Formatting swap partition", ki2bootiso.INIT_C)
         self.assertIn("/usr/sbin/mke2fs", ki2bootiso.INIT_C)
-        self.assertIn("none swap defaults", ki2bootiso.INIT_C)
+        self.assertIn("LABEL=KIKI_ROOT / ext4 defaults", ki2bootiso.INIT_C)
+        self.assertIn("LABEL=KIKI_EFI /boot/efi", ki2bootiso.INIT_C)
+        self.assertIn("LABEL=KIKI_SWAP none swap defaults,nofail,x-systemd.device-timeout=10s", ki2bootiso.INIT_C)
         self.assertIn("noauto,nofail,x-systemd.device-timeout=3s", ki2bootiso.INIT_C)
+        self.assertIn("kiki-installer-tui", ki2bootiso.INIT_C)
         self.assertIn("Formatting root partition as ext4", ki2bootiso.INIT_C)
         self.assertIn("Switching to installed systemd", ki2bootiso.INIT_C)
         self.assertIn("/usr/lib/systemd", ki2bootiso.INIT_C)
@@ -222,6 +280,70 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn("kiki-boot-prepare.service", ki2bootiso.INIT_C)
         self.assertIn("KIKI OS installed (auto console)", ki2bootiso.INIT_C)
         self.assertIn("/boot/grub/fonts/unicode.pf2", ki2bootiso.INIT_C)
+        source = Path(ki2bootiso.__file__).read_text(encoding="utf-8")
+        self.assertIn("lib/libncursesw.so", source)
+        self.assertIn("lib/libtinfo.so", source)
+        self.assertIn("lib/libsmartcols.so.1", source)
+
+    def test_add_installer_runtime_includes_cfdisk_libraries(self):
+        if os.name == "nt":
+            self.skipTest("Windows symlink permissions can block busybox applet links")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages = root / "packages"
+            target = root / "initramfs-root"
+            packages.mkdir()
+
+            self.write_fake_package(
+                packages / "glibc-2.40-1.x86_64.ki2",
+                {
+                    "etc/ld.so.cache": b"cache",
+                    "lib64/ld-linux-x86-64.so.2": b"loader",
+                },
+            )
+            self.write_fake_package(packages / "busybox-1.36-1.x86_64.ki2", {"bin/busybox": b"busybox"})
+            self.write_fake_package(
+                packages / "e2fsprogs-1.47-1.x86_64.ki2",
+                {
+                    "usr/sbin/mke2fs": b"mke2fs",
+                    "usr/sbin/mkfs.ext4": b"mkfs.ext4",
+                },
+            )
+            self.write_fake_package(
+                packages / "util-linux-2.40-1.x86_64.ki2",
+                {
+                    "sbin/cfdisk": b"cfdisk",
+                    "sbin/fdisk": b"fdisk",
+                    "sbin/sfdisk": b"sfdisk",
+                    "lib/libblkid.so.1": b"blkid",
+                    "lib/libblkid.so.1.1.0": b"blkid-real",
+                    "lib/libfdisk.so.1": b"fdisk-lib",
+                    "lib/libfdisk.so.1.1.0": b"fdisk-real",
+                    "lib/libmount.so.1": b"mount",
+                    "lib/libmount.so.1.1.0": b"mount-real",
+                    "lib/libsmartcols.so.1": b"smartcols",
+                    "lib/libsmartcols.so.1.1.0": b"smartcols-real",
+                    "lib/libuuid.so.1": b"uuid",
+                    "lib/libuuid.so.1.3.0": b"uuid-real",
+                },
+            )
+            self.write_fake_package(
+                packages / "ncurses-6.5-1.x86_64.ki2",
+                {
+                    "lib/libncursesw.so.6": b"ncursesw",
+                    "lib/libtinfo.so.6": b"tinfo",
+                    "usr/share/terminfo/x/xterm": b"terminfo",
+                },
+            )
+
+            runtime = ki2bootiso.add_installer_runtime(target, packages)
+
+            self.assertEqual(runtime["packages"]["util-linux"], "util-linux-2.40-1.x86_64.ki2")
+            self.assertTrue((target / "sbin/cfdisk").exists())
+            self.assertTrue((target / "lib/libsmartcols.so.1").exists())
+            self.assertTrue((target / "lib/libsmartcols.so.1.1.0").exists())
+            self.assertTrue((target / "lib/libtinfo.so.6").exists())
+            self.assertTrue((target / "lib/libncursesw.so.6").exists())
 
     def test_extract_package_members_preserves_hardlinks(self):
         with tempfile.TemporaryDirectory() as tmp:

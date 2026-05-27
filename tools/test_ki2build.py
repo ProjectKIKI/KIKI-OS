@@ -322,6 +322,54 @@ packages = ["app"]
             self.assertIsNotNone(second_key)
             self.assertNotEqual(first_key.group(1), second_key.group(1))
 
+    def test_local_source_changes_are_keyed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "distro/recipes").mkdir(parents=True)
+            (root / "distro/profiles").mkdir(parents=True)
+            source = root / "distro/sources/app/usr/bin/app"
+            source.parent.mkdir(parents=True)
+            source.write_text("first\n", encoding="utf-8")
+
+            (root / "distro/recipes/local.toml").write_text(
+                """
+[[recipe]]
+name = "app"
+version = "1"
+release = 1
+summary = "local source app"
+license = "MIT"
+architectures = ["all"]
+[recipe.source]
+type = "local"
+path = "distro/sources/app"
+[recipe.dependencies]
+build = []
+runtime = []
+[recipe.build]
+system = "copy"
+""",
+                encoding="utf-8",
+            )
+            (root / "distro/profiles/test.toml").write_text(
+                """
+[profile]
+name = "test"
+packages = ["app"]
+""",
+                encoding="utf-8",
+            )
+
+            first = self.run_ki2(root, "build", "--dry-run", "--profile", "distro/profiles/test.toml").stdout
+            first_key = re.search(r"key=([0-9a-f]+)", first)
+            self.assertIsNotNone(first_key)
+
+            source.write_text("second\n", encoding="utf-8")
+            second = self.run_ki2(root, "build", "--dry-run", "--profile", "distro/profiles/test.toml").stdout
+            second_key = re.search(r"key=([0-9a-f]+)", second)
+            self.assertIsNotNone(second_key)
+            self.assertNotEqual(first_key.group(1), second_key.group(1))
+
     def test_yaml_recipes_profiles_and_dependency_alias(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -477,6 +525,69 @@ profile:
             latest = ki2build.package_artifact_by_name(ctx, "base-files")
             self.assertIsNotNone(latest)
             self.assertEqual(latest.name, "base-files-0.1.0-10.x86_64.ki2")
+
+    def test_stage2_stub_package_installs_paths_and_services(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "distro/recipes").mkdir(parents=True)
+            (root / "distro/profiles").mkdir(parents=True)
+            (root / "distro/recipes/stage2.toml").write_text(
+                """
+[[recipe]]
+name = "runtime-demo"
+version = "1"
+release = 1
+summary = "stage2 runtime demo"
+license = "MIT"
+architectures = ["x86_64"]
+[recipe.source]
+type = "virtual"
+[recipe.dependencies]
+build = []
+runtime = []
+[recipe.build]
+system = "stage2-stub"
+[recipe.build.stub]
+directories = ["/etc/runtime-demo"]
+[[recipe.build.stub.binaries]]
+name = "runtime-demo"
+path = "/usr/sbin/runtime-demo"
+[[recipe.build.stub.services]]
+name = "runtime-demo.service"
+description = "Runtime demo"
+condition_path = "/usr/sbin/runtime-demo-real"
+exec_start = "/usr/sbin/runtime-demo-real"
+[[recipe.build.stub.files]]
+path = "/etc/runtime-demo/demo.conf"
+lines = ["enabled = false"]
+""",
+                encoding="utf-8",
+            )
+            (root / "distro/profiles/test.toml").write_text(
+                """
+[profile]
+name = "stage2"
+packages = ["runtime-demo"]
+""",
+                encoding="utf-8",
+            )
+
+            self.run_ki2(root, "build", "--profile", "distro/profiles/test.toml")
+            package = root / "dist/ki2/packages/x86_64/runtime-demo-1-1.x86_64.ki2"
+            self.assertTrue(package.exists())
+            with tarfile.open(package, "r:gz") as tar:
+                self.assertEqual(tar.getmember("rootfs/usr/sbin/runtime-demo").mode, 0o755)
+                service = tar.extractfile("rootfs/usr/lib/systemd/system/runtime-demo.service")
+                self.assertIsNotNone(service)
+                service_text = service.read().decode("utf-8")
+                self.assertIn("ConditionPathExists=/usr/sbin/runtime-demo-real", service_text)
+                note = tar.extractfile("rootfs/usr/share/doc/kiki-stage2/runtime-demo.txt")
+                self.assertIsNotNone(note)
+                self.assertIn("Stage 2 packaging placeholder", note.read().decode("utf-8"))
+                manifest_file = tar.extractfile("manifest.json")
+                self.assertIsNotNone(manifest_file)
+                manifest = json.loads(manifest_file.read().decode("utf-8"))
+                self.assertEqual(manifest["payload"]["file_count"], 5)
 
 
 if __name__ == "__main__":

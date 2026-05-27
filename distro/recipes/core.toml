@@ -1,14 +1,14 @@
 # KIKI OS initial package catalog.
 #
 # Scope rule for this first independent-distribution pass:
-# - Keep the seed catalog at 40 packages or fewer.
+# - Keep the seed catalog small enough for stage-1 VM iteration.
 # - Prefer systemd/glibc/server-node viability over desktop breadth.
 # - Treat the host/container toolchain as the phase-0 bootstrap toolchain.
 
 [[recipe]]
 name = "base-files"
 version = "0.1.0"
-release = 16
+release = 17
 summary = "KIKI filesystem skeleton, os-release, and default system layout"
 license = "GPL-3.0-or-later"
 tier = "base"
@@ -241,6 +241,33 @@ runtime = ["glibc"]
 system = "gnu"
 
 [[recipe]]
+name = "ncurses"
+version = "6.5"
+release = 1
+summary = "Terminal control libraries for console TUI tools"
+license = "X11"
+tier = "base"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz"
+sha256 = "136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6"
+[recipe.dependencies]
+build = []
+runtime = ["glibc"]
+[recipe.build]
+system = "gnu"
+configure_options = [
+  "--libdir=/lib",
+  "--with-shared",
+  "--without-debug",
+  "--without-ada",
+  "--without-cxx-binding",
+  "--enable-widec",
+  "--with-termlib=tinfo"
+]
+
+[[recipe]]
 name = "util-linux"
 version = "2.40.2"
 release = 2
@@ -253,11 +280,28 @@ type = "url"
 url = "https://www.kernel.org/pub/linux/utils/util-linux/v2.40/util-linux-2.40.2.tar.xz"
 sha256 = "d78b37a66f5922d70edf3bdfb01a6b33d34ed3c3cafd6628203b2a2b67c8e8b3"
 [recipe.dependencies]
-build = ["libxcrypt"]
-runtime = ["glibc", "zlib", "libxcrypt"]
+build = ["libxcrypt", "ncurses"]
+runtime = ["glibc", "zlib", "libxcrypt", "ncurses"]
 [recipe.build]
 system = "gnu"
 configure_options = ["--disable-makeinstall-chown", "--disable-liblastlog2", "--disable-pam-lastlog2", "--without-python"]
+
+[[recipe]]
+name = "cfdisk"
+version = "2.40.2"
+release = 1
+summary = "Convenience package for the util-linux cfdisk partition editor"
+license = "GPL-2.0-or-later"
+tier = "storage"
+architectures = ["all"]
+[recipe.source]
+type = "local"
+path = "distro/sources/cfdisk"
+[recipe.dependencies]
+build = []
+runtime = ["util-linux", "ncurses"]
+[recipe.build]
+system = "copy"
 
 [[recipe]]
 name = "kmod"
@@ -328,7 +372,7 @@ configure_options = [
 [[recipe]]
 name = "bash"
 version = "5.2"
-release = 1
+release = 2
 summary = "GNU Bourne Again Shell"
 license = "GPL-3.0-or-later"
 tier = "shell"
@@ -339,7 +383,7 @@ url = "https://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz"
 sha256 = "a139c166df7ff4471c5e0733051642ee5556c1cc8a4a78f145583c5c81ab32fb"
 [recipe.dependencies]
 build = []
-runtime = ["glibc"]
+runtime = ["glibc", "ncurses"]
 [recipe.build]
 system = "gnu"
 
@@ -789,8 +833,8 @@ configure_options = ["--with-openssl", "--disable-ldap", "--disable-ldaps"]
 [[recipe]]
 name = "ki2ctl"
 version = "0.1.0"
-release = 1
-summary = "KIKI package manager command shim"
+release = 5
+summary = "KIKI HTTP package manager"
 license = "GPL-3.0-or-later"
 tier = "kiki"
 architectures = ["all"]
@@ -799,15 +843,15 @@ type = "local"
 path = "distro/sources/ki2ctl"
 [recipe.dependencies]
 build = []
-runtime = ["busybox"]
+runtime = ["python"]
 [recipe.build]
 system = "copy"
 
 [[recipe]]
 name = "kiki-agent"
 version = "0.1.0"
-release = 2
-summary = "KIKI node registration and heartbeat agent"
+release = 3
+summary = "KIKI node registration, heartbeat, and Stage 1 validation tools"
 license = "GPL-3.0-or-later"
 tier = "kiki"
 architectures = ["all"]
@@ -819,3 +863,23 @@ build = []
 runtime = ["python", "systemd", "ca-certificates"]
 [recipe.build]
 system = "copy"
+
+[[recipe]]
+name = "kiki-installer-tui"
+version = "0.1.0"
+release = 2
+summary = "Go-based KIKI install plan TUI preview"
+license = "GPL-3.0-or-later"
+tier = "kiki"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "cmd/kiki-installer-tui"
+[recipe.dependencies]
+build = []
+runtime = []
+[recipe.build]
+system = "go"
+configure = []
+compile = ["cd ${KI2_SOURCE_DIR} && GO111MODULE=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o kiki-installer-tui ."]
+install = ["mkdir -p ${KI2_DESTDIR}/usr/bin && cp ${KI2_SOURCE_DIR}/kiki-installer-tui ${KI2_DESTDIR}/usr/bin/kiki-installer-tui"]

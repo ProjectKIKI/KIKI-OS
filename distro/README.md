@@ -18,13 +18,19 @@
 
 ```text
 distro/
-  recipes/core.toml              40개 이내 기본 seed 패키지 목록
+  recipes/core.toml              Stage 1 기본 seed 패키지 목록
   recipes/kubernetes.yaml        쿠버네티스 노드용 선택 패키지 계층
   specs/*.yaml                   패키지, 레시피, 프로파일, 설치 계획 스펙
   templates/*.yaml               새 패키지 레시피 작성용 템플릿
   profiles/bootstrap-stage1.toml pre-systemd 검증용 rootfs 프로파일
+  profiles/installer-tui.toml    Go TUI preview 단독 빌드 프로파일
+  profiles/container-runtimes.toml CRI-O/containerd Stage 2 런타임 검증 프로파일
+  profiles/ki2ctl-runtime.toml   HTTP 패키지 관리자 단독 빌드 프로파일
   profiles/minimal-systemd.toml  기본 systemd 서버 노드 프로파일
-  profiles/kiki-kube-node.yaml   쿠버네티스 노드 지향 프로파일
+  profiles/kiki-kube-bootstrap.yaml 첫 쿠버네티스 control-plane 부트스트랩 프로파일
+  profiles/kiki-kube-controller.yaml 추가 쿠버네티스 controller/control-plane 프로파일
+  profiles/kiki-kube-node.yaml   쿠버네티스 worker 노드 지향 프로파일
+  profiles/node-network-tools.toml nftables/firewalld/bridge 도구 검증 프로파일
   install-plans/*.yaml           설치기용 선언형 계획서 예제
   builders/rocky9-wsl-deps.sh    Rocky 9/WSL 빌더 의존성 설치 스크립트
   sources/                       copy/local 패키지용 소스 트리
@@ -34,11 +40,29 @@ distro/
 
 ```text
 tools/ki2build.py     패키지 빌드, 저장소 인덱스, rootfs 조립
+tools/ki2repo.py      저장소 인덱스, 운영 메타데이터, 채널 파일 생성
 tools/ki2ci.py        CLI/웹 빌드 자동화 콘솔
 tools/ki2iso.py       payload ISO 생성
 tools/ki2bootiso.py   VM 부팅 ISO와 stage-1 설치 ISO 생성
 tools/ki2publish.py   빌드 산출물 배포 트리 생성
+cmd/kiki-installer-tui Go 기반 설치 계획서 TUI preview
 ```
+
+## Stage 2 stub 패키지
+
+`tools/ki2build.py`는 Stage 2 전용 `stage2-stub` 빌드 타입을 지원한다. 이 타입은
+아직 upstream source-backed 빌드가 준비되지 않은 런타임과 Kubernetes 패키지에 사용한다.
+빈 virtual 패키지와 달리 다음 항목을 실제 `.ki2` payload에 넣는다.
+
+- 예약된 명령 경로
+- systemd unit
+- 기본 설정 파일 또는 README
+- `/usr/share/doc/kiki-stage2/<package>.txt`
+- `/usr/share/kiki/stage2/<package>.json`
+
+현재 `cri-o`, `containerd`, `kubelet`, `kubeadm`, `kubectl`, `nftables`,
+`iptables`, `conntrack-tools` 등은 이 방식으로 패키징되어 있다. 서비스 unit은 실제
+바이너리가 들어오기 전까지 부팅 실패를 만들지 않도록 `ConditionPathExists`를 사용한다.
 
 ## YAML 운영 방침
 
@@ -59,10 +83,11 @@ KIKI OS의 운영자용 설정 포맷은 YAML로 둔다. 기존 seed 파일에�
 
 ## 기본 패키지 범위
 
-기본 seed는 40개 이내를 유지한다.
+기본 seed는 Stage 1 설치와 systemd 부팅 검증에 필요한 범위로 작게 유지한다.
 
 - 커널과 ABI: `linux`, `linux-headers`, `glibc`
-- systemd 런타임: `systemd`, `dbus`, `kmod`, `util-linux`, `libcap`,
+- systemd 런타임: `systemd`, `dbus`, `kmod`, `util-linux`, `cfdisk`,
+  `ncurses`, `libcap`,
   `libseccomp`, `acl`, `attr`
 - 셸과 유저랜드: `bash`, `busybox`, `coreutils`, `findutils`, `grep`,
   `sed`, `gawk`, `tar`, `gzip`, `xz`, `zstd`
@@ -70,11 +95,12 @@ KIKI OS의 운영자용 설정 포맷은 YAML로 둔다. 기존 seed 파일에�
   `openssh`, `curl`
 - 향후 self-hosting 준비용 빌드 도구: `make`, `pkgconf`, `meson`,
   `ninja`, `python`, `perl`
-- KIKI 통합: `base-files`, `ki2ctl`, `kiki-agent`
+- KIKI 통합: `base-files`, `ki2ctl`, `kiki-agent`, `kiki-installer-tui`
 
 쿠버네티스 관련 패키지는 선택 YAML 계층으로 분리한다. 이렇게 해야
 `minimal-systemd`는 작게 유지하고, `kiki-kube-node`는 kubeadm-ready 노드로
-확장할 수 있다.
+확장할 수 있다. Stage 1부터 `kiki-installer-tui` preview 패키지를 포함해 같은
+설치 계획서를 Go 기반 TUI에서도 렌더링하고 테스트한다.
 
 ## 네트워크 정책
 
@@ -92,12 +118,19 @@ KIKI OS의 운영자용 설정 포맷은 YAML로 둔다. 기존 seed 파일에�
 복잡한 운영자 UI가 필요한 프로파일에서는 `NetworkManager`가 더 좋다. 다만
 현재 KIKI의 첫 목표는 서버/클러스터 노드이므로 기본값은 `systemd-networkd`다.
 
+방화벽과 브리지 도구는 다음 순서로 확장한다.
+
+- 기본 bridge 조작: `iproute2`의 `bridge` 명령
+- Kubernetes/CNI 필수 계층: `nftables`, `iptables`, `conntrack-tools`
+- 선택 운영 계층: `firewalld`, `bridge-utils`
+- 검증 프로파일: `distro/profiles/node-network-tools.toml`
+
 ## 기본 명령
 
 카탈로그 검증:
 
 ```bash
-python tools/ki2build.py validate --profile distro/profiles/world.toml --max-packages 40
+python tools/ki2build.py validate --profile distro/profiles/world.toml --max-packages 64
 ```
 
 기본 systemd 이미지 계획 확인:
@@ -167,8 +200,8 @@ python tools/ki2build.py rootfs \
 않는다. 이것이 매번 모든 패키지를 다시 빌드하지 않기 위한 첫 번째 장치다.
 
 `.ki2` 패키지 manifest와 저장소 인덱스에는 build/runtime 의존성 정보가 함께
-들어간다. 나중에 `ki2ctl install`이 이 정보를 사용해 런타임 의존성을 풀 수
-있게 할 예정이다.
+들어간다. `ki2ctl install`은 이 정보를 사용해 런타임 의존성을 풀고 HTTP
+저장소에서 필요한 `.ki2` 패키지를 내려받는다.
 
 ## 패키지 형식
 
@@ -254,6 +287,56 @@ python tools/ki2ci.py run bootstrap --jobs "$(nproc)" --toolchain-id rocky9-stag
 python tools/ki2ci.py run publish --publish-dir /srv/www/kiki
 ```
 
+## HTTP 패키지 저장소
+
+상세한 저장소 구성 방법은 `docs/kiki-repository-setup.ko.md`를 따른다.
+
+저장소 인덱스는 별도 명령으로 생성한다.
+
+```bash
+python tools/ki2build.py repo-index
+```
+
+빌드 디렉터리를 바로 정적 HTTP 서버로 제공할 수 있다.
+
+```bash
+python -m http.server 8080 --directory dist/ki2
+```
+
+또는 publish 트리를 만든 뒤 nginx 같은 웹 서버로 제공한다.
+
+```bash
+python tools/ki2publish.py --target /srv/www/kiki
+```
+
+대상 시스템에서는 `ki2ctl`을 사용한다.
+
+```bash
+ki2ctl repo set http://SERVER:8080
+ki2ctl update
+ki2ctl search systemd
+ki2ctl info systemd
+ki2ctl install systemd --dry-run
+ki2ctl install systemd
+ki2ctl list
+```
+
+`ki2ctl`은 다음 HTTP 경로를 지원한다.
+
+```text
+repo/index.x86_64.json
+packages/<package>.ki2
+packages/x86_64/<package>.ki2
+```
+
+설치 대상 rootfs를 따로 지정해서 테스트할 수도 있다.
+
+```bash
+ki2ctl --root /mnt/target repo set http://SERVER:8080
+ki2ctl --root /mnt/target update
+ki2ctl --root /mnt/target install curl
+```
+
 웹 콘솔 실행:
 
 ```bash
@@ -307,6 +390,21 @@ python tools/ki2bootiso.py --profile bootstrap-stage1 --mode installer
 화면에 보여준다. 설치 후에는 같은 파일을 `/var/lib/ki2/install-plan.yaml`로
 복사한다. 이 계획서는 추후 웹 기반 설치기와 무인 설치의 공통 계약으로 사용할
 수 있다.
+
+Stage 1 fstab은 systemd 장치 이름 변경에 덜 민감하도록 label 기반으로 작성한다.
+
+```fstab
+LABEL=KIKI_ROOT / ext4 defaults 0 1
+LABEL=KIKI_EFI /boot/efi vfat noauto,nofail,x-systemd.device-timeout=3s,umask=0077 0 0
+LABEL=KIKI_SWAP none swap defaults,nofail,x-systemd.device-timeout=10s 0 0
+```
+
+Go TUI preview는 같은 설치 계획서를 상태판으로 렌더링한다.
+
+```bash
+go run ./cmd/kiki-installer-tui --render
+go run ./cmd/kiki-installer-tui --profile kiki-kube-node --render
+```
 
 현재 설치된 시스템에서 활성화하는 기본 유닛:
 

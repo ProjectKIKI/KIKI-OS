@@ -14,7 +14,9 @@ packages = [
   "libseccomp",
   "acl",
   "attr",
+  "ncurses",
   "util-linux",
+  "cfdisk",
   "kmod",
   "dbus",
   "systemd",
@@ -39,6 +41,7 @@ packages = [
   "curl",
   "ki2ctl",
   "kiki-agent",
+  "kiki-installer-tui",
 ]
 
 [profile.boot]

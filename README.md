@@ -23,9 +23,12 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 - `.ki2 package -> repo -> rootfs -> boot media` 파이프라인이 있습니다.
 - `minimal-systemd` 프로필로 systemd 기반 최소 서버 이미지를 구성합니다.
 - `kiki-kube-node` 프로필은 Kubernetes worker node 부트스트랩 대상으로 모델링 중입니다.
+- 코어 OS는 `ki2`로 유지하고, 사용자 확장 앱과 운영 도구는 Stage 2 이후
+  Podman/OCI 모델로 분리합니다. CRI-O는 Kubernetes 전용 런타임으로 둡니다.
 - 기본 네트워크는 DHCP 기반 `systemd-networkd`와 `systemd-resolved`입니다.
 - 기본 실험 계정은 `kiki / kiki`이며 root 직접 로그인은 잠급니다.
 - `sudo`, `systemctl`, `dbus`, `systemd-logind`를 일반 운영 기본 기능으로 맞추고 있습니다.
+- Stage 1부터 Go 기반 `kiki-installer-tui` preview를 포함해 설치 계획서 TUI를 테스트합니다.
 
 ## 첫 부팅 흐름
 
@@ -44,6 +47,7 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 | VM / 베어메탈 | 같은 부팅 미디어를 여러 환경에서 테스트하고 설치합니다. |
 | TUI 설치기 | 디스크 파티셔닝, 패키지 선택, 사용자 생성, 네트워크 기본값을 적용합니다. |
 | systemd 기반 런타임 | `dbus`, `logind`, `networkd`, `resolved`, `sshd`, `sudo`를 운영 기본값으로 구성합니다. |
+| Go TUI preview | 선언형 설치 계획서를 상태판 형태로 렌더링하고 Stage 2 설치기 전환을 검증합니다. |
 | KIKI Agent | 첫 부팅 자동화, 노드 프로필 적용, 클러스터 조인, 상태 보고를 담당할 예정입니다. |
 
 ## 노드 프로필
@@ -51,8 +55,9 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 | 프로필 | 상태 | 설명 |
 | --- | --- | --- |
 | `minimal-systemd` | 기본 | 최소 systemd 서버 OS를 만들기 위한 기본 프로필입니다. |
-| `kiki-kube-node` | 모델링 중 | Kubernetes worker node 부트스트랩을 위한 핵심 프로필입니다. |
-| `control-plane` | 예정 | control plane node 자동화를 위한 확장 프로필입니다. |
+| `kiki-kube-bootstrap` | 모델링 중 | 첫 Kubernetes control-plane을 kubeadm init 대상으로 준비하는 프로필입니다. |
+| `kiki-kube-controller` | 모델링 중 | 추가 control-plane/controller 노드를 준비하는 프로필입니다. |
+| `kiki-kube-node` | 모델링 중 | Kubernetes worker node 부트스트랩을 위한 프로필입니다. |
 | `edge-node` | 예정 | 작은 VM, 원격 지점, edge 환경을 위한 경량 노드 프로필입니다. |
 | `gpu-node` | 예정 | GPU 런타임과 device plugin 구성을 포함하는 계산 노드 프로필입니다. |
 | `storage-node` | 예정 | 스토리지 워크로드와 노드 로컬 데이터 구성을 위한 프로필입니다. |
@@ -60,11 +65,20 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 ## 주요 도구
 
 - `tools/ki2build.py`: `.ki2` 패키지 빌드, 의존성 계획, rootfs 조립
+- `tools/ki2repo.py`: HTTP 패키지 저장소 인덱스, 메타데이터, 채널 파일 생성
 - `tools/ki2ci.py`: CLI 파이프라인과 빌드 웹 콘솔
 - `tools/ki2iso.py`: rootfs와 패키지 저장소를 담는 payload ISO 생성
 - `tools/ki2bootiso.py`: BIOS/UEFI 부팅 ISO, stage-1 TUI 설치 ISO 생성
 - `tools/ki2publish.py`: 패키지, 저장소, ISO, 디스크 이미지를 정적 배포 트리로 복사
+- `cmd/kiki-installer-tui`: Go 기반 선언형 설치 계획서 TUI preview
 - `bosctl`, `cpmctl`, `bosbuild`: 초기 BOS/CPM 실험용 Go 도구
+
+## 주요 문서
+
+- [KIKI OS 운영자 가이드](docs/kiki-os-guide.ko.md)
+- [KIKI OS 개발 단계 정의](docs/kiki-os-stages.ko.md)
+- [KIKI 패키지 저장소 구성 가이드](docs/kiki-repository-setup.ko.md)
+- [KIKI OS Stage 2 진행 메모](docs/kiki-stage2-plan.ko.md)
 
 ## 빠른 시작
 
@@ -88,6 +102,13 @@ rootfs 조립:
 python tools/ki2build.py rootfs --profile distro/profiles/bootstrap-stage1.toml --rootfs-dir dist/rootfs/bootstrap-stage1
 ```
 
+패키지 저장소 인덱스 생성:
+
+```bash
+python tools/ki2build.py repo-index
+python tools/ki2repo.py generate --channel stage2
+```
+
 빌드 웹 콘솔:
 
 ```bash
@@ -107,16 +128,45 @@ podman run --rm -it -p 8090:8090 -v "$PWD:/work" -e KIKI_JOBS="$(nproc)" kiki-bu
 python tools/ki2bootiso.py --profile bootstrap-stage1 --mode installer
 ```
 
+`--output`을 지정하지 않으면 ISO 파일명은 저장소 channel, 날짜, Git revision
+count를 포함한다. 현재 Stage 2 저장소 기준 예:
+`dist/iso/kiki-stage2-installer-x86_64-20260526-rev42.iso`
+
+HTTP 패키지 저장소 테스트:
+
+```bash
+python tools/ki2build.py repo-index
+python -m http.server 8080 --directory dist/ki2
+ki2ctl repo set http://SERVER:8080
+ki2ctl update
+ki2ctl search curl
+ki2ctl install curl --dry-run
+```
+
+Go TUI preview:
+
+```bash
+go test ./cmd/kiki-installer-tui
+go run ./cmd/kiki-installer-tui --render
+go run ./cmd/kiki-installer-tui --profile kiki-kube-node --render
+```
+
 ## TUI 설치기
 
 설치기는 부팅 시 KIKI 로고를 출력하고 콘솔 TUI를 실행합니다. 현재 기능은 다음과
 같습니다.
 
 - `minimal-systemd` 기본 패키지 선택
+- `kiki-kube-node` 쿠버네티스 노드 패키지 세트 선택
 - ISO에 포함된 전체 패키지 선택
+- 저장소 인덱스의 패키지 record 수와 고유 패키지 이름 수 구분 표시
 - 저장소 인덱스에서 개별 패키지 이름 추가
 - 자동 디스크 구성: ESP + swap + root
-- 수동 디스크 구성: `fdisk` 또는 `cfdisk` 실행 후 ESP/root/swap 직접 입력
+- 수동 디스크 구성: TUI의 Disk 메뉴에서 `cfdisk`/`fdisk` 실행 후
+  ESP/root/swap 후보를 설치 단계 기본값으로 사용
+- `cfdisk`는 별도 convenience 패키지로 제공하며, 실제 바이너리는
+  `util-linux`, TUI 라이브러리는 `ncurses` 패키지가 담당합니다.
+- fstab 안정화: `LABEL=KIKI_ROOT`, `LABEL=KIKI_EFI`, `LABEL=KIKI_SWAP` 기반 mount/swap
 - 네트워크 기본값: `systemd-networkd` DHCP, interface match `en* eth*`
 - 전체 디스크 대신 파티션 경로를 대상으로 입력하는 실수 차단
 - 관리자 사용자 생성, root 직접 로그인 잠금 기본값
@@ -133,7 +183,7 @@ python tools/ki2bootiso.py --profile bootstrap-stage1 --mode installer
 
 KIKI OS는 stage 1부터 stage 3까지 진행합니다.
 
-- **stage 1**: 부팅 가능한 설치 미디어와 최소 systemd OS를 검증합니다.
+- **stage 1**: 부팅 가능한 설치 미디어와 최소 systemd OS를 검증하고 Go TUI preview를 포함합니다.
 - **stage 2**: 운영 가능한 최소 서버 배포판, 패키지 업데이트, 무인 설치, disconnected 설치를 구현합니다.
 - **stage 3**: 자기 빌드가 가능하고 Kubernetes/클러스터 운영을 자동화하는 독립 배포판으로 확장합니다.
 

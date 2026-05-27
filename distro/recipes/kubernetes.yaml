@@ -1,287 +1,457 @@
-# 선택 쿠버네티스 노드 패키지 계층.
+# KIKI Stage 2 Kubernetes and node-runtime package catalog.
 #
-# 이 YAML 레시피는 우선 의존성 해석기가 볼 수 있는 패키지 메타데이터로 시작한다.
-# KIKI 패키지 빌더의 Go/cross-build 지원이 커지면 런타임 바이너리 빌드를
-# 레시피별로 채워 넣는다.
+# These recipes intentionally build installable Stage 2 placeholder payloads.
+# They reserve package names, dependencies, binary paths, service units, and
+# default config paths while the source-backed CRI-O, containerd, and
+# Kubernetes builds are being prepared.
 
 recipes:
-  - name: cri-o
-    version: "1.36.0"
-    release: 1
-    summary: OCI 런타임을 직접 사용하는 쿠버네티스 중심 CRI 런타임
-    license: Apache-2.0
-    tier: kubernetes
-    architectures:
-      - x86_64
-    source:
-      type: virtual
-    depends:
-      build: []
-      runtime:
-        - conmon
-        - crun
-        - glibc
-        - libseccomp
-        - systemd
-    build:
-      system: virtual
-
   - name: conmon
     version: "2.1.13"
     release: 1
-    summary: CRI-O가 OCI 컨테이너를 감시할 때 사용하는 컨테이너 모니터
+    summary: CRI-O container monitor path reservation
     license: Apache-2.0
     tier: kubernetes
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - glibc
+      runtime: [glibc]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: conmon
+            path: /usr/bin/conmon
 
   - name: crun
     version: "1.23.1"
     release: 1
-    summary: CRI-O와 cgroup v2 기반 쿠버네티스 노드를 위한 OCI 런타임
-    license: Apache-2.0
+    summary: OCI runtime path reservation for CRI-O
+    license: GPL-2.0-or-later
     tier: kubernetes
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - glibc
-        - libseccomp
+      runtime: [glibc, libseccomp]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: crun
+            path: /usr/bin/crun
+
+  - name: runc
+    version: "1.3.0"
+    release: 1
+    summary: OCI runtime path reservation for containerd
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [glibc, libseccomp]
+    build:
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: runc
+            path: /usr/bin/runc
+
+  - name: containerd
+    version: "2.1.0"
+    release: 1
+    summary: Optional containerd runtime package skeleton
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [glibc, runc, systemd]
+    build:
+      system: stage2-stub
+      stub:
+        directories:
+          - /etc/containerd
+          - /var/lib/containerd
+        binaries:
+          - name: containerd
+            path: /usr/bin/containerd
+          - name: ctr
+            path: /usr/bin/ctr
+          - name: containerd-shim-runc-v2
+            path: /usr/bin/containerd-shim-runc-v2
+        services:
+          - name: containerd.service
+            description: containerd container runtime
+            condition_path: /usr/bin/containerd-real
+            exec_start: /usr/bin/containerd-real
+            after: [network-online.target]
+            wants: [network-online.target]
+        files:
+          - path: /etc/containerd/config.toml
+            lines:
+              - "# KIKI Stage 2 placeholder config."
+              - "version = 2"
+              - "[plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.runc]"
+              - "runtime_type = \"io.containerd.runc.v2\""
+
+  - name: cri-o
+    version: "1.36.0"
+    release: 1
+    summary: Default KIKI Kubernetes CRI runtime package skeleton
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [conmon, crun, glibc, libseccomp, systemd]
+    build:
+      system: stage2-stub
+      stub:
+        directories:
+          - /etc/crio/crio.conf.d
+          - /var/lib/containers
+          - /run/containers
+        binaries:
+          - name: crio
+            path: /usr/bin/crio
+          - name: crio-status
+            path: /usr/bin/crio-status
+        services:
+          - name: crio.service
+            description: CRI-O container runtime
+            condition_path: /usr/bin/crio-real
+            exec_start: /usr/bin/crio-real
+            after: [network-online.target]
+            wants: [network-online.target]
 
   - name: cni-plugins
     version: "1.7.0"
     release: 1
-    summary: pod 네트워크 bootstrap을 위한 표준 CNI 플러그인
+    summary: CNI plugin path reservation
     license: Apache-2.0
     tier: kubernetes
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - glibc
-        - iproute2
+      runtime: [glibc, iproute2]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        directories:
+          - /etc/cni/net.d
+          - /opt/cni/bin
+        binaries:
+          - name: bridge
+            path: /opt/cni/bin/bridge
+          - name: host-local
+            path: /opt/cni/bin/host-local
+          - name: loopback
+            path: /opt/cni/bin/loopback
+        files:
+          - path: /etc/cni/net.d/README
+            lines:
+              - "Drop the cluster CNI configuration in this directory after kubeadm init or join."
 
   - name: cri-tools
     version: "1.36.0"
     release: 1
-    summary: kubelet과 CRI-O 운영을 위한 crictl 및 CRI 검증 도구
+    summary: crictl and CRI validation tool package skeleton
     license: Apache-2.0
     tier: kubernetes
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - glibc
-        - cri-o
+      runtime: [glibc]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: crictl
+            path: /usr/bin/crictl
+          - name: critest
+            path: /usr/bin/critest
 
   - name: kubelet
     version: "1.36.1"
     release: 1
-    summary: systemd가 관리하는 쿠버네티스 노드 에이전트
+    summary: Kubernetes node agent package skeleton
     license: Apache-2.0
     tier: kubernetes
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - glibc
-        - systemd
-        - cri-o
-        - cni-plugins
-        - cri-tools
-        - conntrack-tools
-        - e2fsprogs
-        - iproute2
-        - iptables
-        - socat
+      runtime: [glibc, systemd, cri-o, cni-plugins, cri-tools, conntrack-tools, e2fsprogs, iproute2, iptables, socat]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: kubelet
+            path: /usr/bin/kubelet
+        services:
+          - name: kubelet.service
+            description: Kubernetes kubelet
+            condition_path: /usr/bin/kubelet-real
+            exec_start: /usr/bin/kubelet-real
+            after: [network-online.target, crio.service, containerd.service]
+            wants: [network-online.target]
 
   - name: kubeadm
     version: "1.36.1"
     release: 1
-    summary: 쿠버네티스 클러스터 bootstrap 및 join 도구
+    summary: Kubernetes cluster bootstrap package skeleton
     license: Apache-2.0
     tier: kubernetes
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - ca-certificates
-        - cri-tools
-        - kubelet
-        - kubectl
+      runtime: [ca-certificates, cri-tools, kubelet, kubectl]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: kubeadm
+            path: /usr/bin/kubeadm
 
   - name: kubectl
     version: "1.36.1"
     release: 1
-    summary: 쿠버네티스 명령행 클라이언트
+    summary: Kubernetes command-line client package skeleton
     license: Apache-2.0
     tier: kubernetes
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - ca-certificates
-        - glibc
+      runtime: [ca-certificates, glibc]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: kubectl
+            path: /usr/bin/kubectl
 
   - name: conntrack-tools
     version: "1.4.8"
     release: 1
-    summary: kube-proxy와 kubelet 점검에 필요한 connection tracking 도구
+    summary: Connection tracking tools for Kubernetes networking
     license: GPL-2.0-or-later
-    tier: kubernetes
-    architectures:
-      - x86_64
-    source:
-      type: virtual
-    depends:
-      build: []
-      runtime:
-        - glibc
-    build:
-      system: virtual
-
-  - name: iptables
-    version: "1.8.11"
-    release: 1
-    summary: 쿠버네티스 네트워크를 위한 iptables/nft 호환 도구
-    license: GPL-2.0-only
     tier: network
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - glibc
-        - nftables
+      runtime: [glibc]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: conntrack
+            path: /usr/sbin/conntrack
 
   - name: nftables
     version: "1.1.1"
     release: 1
-    summary: nft userspace 방화벽 도구
+    summary: nft userspace firewall package skeleton
     license: GPL-2.0-only
     tier: network
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - glibc
+      runtime: [glibc]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: nft
+            path: /usr/sbin/nft
+        services:
+          - name: nftables.service
+            description: nftables firewall rules
+            condition_path: /usr/sbin/nft-real
+            exec_start: /usr/sbin/nft-real -f /etc/nftables.conf
+        files:
+          - path: /etc/nftables.conf
+            lines:
+              - "# KIKI Stage 2 nftables baseline."
+              - "flush ruleset"
+
+  - name: iptables
+    version: "1.8.11"
+    release: 1
+    summary: iptables nft compatibility package skeleton
+    license: GPL-2.0-only
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [glibc, nftables]
+    build:
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: iptables
+            path: /usr/sbin/iptables
+          - name: ip6tables
+            path: /usr/sbin/ip6tables
+          - name: iptables-save
+            path: /usr/sbin/iptables-save
+          - name: iptables-restore
+            path: /usr/sbin/iptables-restore
+
+  - name: firewalld
+    version: "2.3.1"
+    release: 1
+    summary: Optional dynamic firewall manager package skeleton
+    license: GPL-2.0-or-later
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [dbus, nftables, python, systemd]
+    build:
+      system: stage2-stub
+      stub:
+        directories:
+          - /etc/firewalld
+        binaries:
+          - name: firewalld
+            path: /usr/sbin/firewalld
+          - name: firewall-cmd
+            path: /usr/bin/firewall-cmd
+        services:
+          - name: firewalld.service
+            description: firewalld dynamic firewall manager
+            condition_path: /usr/sbin/firewalld-real
+            exec_start: /usr/sbin/firewalld-real --nofork --nopid
+            after: [dbus.service]
+            wants: [dbus.service]
+
+  - name: bridge-utils
+    version: "1.7.1"
+    release: 1
+    summary: Legacy bridge utility package skeleton
+    license: GPL-2.0-or-later
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [glibc, iproute2]
+    build:
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: brctl
+            path: /usr/sbin/brctl
 
   - name: socat
     version: "1.8.0.3"
     release: 1
-    summary: kubeadm workflow에 필요한 양방향 relay 도구
+    summary: Bidirectional relay tool package skeleton for kubeadm workflows
     license: GPL-2.0-only
     tier: network
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - glibc
-        - openssl
+      runtime: [glibc, openssl]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: socat
+            path: /usr/bin/socat
 
   - name: ethtool
     version: "6.15"
     release: 1
-    summary: 이더넷 장치 점검 및 튜닝 도구
+    summary: Ethernet device inspection package skeleton
     license: GPL-2.0-only
     tier: network
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - glibc
+      runtime: [glibc]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        binaries:
+          - name: ethtool
+            path: /usr/sbin/ethtool
 
   - name: chrony
     version: "4.7"
     release: 1
-    summary: 쿠버네티스 노드 시간 동기화를 위한 NTP client/server
+    summary: Time synchronization package skeleton for Kubernetes nodes
     license: GPL-2.0-only
     tier: network
-    architectures:
-      - x86_64
+    architectures: [x86_64]
     source:
       type: virtual
     depends:
       build: []
-      runtime:
-        - glibc
-        - openssl
+      runtime: [glibc, openssl, systemd]
     build:
-      system: virtual
+      system: stage2-stub
+      stub:
+        directories:
+          - /etc/chrony
+        binaries:
+          - name: chronyd
+            path: /usr/sbin/chronyd
+          - name: chronyc
+            path: /usr/bin/chronyc
+        services:
+          - name: chronyd.service
+            description: chrony network time daemon
+            condition_path: /usr/sbin/chronyd-real
+            exec_start: /usr/sbin/chronyd-real -F 2
+            after: [network-online.target]
+            wants: [network-online.target]
 
   - name: kube-node-config
     version: "0.1.0"
     release: 1
-    summary: CRI-O, kubelet, sysctl, CNI bootstrap을 위한 KIKI 기본 설정
+    summary: KIKI defaults for CRI, kubelet, sysctl, and CNI bootstrap
     license: GPL-3.0-or-later
     tier: kiki
-    architectures:
-      - all
+    architectures: [all]
     source:
       type: local
       path: distro/sources/kube-node-config
     depends:
       build: []
-      runtime:
-        - cri-o
-        - kubelet
-        - systemd
+      runtime: [cri-o, kubelet, nftables, systemd]
     build:
       system: copy

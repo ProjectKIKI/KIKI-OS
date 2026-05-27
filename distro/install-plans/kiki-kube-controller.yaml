@@ -1,0 +1,78 @@
+install_plan:
+  name: kiki-kube-controller
+  description: 추가 Kubernetes control-plane/controller 노드를 위한 설치 계획서.
+  profile: kiki-kube-controller
+  target:
+    partition_table: gpt
+    efi_system_partition:
+      size: 512MiB
+      filesystem: vfat
+      mountpoint: /boot/efi
+    root:
+      filesystem: ext4
+      mountpoint: /
+      min_size: 32GiB
+    swap:
+      enabled: false
+      policy: kubernetes-off
+  package_sets:
+    base:
+      - base-files
+      - linux
+      - ncurses
+      - cfdisk
+      - systemd
+      - openssh
+      - ca-certificates
+    kubernetes_control_plane:
+      - cri-o
+      - conmon
+      - crun
+      - cni-plugins
+      - cri-tools
+      - kubelet
+      - kubeadm
+      - kubectl
+      - kube-node-config
+    network:
+      - iproute2
+      - iptables
+      - nftables
+      - conntrack-tools
+      - firewalld
+      - bridge-utils
+      - socat
+      - ethtool
+      - chrony
+      - kiki-installer-tui
+  prompts:
+    role:
+      default: controller
+      choices:
+        - controller
+    node_name:
+      default: kiki-controller
+    join_command:
+      default: ""
+  post_install:
+    enable_services:
+      - dbus.service
+      - getty@tty1.service
+      - systemd-logind.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+      - crio.service
+      - kubelet.service
+      - chronyd.service
+    write_files:
+      - path: /etc/kiki/install-role
+        content: controller
+  runtime:
+    container_runtime: cri-o
+    cgroup_driver: systemd
+    swap_policy: kubernetes-off
+  firewall:
+    backend: nftables
+    firewalld: true
+    bridge_tool: iproute2 bridge

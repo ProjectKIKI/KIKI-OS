@@ -150,7 +150,7 @@ def base_smoke_steps(config: CiConfig) -> list[Step]:
                 "--profile",
                 "distro/profiles/world.toml",
                 "--max-packages",
-                "40",
+                "64",
             ),
         ),
         Step(

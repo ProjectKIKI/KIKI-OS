@@ -1,0 +1,23 @@
+[profile]
+name = "container-runtimes"
+description = "Stage 2 optional CRI-O and containerd runtime package skeletons."
+arch = "x86_64"
+packages = [
+  "base-files",
+  "glibc",
+  "libseccomp",
+  "systemd",
+  "conmon",
+  "crun",
+  "runc",
+  "cri-o",
+  "containerd",
+  "cni-plugins",
+  "cri-tools",
+]
+
+[profile.services]
+enable = [
+  "crio.service",
+  "containerd.service",
+]

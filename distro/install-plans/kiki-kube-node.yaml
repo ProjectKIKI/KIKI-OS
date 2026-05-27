@@ -12,10 +12,15 @@ install_plan:
       filesystem: ext4
       mountpoint: /
       min_size: 16GiB
+    swap:
+      enabled: false
+      policy: kubernetes-off
   package_sets:
     base:
       - base-files
       - linux
+      - ncurses
+      - cfdisk
       - systemd
       - openssh
       - ca-certificates
@@ -37,6 +42,10 @@ install_plan:
       - socat
       - ethtool
       - chrony
+      - kiki-installer-tui
+    optional_firewall:
+      - firewalld
+      - bridge-utils
   prompts:
     role:
       default: worker
@@ -64,3 +73,11 @@ install_plan:
     write_files:
       - path: /etc/kiki/install-role
         content: ${role}
+  runtime:
+    container_runtime: cri-o
+    cgroup_driver: systemd
+    swap_policy: kubernetes-off
+  firewall:
+    backend: nftables
+    firewalld: false
+    bridge_tool: iproute2 bridge

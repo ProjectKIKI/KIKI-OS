@@ -1,0 +1,78 @@
+profile:
+  name: kiki-kube-controller
+  description: 추가 Kubernetes control-plane/controller 노드를 준비하기 위한 Stage 2 KIKI 프로파일.
+  arch: x86_64
+  packages:
+    - base-files
+    - linux
+    - glibc
+    - zlib
+    - expat
+    - openssl
+    - libcap
+    - libseccomp
+    - acl
+    - attr
+    - ncurses
+    - util-linux
+    - cfdisk
+    - kmod
+    - dbus
+    - systemd
+    - bash
+    - busybox
+    - coreutils
+    - findutils
+    - grep
+    - sed
+    - gawk
+    - tar
+    - gzip
+    - xz
+    - zstd
+    - python
+    - e2fsprogs
+    - shadow
+    - sudo
+    - iproute2
+    - ca-certificates
+    - openssh
+    - curl
+    - ki2ctl
+    - kiki-agent
+    - kiki-installer-tui
+    - cri-o
+    - conmon
+    - crun
+    - cni-plugins
+    - cri-tools
+    - kubelet
+    - kubeadm
+    - kubectl
+    - conntrack-tools
+    - iptables
+    - nftables
+    - firewalld
+    - bridge-utils
+    - socat
+    - ethtool
+    - chrony
+    - kube-node-config
+  boot:
+    init: /usr/lib/systemd/systemd
+    kernel: /boot/vmlinuz-kiki
+    kernel_args:
+      - systemd.unified_cgroup_hierarchy=1
+      - cgroup_no_v1=all
+  services:
+    enable:
+      - dbus.service
+      - getty@tty1.service
+      - systemd-logind.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+      - crio.service
+      - kubelet.service
+      - chronyd.service
+      - kiki-agent.service

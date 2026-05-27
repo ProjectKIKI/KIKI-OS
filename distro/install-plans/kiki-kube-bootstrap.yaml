@@ -1,0 +1,82 @@
+install_plan:
+  name: kiki-kube-bootstrap
+  description: 첫 Kubernetes control-plane 부트스트랩 노드를 위한 설치 계획서.
+  profile: kiki-kube-bootstrap
+  target:
+    partition_table: gpt
+    efi_system_partition:
+      size: 512MiB
+      filesystem: vfat
+      mountpoint: /boot/efi
+    root:
+      filesystem: ext4
+      mountpoint: /
+      min_size: 32GiB
+    swap:
+      enabled: false
+      policy: kubernetes-off
+  package_sets:
+    base:
+      - base-files
+      - linux
+      - ncurses
+      - cfdisk
+      - systemd
+      - openssh
+      - ca-certificates
+    kubernetes_control_plane:
+      - cri-o
+      - conmon
+      - crun
+      - cni-plugins
+      - cri-tools
+      - kubelet
+      - kubeadm
+      - kubectl
+      - kube-node-config
+    network:
+      - iproute2
+      - iptables
+      - nftables
+      - conntrack-tools
+      - firewalld
+      - bridge-utils
+      - socat
+      - ethtool
+      - chrony
+      - kiki-installer-tui
+  prompts:
+    role:
+      default: bootstrap-control-plane
+      choices:
+        - bootstrap-control-plane
+    node_name:
+      default: kiki-bootstrap
+    pod_cidr:
+      default: 10.244.0.0/16
+    service_cidr:
+      default: 10.96.0.0/12
+    control_plane_endpoint:
+      default: ""
+  post_install:
+    enable_services:
+      - dbus.service
+      - getty@tty1.service
+      - systemd-logind.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+      - crio.service
+      - kubelet.service
+      - chronyd.service
+    write_files:
+      - path: /etc/kiki/install-role
+        content: bootstrap-control-plane
+  runtime:
+    container_runtime: cri-o
+    cgroup_driver: systemd
+    swap_policy: kubernetes-off
+  firewall:
+    backend: nftables
+    firewalld: true
+    bridge_tool: iproute2 bridge

@@ -23,17 +23,24 @@ required:
   - services
   - boot
 
+optional:
+  - runtime
+  - firewall
+
 fields:
   schema: kiki-install-plan-v1이어야 한다.
   api_version: 설치기 API 버전. 현재 값은 kiki.io/v1alpha1이다.
   kind: InstallPlan이어야 한다.
-  generated_by: 계획서를 만든 도구. 예: kiki-stage1-tui.
+  generated_by: 계획서를 만든 도구. 예: kiki-stage1-tui, kiki-installer-tui.
   mode: guided 또는 quick-vm.
 
 source:
   type: local-installer-media, remote-repository, mirror 중 하나.
   media_root: disconnected 설치에서 사용하는 설치 미디어 mount root.
   repo_index: 설치기가 사용할 패키지 저장소 인덱스.
+  repo_url: 원격 저장소를 사용할 때의 base URL.
+  channel: 저장소 release channel. 예: stage2, testing, stable.
+  verify_key: 서명된 저장소 metadata 검증에 사용할 로컬 key 경로.
   disconnected_install: 네트워크 없이 계획을 완료할 수 있는지 여부.
 
 target:
@@ -93,6 +100,16 @@ boot:
   kernel: 설치된 커널 경로.
   initramfs: 설치된 initramfs 경로.
   root: 부트로더에 전달할 root 파티션.
+
+runtime:
+  container_runtime: none, cri-o, containerd 중 하나. Stage 1 기본값은 none이고 Stage 2 Kubernetes 기본값은 cri-o이다.
+  cgroup_driver: systemd를 기본값으로 한다.
+  swap_policy: system, disabled, kubernetes-off 중 하나.
+
+firewall:
+  backend: nftables를 기본값으로 한다.
+  firewalld: firewalld 서비스를 활성화할지 여부. Kubernetes 노드 기본값은 false이다.
+  bridge_tool: bridge 점검 도구. 기본값은 iproute2 bridge이다.
 
 safety:
   rules:
