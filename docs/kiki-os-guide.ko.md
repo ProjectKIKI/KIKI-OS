@@ -18,11 +18,13 @@
 
 개발 단계 기준:
 
-- stage 1: 부팅과 설치 가능성 증명
-- stage 2: 운영 가능한 최소 서버 배포판
+- `stage1-v1`: 부팅과 설치 가능성 증명을 마친 최종 기준선
+- `stage2-v2`: 운영 가능한 최소 서버 배포판을 만드는 진행형 라인
 - stage 3: 자기 빌드와 쿠버네티스/클러스터 운영이 가능한 독립 배포판
 
-상세 정의는 [KIKI OS 개발 단계 정의](kiki-os-stages.ko.md)를 따른다.
+상세 정의는 [KIKI OS 개발 단계 정의](kiki-os-stages.ko.md)를 따른다. Stage 1의
+고정 범위는 [KIKI OS Stage 1 V1 최종 문서](kiki-stage1-v1-final.ko.md), Stage 2의
+진행 범위는 [KIKI OS Stage 2 V2 진행 문서](kiki-stage2-v2-progress.ko.md)를 우선한다.
 
 주요 디렉터리:
 
@@ -295,7 +297,7 @@ kiki-<release-channel>-<arch>-YYYYMMDD-revN.iso
 ```
 
 `release-channel`은 기본적으로 `dist/ki2/repo/metadata.<arch>.json`의
-`channel` 값이다. 현재 Stage 2 저장소에서는 `stage2`가 된다. `revN`은
+`channel` 값이다. 현재 Stage 2 저장소에서는 `stage2-v2`가 된다. 저장소 metadata가 없으면 `bootstrap-stage1` 프로필은 `stage1-v1`로 기록된다. `revN`은
 `git rev-list --count HEAD` 기준이다. `--release-name`으로 채널 이름만 바꾸거나
 `--output`으로 전체 파일명을 직접 지정할 수 있다.
 
@@ -318,7 +320,7 @@ Stage 1에서는 이 C 설치기가 실제 설치 경로를 담당한다.
 - 디스크와 파티션 확인
 - Disk 메뉴에서 `cfdisk`/`fdisk` 즉시 실행
 - `minimal-systemd` 패키지 세트 선택
-- `kiki-kube-node` 쿠버네티스 노드 패키지 세트 선택
+- `kiki-kube-bootstrap`, `kiki-kube-control`, `kiki-kube-compute` 쿠버네티스 역할별 패키지 세트 선택
 - 전체 패키지 선택
 - 저장소 인덱스의 패키지 record 수와 고유 패키지 이름 수 구분 표시
 - 개별 패키지 이름 추가
@@ -370,7 +372,7 @@ Go TUI preview:
 
 ```bash
 kiki-installer-tui --render
-kiki-installer-tui --profile kiki-kube-node --render
+kiki-installer-tui --profile kiki-kube-compute --render
 kiki-installer-tui --write --plan /run/kiki/install-plan.yaml
 ```
 
@@ -379,7 +381,7 @@ Go TUI는 다음 원칙을 따른다.
 - 첫 화면은 “상태판 + 편집 명령” 구조로 둔다.
 - TUI의 중심 데이터는 `/run/kiki/install-plan.yaml`이다.
 - 비밀번호 평문은 계획서에 저장하지 않는다.
-- `kiki-kube-node` 프로필은 기본적으로 swap을 끈다.
+- Kubernetes 역할 프로필은 기본적으로 swap을 끈다.
 - 방화벽 backend는 `nftables`로 기록하고, `firewalld`는 선택값으로 둔다.
 - bridge 점검 기본 도구는 `iproute2`의 `bridge` 명령이다.
 
@@ -561,8 +563,8 @@ ki2ctl --root /mnt/target install openssh
 Kubernetes 계열 프로필은 CRI-O 기반으로 나눈다.
 
 - `distro/profiles/kiki-kube-bootstrap.yaml`: 첫 control-plane 부트스트랩 노드
-- `distro/profiles/kiki-kube-controller.yaml`: 추가 control-plane/controller 노드
-- `distro/profiles/kiki-kube-node.yaml`: worker 노드
+- `distro/profiles/kiki-kube-control.yaml`: 추가 control-plane 노드
+- `distro/profiles/kiki-kube-compute.yaml`: compute 노드
 
 핵심 패키지:
 

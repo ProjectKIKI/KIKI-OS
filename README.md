@@ -22,7 +22,7 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 - stage-1 installer가 있습니다.
 - `.ki2 package -> repo -> rootfs -> boot media` 파이프라인이 있습니다.
 - `minimal-systemd` 프로필로 systemd 기반 최소 서버 이미지를 구성합니다.
-- `kiki-kube-node` 프로필은 Kubernetes worker node 부트스트랩 대상으로 모델링 중입니다.
+- Kubernetes 역할 프로필은 `kiki-kube-bootstrap`, `kiki-kube-control`, `kiki-kube-compute`로 모델링 중입니다.
 - 코어 OS는 `ki2`로 유지하고, 사용자 확장 앱과 운영 도구는 Stage 2 이후
   Podman/OCI 모델로 분리합니다. CRI-O는 Kubernetes 전용 런타임으로 둡니다.
 - 기본 네트워크는 DHCP 기반 `systemd-networkd`와 `systemd-resolved`입니다.
@@ -56,8 +56,8 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 | --- | --- | --- |
 | `minimal-systemd` | 기본 | 최소 systemd 서버 OS를 만들기 위한 기본 프로필입니다. |
 | `kiki-kube-bootstrap` | 모델링 중 | 첫 Kubernetes control-plane을 kubeadm init 대상으로 준비하는 프로필입니다. |
-| `kiki-kube-controller` | 모델링 중 | 추가 control-plane/controller 노드를 준비하는 프로필입니다. |
-| `kiki-kube-node` | 모델링 중 | Kubernetes worker node 부트스트랩을 위한 프로필입니다. |
+| `kiki-kube-control` | 모델링 중 | bootstrap 이후 추가 control-plane 노드를 준비하는 프로필입니다. |
+| `kiki-kube-compute` | 모델링 중 | Kubernetes compute 노드 부트스트랩을 위한 프로필입니다. |
 | `edge-node` | 예정 | 작은 VM, 원격 지점, edge 환경을 위한 경량 노드 프로필입니다. |
 | `gpu-node` | 예정 | GPU 런타임과 device plugin 구성을 포함하는 계산 노드 프로필입니다. |
 | `storage-node` | 예정 | 스토리지 워크로드와 노드 로컬 데이터 구성을 위한 프로필입니다. |
@@ -77,8 +77,10 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 
 - [KIKI OS 운영자 가이드](docs/kiki-os-guide.ko.md)
 - [KIKI OS 개발 단계 정의](docs/kiki-os-stages.ko.md)
+- [KIKI OS Stage 1 V1 최종 문서](docs/kiki-stage1-v1-final.ko.md)
+- [KIKI OS Stage 2 V2 진행 문서](docs/kiki-stage2-v2-progress.ko.md)
 - [KIKI 패키지 저장소 구성 가이드](docs/kiki-repository-setup.ko.md)
-- [KIKI OS Stage 2 진행 메모](docs/kiki-stage2-plan.ko.md)
+- [KIKI OS Stage 2 상세 작업 메모](docs/kiki-stage2-plan.ko.md)
 
 ## 빠른 시작
 
@@ -93,7 +95,7 @@ python tools/ki2build.py validate --profile distro/profiles/minimal-systemd.toml
 
 ```bash
 python tools/ki2build.py plan --profile distro/profiles/minimal-systemd.toml
-python tools/ki2build.py plan --profile distro/profiles/kiki-kube-node.yaml
+python tools/ki2build.py plan --profile distro/profiles/kiki-kube-compute.yaml
 ```
 
 rootfs 조립:
@@ -106,7 +108,7 @@ python tools/ki2build.py rootfs --profile distro/profiles/bootstrap-stage1.toml 
 
 ```bash
 python tools/ki2build.py repo-index
-python tools/ki2repo.py generate --channel stage2
+python tools/ki2repo.py generate --channel stage2-v2
 ```
 
 빌드 웹 콘솔:
@@ -130,7 +132,7 @@ python tools/ki2bootiso.py --profile bootstrap-stage1 --mode installer
 
 `--output`을 지정하지 않으면 ISO 파일명은 저장소 channel, 날짜, Git revision
 count를 포함한다. 현재 Stage 2 저장소 기준 예:
-`dist/iso/kiki-stage2-installer-x86_64-20260526-rev42.iso`
+`dist/iso/kiki-stage2-v2-installer-x86_64-20260526-rev42.iso`
 
 HTTP 패키지 저장소 테스트:
 
@@ -148,7 +150,7 @@ Go TUI preview:
 ```bash
 go test ./cmd/kiki-installer-tui
 go run ./cmd/kiki-installer-tui --render
-go run ./cmd/kiki-installer-tui --profile kiki-kube-node --render
+go run ./cmd/kiki-installer-tui --profile kiki-kube-compute --render
 ```
 
 ## TUI 설치기
@@ -157,7 +159,7 @@ go run ./cmd/kiki-installer-tui --profile kiki-kube-node --render
 같습니다.
 
 - `minimal-systemd` 기본 패키지 선택
-- `kiki-kube-node` 쿠버네티스 노드 패키지 세트 선택
+- `kiki-kube-bootstrap`, `kiki-kube-control`, `kiki-kube-compute` 쿠버네티스 역할별 패키지 세트 선택
 - ISO에 포함된 전체 패키지 선택
 - 저장소 인덱스의 패키지 record 수와 고유 패키지 이름 수 구분 표시
 - 저장소 인덱스에서 개별 패키지 이름 추가
@@ -183,8 +185,8 @@ go run ./cmd/kiki-installer-tui --profile kiki-kube-node --render
 
 KIKI OS는 stage 1부터 stage 3까지 진행합니다.
 
-- **stage 1**: 부팅 가능한 설치 미디어와 최소 systemd OS를 검증하고 Go TUI preview를 포함합니다.
-- **stage 2**: 운영 가능한 최소 서버 배포판, 패키지 업데이트, 무인 설치, disconnected 설치를 구현합니다.
+- **stage1-v1**: 부팅 가능한 설치 미디어와 최소 systemd OS를 검증한 최종 기준선입니다.
+- **stage2-v2**: 운영 가능한 최소 서버 배포판, 패키지 업데이트, 무인 설치, disconnected 설치를 구현하는 진행형 라인입니다.
 - **stage 3**: 자기 빌드가 가능하고 Kubernetes/클러스터 운영을 자동화하는 독립 배포판으로 확장합니다.
 
 자세한 기준은 [KIKI OS 개발 단계 정의](docs/kiki-os-stages.ko.md)를 따릅니다.
@@ -202,6 +204,8 @@ Set-VMFirmware -VMName "test-kiki-os" -EnableSecureBoot Off
 
 - [KIKI OS 운영자 가이드](docs/kiki-os-guide.ko.md)
 - [KIKI OS 개발 단계 정의](docs/kiki-os-stages.ko.md)
+- [KIKI OS Stage 1 V1 최종 문서](docs/kiki-stage1-v1-final.ko.md)
+- [KIKI OS Stage 2 V2 진행 문서](docs/kiki-stage2-v2-progress.ko.md)
 - [배포판 빌드 시스템 문서](distro/README.md)
 - [빌드 시스템 검토](distro/BUILD-SYSTEM-REVIEW.md)
 - [컨테이너 빌더 문서](deploy/container/README.md)

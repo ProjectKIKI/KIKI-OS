@@ -37,7 +37,7 @@ class Ki2CiTests(unittest.TestCase):
 
         self.assertIn("go test ./cmd/... ./internal/...", commands[0])
         self.assertTrue(any("distro/profiles/world.toml" in command for command in commands))
-        self.assertTrue(any("distro/profiles/kiki-kube-node.yaml" in command for command in commands))
+        self.assertTrue(any("distro/profiles/kiki-kube-compute.yaml" in command for command in commands))
 
     def test_job_store_round_trips_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:

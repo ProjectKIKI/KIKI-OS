@@ -1,6 +1,6 @@
 profile:
-  name: kiki-kube-controller
-  description: 추가 Kubernetes control-plane/controller 노드를 준비하기 위한 Stage 2 KIKI 프로파일.
+  name: kiki-kube-compute
+  description: Stage 2 profile for Kubernetes compute nodes that join an existing cluster.
   arch: x86_64
   packages:
     - base-files

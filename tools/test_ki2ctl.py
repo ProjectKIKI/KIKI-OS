@@ -367,7 +367,7 @@ def write_signed_metadata(path: Path, index_path: Path, key_path: Path) -> None:
         "schema": "ki2-repository-metadata-v1",
         "name": "test",
         "arch": "x86_64",
-        "channel": "stage2",
+        "channel": "stage2-v2",
         "created_at": "2026-05-25T00:00:00+00:00",
         "index": {
             "path": "repo/index.x86_64.json",

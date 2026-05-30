@@ -39,7 +39,7 @@ source:
   media_root: disconnected 설치에서 사용하는 설치 미디어 mount root.
   repo_index: 설치기가 사용할 패키지 저장소 인덱스.
   repo_url: 원격 저장소를 사용할 때의 base URL.
-  channel: 저장소 release channel. 예: stage2, testing, stable.
+  channel: 저장소 release channel. 예: stage2-v2, testing, stable.
   verify_key: 서명된 저장소 metadata 검증에 사용할 로컬 key 경로.
   disconnected_install: 네트워크 없이 계획을 완료할 수 있는지 여부.
 

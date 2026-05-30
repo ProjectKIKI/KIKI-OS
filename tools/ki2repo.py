@@ -21,6 +21,7 @@ INDEX_SCHEMA = "ki2-repository-v1"
 METADATA_SCHEMA = "ki2-repository-metadata-v1"
 CHANNELS_SCHEMA = "ki2-repository-channels-v1"
 SIGNATURE_ALGORITHM = "hmac-sha256"
+DEFAULT_STAGE2_CHANNEL = "stage2-v2"
 
 
 class Ki2RepoError(RuntimeError):
@@ -427,7 +428,7 @@ def command_sign(args: argparse.Namespace) -> None:
     channels_path = args.repo_dir / "channels.json"
     if channels_path.exists():
         channels = json.loads(channels_path.read_text(encoding="utf-8"))
-        channel = str(signed.get("channel", "stage2"))
+        channel = str(signed.get("channel", DEFAULT_STAGE2_CHANNEL))
         entry = channels.setdefault("channels", {}).setdefault(channel, {})
         entry["metadata_sha256"] = file_sha256(metadata_path)
         entry["metadata"] = f"repo/{metadata_path.name}"
@@ -473,7 +474,7 @@ def build_parser() -> argparse.ArgumentParser:
     generate_parser.add_argument("--name", default="kiki-os")
     generate_parser.add_argument("--title", default="KIKI OS Package Repository")
     generate_parser.add_argument("--description", default="KIKI OS .ki2 package repository")
-    generate_parser.add_argument("--channel", default="stage2")
+    generate_parser.add_argument("--channel", default=DEFAULT_STAGE2_CHANNEL)
     generate_parser.add_argument("--base-url", default="")
     generate_parser.add_argument("--sign-key", type=Path, default=None, help="optional HMAC signing key")
     generate_parser.set_defaults(func=command_generate)
@@ -482,7 +483,7 @@ def build_parser() -> argparse.ArgumentParser:
     summary_parser.set_defaults(func=command_summary)
 
     keygen_parser = subcommands.add_parser("keygen", help="generate a Stage 2 repository HMAC signing key")
-    keygen_parser.add_argument("--output", type=Path, default=Path("build/ki2/keys/stage2-repo.hmac"))
+    keygen_parser.add_argument("--output", type=Path, default=Path("build/ki2/keys/stage2-v2-repo.hmac"))
     keygen_parser.add_argument("--force", action="store_true")
     keygen_parser.set_defaults(func=command_keygen)
 

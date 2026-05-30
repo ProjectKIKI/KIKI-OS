@@ -12,17 +12,23 @@ class Ki2IsoTests(unittest.TestCase):
         root = Path("/repo")
         build_info = {"stamp": ki2iso.format_iso_build_stamp("2026-05-26", "42")}
 
-        output = ki2iso.default_iso_output(root, "stage2", "x86_64", build_info)
+        output = ki2iso.default_iso_output(root, "stage2-v2", "x86_64", build_info)
 
-        self.assertEqual(output, root / "dist/iso/kiki-stage2-x86_64-20260526-rev42.iso")
+        self.assertEqual(output, root / "dist/iso/kiki-stage2-v2-x86_64-20260526-rev42.iso")
 
     def test_iso_release_name_prefers_repository_channel(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            (repo / "metadata.x86_64.json").write_text('{"channel":"stage2"}\n', encoding="utf-8")
+            (repo / "metadata.x86_64.json").write_text('{"channel":"stage2-v2"}\n', encoding="utf-8")
 
-            self.assertEqual(ki2iso.iso_release_name(repo, "x86_64", "bootstrap-stage1"), "stage2")
+            self.assertEqual(ki2iso.iso_release_name(repo, "x86_64", "bootstrap-stage1"), "stage2-v2")
             self.assertEqual(ki2iso.iso_release_name(repo, "x86_64", "bootstrap-stage1", "testing"), "testing")
+
+    def test_iso_release_name_uses_stage1_fallback_without_repository_channel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+
+            self.assertEqual(ki2iso.iso_release_name(repo, "x86_64", "bootstrap-stage1"), "stage1-v1")
 
     def test_prepare_iso_tree_writes_manifest_repo_and_rootfs_tar(self):
         with tempfile.TemporaryDirectory() as tmp:

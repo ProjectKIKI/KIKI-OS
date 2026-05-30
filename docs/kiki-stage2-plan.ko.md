@@ -1,5 +1,8 @@
 # KIKI OS Stage 2 진행 메모
 
+이 문서는 `stage2-v2`의 상세 작업 메모다. 현재 진행 기준과 완료 조건은
+[KIKI OS Stage 2 V2 진행 문서](kiki-stage2-v2-progress.ko.md)를 우선한다.
+
 이 문서는 Stage 2의 1~6번 작업을 코드와 패키지 기준으로 정리한다. 현재 목표는
 Stage 1에서 확인한 부팅/설치 흐름 위에 온라인 패키지 관리자, 서명 저장소,
 네트워크 도구, 런타임, Kubernetes 노드 준비 패키지를 얹는 것이다.
@@ -41,9 +44,9 @@ Stage 1에서 확인한 부팅/설치 흐름 위에 온라인 패키지 관리�
 6. Kubernetes 패키지 준비
    - `kubelet`, `kubeadm`, `kubectl`, `cri-tools`, `cni-plugins`,
      `kube-node-config`를 패키지 계획에 포함했다.
-   - `kiki-kube-bootstrap`, `kiki-kube-controller`, `kiki-kube-node` 프로파일은
+   - `kiki-kube-bootstrap`, `kiki-kube-control`, `kiki-kube-compute` 프로파일은
      기본값으로 CRI-O, CNI, kubelet, kubeadm, kubectl, nftables/firewalld 계층을 포함한다.
-   - 설치기 패키지 선택 메뉴에는 bootstrap/controller/worker 전용 선택지를 추가한다.
+   - 설치기 패키지 선택 메뉴에는 bootstrap/control/compute 전용 선택지를 추가한다.
    - 설치 직전 Kubernetes 필수 패키지 세트를 다시 보정하고, 누락된 패키지가 있으면
      설치를 중단한다.
      전체 패키지 선택의 `59`는 중복 release record를 제외한 고유 패키지 이름 수다.
@@ -67,22 +70,22 @@ stub 명령은 `--version`에는 0으로 응답하고, 실제 실행 시에는 S
 서명키는 publish 대상인 `dist/ki2/repo` 아래에 두지 않는다. 기본 위치는 다음이다.
 
 ```bash
-python tools/ki2repo.py keygen --output build/ki2/keys/stage2-repo.hmac
+python tools/ki2repo.py keygen --output build/ki2/keys/stage2-v2-repo.hmac
 ```
 
 저장소 메타데이터 생성과 서명:
 
 ```bash
 python tools/ki2repo.py generate \
-  --channel stage2 \
+  --channel stage2-v2 \
   --base-url http://repo.example.internal:8080 \
-  --sign-key build/ki2/keys/stage2-repo.hmac
+  --sign-key build/ki2/keys/stage2-v2-repo.hmac
 ```
 
 검증:
 
 ```bash
-python tools/ki2repo.py verify --key build/ki2/keys/stage2-repo.hmac
+python tools/ki2repo.py verify --key build/ki2/keys/stage2-v2-repo.hmac
 python tools/ki2repo.py summary
 ```
 
@@ -90,7 +93,7 @@ python tools/ki2repo.py summary
 
 ```bash
 sudo ki2ctl repo set http://repo.example.internal:8080
-sudo ki2ctl update --verify-key /etc/ki2/trust/stage2-repo.hmac
+sudo ki2ctl update --verify-key /etc/ki2/trust/stage2-v2-repo.hmac
 ```
 
 ## Go TUI 명령 예시
@@ -98,10 +101,10 @@ sudo ki2ctl update --verify-key /etc/ki2/trust/stage2-repo.hmac
 ```text
 source local
 source remote http://repo.example.internal:8080
-verify-key /etc/ki2/trust/stage2-repo.hmac
+verify-key /etc/ki2/trust/stage2-v2-repo.hmac
 runtime crio
 runtime containerd
-profile kiki-kube-node
+profile kiki-kube-compute
 write /run/kiki/install-plan.yaml
 ```
 
@@ -112,7 +115,7 @@ TUI 계획서에는 `source.repo_url`, `source.channel`, `source.verify_key`,
 
 2026-05-26 기준 Stage 2 저장소 메타데이터:
 
-- repository channel: `stage2`
+- repository channel: `stage2-v2`
 - package records: 92
 - unique package names: 59
 - `ki2ctl`: `0.1.0-5`
@@ -121,12 +124,12 @@ TUI 계획서에는 `source.repo_url`, `source.channel`, `source.verify_key`,
 
 2026-05-26 Stage 2 테스트 ISO:
 
-- file: `dist/iso/kiki-stage2-test-installer-x86_64-20260526.iso`
+- file: `dist/iso/kiki-stage2-v2-test-installer-x86_64-20260526.iso`
 - size: `879187968` bytes
 - sha256: `79EBAC0C2DE64145D6DF1351D52027CFF450847DF91507FDE2117FA319EF97EF`
 - mode: stage-1 installer ISO
 - Hyper-V VHDX: 생성하지 않음
-- 기존 `kiki-stage2-test-installer-x86_64.iso`가 VM에 연결되어 있으면 Windows가 파일을
+- 기존 `kiki-stage2-v2-test-installer-x86_64.iso`가 VM에 연결되어 있으면 Windows가 파일을
   잠글 수 있으므로, 이번 산출물은 날짜가 붙은 파일명으로 보존했다.
 
 이후 ISO 기본 파일명은 다음 규칙을 따른다.
@@ -136,7 +139,7 @@ kiki-<release-channel>-<mode>-<arch>-YYYYMMDD-revN.iso
 ```
 
 `release-channel`은 기본적으로 저장소 metadata의 `channel` 값이다. Stage 2
-저장소에서는 `stage2`가 되며, `revN`은 `git rev-list --count HEAD` 기준이다.
+저장소에서는 `stage2-v2`가 되며, `revN`은 `git rev-list --count HEAD` 기준이다.
 `--release-name` 또는 `--output`을 지정하면 운영자가 명시한 이름을 우선한다.
 
 ISO payload 확인 항목:

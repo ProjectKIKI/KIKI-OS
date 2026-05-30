@@ -188,7 +188,7 @@ func usage() {
 	fmt.Println("kiki-installer-tui - KIKI install plan TUI preview (v" + appVersion + ")")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  kiki-installer-tui [--plan /run/kiki/install-plan.yaml] [--profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-controller|kiki-kube-node]")
+	fmt.Println("  kiki-installer-tui [--plan /run/kiki/install-plan.yaml] [--profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute]")
 	fmt.Println("  kiki-installer-tui --render")
 	fmt.Println("  kiki-installer-tui --write --plan ./install-plan.yaml")
 }
@@ -205,7 +205,7 @@ func NewDefaultPlan(profile string) InstallPlan {
 			MediaRoot:           "/run/install/repo",
 			RepoIndex:           "/run/install/repo/kiki/repo/index.x86_64.json",
 			RepoURL:             "",
-			Channel:             "stage2",
+			Channel:             "stage2-v2",
 			VerifyKey:           "",
 			DisconnectedInstall: true,
 		},
@@ -383,14 +383,30 @@ var containerdServices = []string{
 }
 
 var kubernetesProfiles = map[string]string{
-	"kiki-kube-bootstrap":  "first control-plane bootstrap",
-	"kiki-kube-controller": "additional control-plane/controller",
-	"kiki-kube-node":       "worker node",
+	"kiki-kube-bootstrap": "first cluster bootstrap node",
+	"kiki-kube-control":   "additional control-plane node",
+	"kiki-kube-compute":   "compute node",
+}
+
+var legacyProfileAliases = map[string]string{
+	"kiki-kube-controller": "kiki-kube-control",
+	"kiki-kube-node":       "kiki-kube-compute",
+}
+
+func canonicalProfile(profile string) string {
+	if next, ok := legacyProfileAliases[profile]; ok {
+		return next
+	}
+	return profile
 }
 
 func isKubernetesProfile(profile string) bool {
-	_, ok := kubernetesProfiles[profile]
+	_, ok := kubernetesProfiles[canonicalProfile(profile)]
 	return ok
+}
+
+func isKubernetesComputeProfile(profile string) bool {
+	return canonicalProfile(profile) == "kiki-kube-compute"
 }
 
 func ApplyProfile(plan *InstallPlan, profile string) {
@@ -398,6 +414,7 @@ func ApplyProfile(plan *InstallPlan, profile string) {
 	if normalized == "" {
 		normalized = "minimal-systemd"
 	}
+	normalized = canonicalProfile(normalized)
 	plan.Packages.Profile = normalized
 	plan.Packages.Selected = append([]string{}, minimalSystemdPackages...)
 	plan.Services.Enable = append([]string{}, minimalSystemdServices...)
@@ -418,7 +435,7 @@ func ApplyProfile(plan *InstallPlan, profile string) {
 		plan.Target.Filesystems.Swap.Policy = "kubernetes-off"
 		plan.Target.Filesystems.Root.Path = partitionPath(plan.Target.Disk, 2)
 		plan.Boot.Root = partitionPath(plan.Target.Disk, 2)
-		plan.Firewall.Firewalld = true
+		plan.Firewall.Firewalld = !isKubernetesComputeProfile(normalized)
 	}
 }
 
@@ -473,7 +490,7 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		fmt.Fprintln(t.Out, "Use: user kiki and hostname localhost.localdomain")
 	case "4":
 		fmt.Fprintln(t.Out, "Profile:", t.Plan.Packages.Profile)
-		fmt.Fprintln(t.Out, "Use: profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-controller|kiki-kube-node")
+		fmt.Fprintln(t.Out, "Use: profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
 	case "5":
 		fmt.Fprintln(t.Out, "Runtime:", t.Plan.Runtime.ContainerRuntime)
 		fmt.Fprintln(t.Out, "Use: runtime none, runtime crio, or runtime containerd")
@@ -493,7 +510,7 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		fmt.Fprintln(t.Out, "Start install is executed by the stage-1 installer. In this preview, run: write", t.PlanPath)
 	case "profile":
 		if len(fields) != 2 {
-			return false, fmt.Errorf("usage: profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-controller|kiki-kube-node")
+			return false, fmt.Errorf("usage: profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
 		}
 		ApplyProfile(&t.Plan, fields[1])
 		t.Render()
@@ -573,7 +590,7 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		t.Render()
 	case "verify-key":
 		if len(fields) != 2 {
-			return false, fmt.Errorf("usage: verify-key /etc/ki2/trust/stage2-repo.hmac")
+			return false, fmt.Errorf("usage: verify-key /etc/ki2/trust/stage2-v2-repo.hmac")
 		}
 		t.Plan.Source.VerifyKey = fields[1]
 		t.Render()
@@ -770,12 +787,13 @@ func dashboardAccountSummary(plan InstallPlan) string {
 
 func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Commands:")
-	fmt.Fprintln(w, "  profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-controller|kiki-kube-node")
+	fmt.Fprintln(w, "  profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
+	fmt.Fprintln(w, "    legacy aliases: kiki-kube-controller -> kiki-kube-control, kiki-kube-node -> kiki-kube-compute")
 	fmt.Fprintln(w, "  disk /dev/sda")
 	fmt.Fprintln(w, "  swap on|off")
 	fmt.Fprintln(w, "  network dhcp|off [en* eth*]")
 	fmt.Fprintln(w, "  source local|remote [repo-url]")
-	fmt.Fprintln(w, "  verify-key /etc/ki2/trust/stage2-repo.hmac")
+	fmt.Fprintln(w, "  verify-key /etc/ki2/trust/stage2-v2-repo.hmac")
 	fmt.Fprintln(w, "  user kiki")
 	fmt.Fprintln(w, "  hostname localhost.localdomain")
 	fmt.Fprintln(w, "  runtime none|crio|containerd")

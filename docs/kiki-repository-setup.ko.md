@@ -18,7 +18,7 @@ publish/
     systemd-255.7-2.x86_64.ki2
     ...
   iso/
-    kiki-stage2-installer-x86_64-20260526-rev42.iso
+    kiki-stage2-v2-installer-x86_64-20260526-rev42.iso
     ...
 ```
 
@@ -64,7 +64,7 @@ Stage 2부터는 저장소 운영 메타데이터도 함께 생성할 수 있다
 python3 tools/ki2repo.py generate \
   --name kiki-os \
   --title "KIKI OS Package Repository" \
-  --channel stage2 \
+  --channel stage2-v2 \
   --base-url http://repo.example.internal:8080
 ```
 
@@ -77,7 +77,7 @@ dist/ki2/repo/channels.json
 ```
 
 `metadata.x86_64.json`은 패키지 개수, 전체 크기, tier별 개수, 최신 패키지 목록,
-ISO 산출물 목록, 저장소 보안 상태를 기록한다. `channels.json`은 `stage2`,
+ISO 산출물 목록, 저장소 보안 상태를 기록한다. `channels.json`은 `stage2-v2`,
 `testing`, `stable` 같은 릴리스 채널이 어떤 인덱스와 메타데이터를 가리키는지
 기록한다.
 
@@ -135,7 +135,7 @@ dist/iso/                      -> <target>/iso/
 
 ```bash
 python3 tools/ki2build.py build --profile distro/profiles/minimal-systemd.toml --allow-unpinned
-python3 tools/ki2repo.py generate --channel stage2 --base-url http://repo.example.internal:8080
+python3 tools/ki2repo.py generate --channel stage2-v2 --base-url http://repo.example.internal:8080
 python3 tools/ki2publish.py --target /srv/www/kiki
 ```
 
@@ -320,7 +320,7 @@ python3 -m http.server 8080 --directory /srv/www/kiki
 
 1. 패키지 레시피 또는 소스 수정
 2. 필요한 패키지 빌드
-3. `python3 tools/ki2repo.py generate --channel stage2 --base-url http://repo.example.internal:8080`
+3. `python3 tools/ki2repo.py generate --channel stage2-v2 --base-url http://repo.example.internal:8080`
 4. `python3 tools/ki2publish.py --target /srv/www/kiki`
 5. 클라이언트에서 `sudo ki2ctl update`
 6. `sudo ki2ctl upgrade --dry-run`
@@ -332,7 +332,7 @@ python3 -m http.server 8080 --directory /srv/www/kiki
 - 패키지 파일 서명 또는 manifest 서명
 - 디렉터리 정리까지 포함하는 완전한 rollback
 - pre/post install/remove hook 정책
-- release channel: `stage1-final`, `stage2`, `testing`, `stable`
+- release channel: `stage1-v1`, `stage2-v2`, `testing`, `stable`
 
 ## Stage 2 저장소 서명 메모
 
@@ -343,31 +343,31 @@ Stage 2부터는 `tools/ki2repo.py`가 저장소 운영 메타데이터와 서�
 서명키 생성:
 
 ```bash
-python3 tools/ki2repo.py keygen --output build/ki2/keys/stage2-repo.hmac
+python3 tools/ki2repo.py keygen --output build/ki2/keys/stage2-v2-repo.hmac
 ```
 
 서명된 메타데이터 생성:
 
 ```bash
 python3 tools/ki2repo.py generate \
-  --channel stage2 \
+  --channel stage2-v2 \
   --base-url http://repo.example.internal:8080 \
-  --sign-key build/ki2/keys/stage2-repo.hmac
+  --sign-key build/ki2/keys/stage2-v2-repo.hmac
 ```
 
 검증:
 
 ```bash
-python3 tools/ki2repo.py verify --key build/ki2/keys/stage2-repo.hmac
+python3 tools/ki2repo.py verify --key build/ki2/keys/stage2-v2-repo.hmac
 ```
 
 클라이언트에서는 다음처럼 검증 업데이트를 수행한다.
 
 ```bash
-sudo ki2ctl update --verify-key /etc/ki2/trust/stage2-repo.hmac
+sudo ki2ctl update --verify-key /etc/ki2/trust/stage2-v2-repo.hmac
 ```
 
-중요: `build/ki2/keys/stage2-repo.hmac`는 publish 대상이 아니다. HTTP 저장소에
+중요: `build/ki2/keys/stage2-v2-repo.hmac`는 publish 대상이 아니다. HTTP 저장소에
 함께 올리면 서명의 의미가 사라진다.
 
 ## Stage 2 테스트 ISO
@@ -375,7 +375,7 @@ sudo ki2ctl update --verify-key /etc/ki2/trust/stage2-repo.hmac
 2026-05-26 기준 테스트용 설치 ISO:
 
 ```text
-dist/iso/kiki-stage2-test-installer-x86_64-20260526.iso
+dist/iso/kiki-stage2-v2-test-installer-x86_64-20260526.iso
 size:   879187968 bytes
 sha256: 79EBAC0C2DE64145D6DF1351D52027CFF450847DF91507FDE2117FA319EF97EF
 ```
@@ -392,11 +392,11 @@ python3 tools/ki2bootiso.py \
 이후 새 ISO는 기본적으로 `YYYYMMDD-revN` suffix를 사용한다. 예:
 
 ```text
-dist/iso/kiki-stage2-installer-x86_64-20260526-rev42.iso
+dist/iso/kiki-stage2-v2-installer-x86_64-20260526-rev42.iso
 ```
 
 기본 release 이름은 저장소 metadata의 `channel` 값이다. 부팅 프로필은
-`bootstrap-stage1`이어도 Stage 2 저장소를 담는 설치 ISO는 `stage2` 이름을 쓴다.
+`bootstrap-stage1`이어도 Stage 2 저장소를 담는 설치 ISO는 `stage2-v2` 이름을 쓴다. 저장소 metadata가 없으면 Stage 1 부팅 검증 산출물은 `stage1-v1` 이름을 쓴다.
 
 이 ISO는 stage-1 installer ISO이며 `/kiki/repo`, `/kiki/packages/x86_64` 아래에
 현재 Stage 2 저장소 payload를 포함한다.

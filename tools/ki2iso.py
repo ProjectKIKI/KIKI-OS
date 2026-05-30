@@ -17,6 +17,8 @@ from typing import Any
 
 
 UTC = dt.timezone.utc
+DEFAULT_STAGE1_RELEASE = "stage1-v1"
+
 
 
 class IsoError(RuntimeError):
@@ -85,10 +87,16 @@ def read_repo_channel(repo_dir: Path, arch: str) -> str | None:
     return channel or None
 
 
+def profile_release_name(profile: str) -> str:
+    if profile == "bootstrap-stage1":
+        return DEFAULT_STAGE1_RELEASE
+    return profile
+
+
 def iso_release_name(repo_dir: Path, arch: str, profile: str, override: str | None = None) -> str:
     if override:
         return safe_filename_component(override)
-    return safe_filename_component(read_repo_channel(repo_dir, arch) or profile)
+    return safe_filename_component(read_repo_channel(repo_dir, arch) or profile_release_name(profile))
 
 
 def default_iso_output(repo_root: Path, release_name: str, arch: str, build_info: dict[str, Any]) -> Path:

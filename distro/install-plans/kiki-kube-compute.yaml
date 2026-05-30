@@ -1,7 +1,7 @@
 install_plan:
-  name: kiki-kube-controller
-  description: 추가 Kubernetes control-plane/controller 노드를 위한 설치 계획서.
-  profile: kiki-kube-controller
+  name: kiki-kube-compute
+  description: Installation plan for Kubernetes compute nodes.
+  profile: kiki-kube-compute
   target:
     partition_table: gpt
     efi_system_partition:
@@ -11,7 +11,7 @@ install_plan:
     root:
       filesystem: ext4
       mountpoint: /
-      min_size: 32GiB
+      min_size: 16GiB
     swap:
       enabled: false
       policy: kubernetes-off
@@ -24,7 +24,7 @@ install_plan:
       - systemd
       - openssh
       - ca-certificates
-    kubernetes_control_plane:
+    kubernetes:
       - cri-o
       - conmon
       - crun
@@ -39,19 +39,20 @@ install_plan:
       - iptables
       - nftables
       - conntrack-tools
-      - firewalld
-      - bridge-utils
       - socat
       - ethtool
       - chrony
       - kiki-installer-tui
+    optional_firewall:
+      - firewalld
+      - bridge-utils
   prompts:
     role:
-      default: controller
+      default: compute
       choices:
-        - controller
+        - compute
     node_name:
-      default: kiki-controller
+      default: kiki-compute
     join_command:
       default: ""
   post_install:
@@ -67,12 +68,12 @@ install_plan:
       - chronyd.service
     write_files:
       - path: /etc/kiki/install-role
-        content: controller
+        content: compute
   runtime:
     container_runtime: cri-o
     cgroup_driver: systemd
     swap_policy: kubernetes-off
   firewall:
     backend: nftables
-    firewalld: true
+    firewalld: false
     bridge_tool: iproute2 bridge

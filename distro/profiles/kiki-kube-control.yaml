@@ -1,6 +1,6 @@
 profile:
-  name: kiki-kube-node
-  description: YAML 패키지 메타데이터를 사용하는 쿠버네티스 준비 KIKI 노드 이미지 프로파일.
+  name: kiki-kube-control
+  description: Stage 2 profile for additional Kubernetes control-plane nodes after the bootstrap node.
   arch: x86_64
   packages:
     - base-files

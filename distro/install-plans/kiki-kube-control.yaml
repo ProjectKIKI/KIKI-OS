@@ -1,7 +1,7 @@
 install_plan:
-  name: kiki-kube-node
-  description: 쿠버네티스 준비 KIKI 노드를 위한 설치 계획서.
-  profile: kiki-kube-node
+  name: kiki-kube-control
+  description: Installation plan for additional Kubernetes control-plane nodes.
+  profile: kiki-kube-control
   target:
     partition_table: gpt
     efi_system_partition:
@@ -48,17 +48,15 @@ install_plan:
       - bridge-utils
   prompts:
     role:
-      default: worker
+      default: control
       choices:
-        - control-plane
-        - worker
-        - standalone
+        - control
     node_name:
-      default: kiki-node
-    pod_cidr:
-      default: 10.244.0.0/16
-    service_cidr:
-      default: 10.96.0.0/12
+      default: kiki-control
+    bootstrap_endpoint:
+      default: ""
+    join_command:
+      default: ""
   post_install:
     enable_services:
       - dbus.service
@@ -72,12 +70,12 @@ install_plan:
       - chronyd.service
     write_files:
       - path: /etc/kiki/install-role
-        content: ${role}
+        content: control
   runtime:
     container_runtime: cri-o
     cgroup_driver: systemd
     swap_policy: kubernetes-off
   firewall:
     backend: nftables
-    firewalld: false
+    firewalld: true
     bridge_tool: iproute2 bridge

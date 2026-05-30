@@ -28,32 +28,35 @@ func TestDefaultPlanUsesStageOneDefaults(t *testing.T) {
 	}
 }
 
-func TestKubeNodeProfileDisablesSwapAndEnablesCRIO(t *testing.T) {
-	plan := NewDefaultPlan("kiki-kube-node")
+func TestKubeComputeProfileDisablesSwapAndEnablesCRIO(t *testing.T) {
+	plan := NewDefaultPlan("kiki-kube-compute")
 
 	if plan.Target.Filesystems.Swap.Enabled {
-		t.Fatal("kiki-kube-node should disable swap by default")
+		t.Fatal("kiki-kube-compute should disable swap by default")
 	}
 	if plan.Runtime.ContainerRuntime != "cri-o" {
 		t.Fatalf("runtime = %q, want cri-o", plan.Runtime.ContainerRuntime)
+	}
+	if plan.Firewall.Firewalld {
+		t.Fatal("kiki-kube-compute should keep firewalld disabled by default")
 	}
 	if plan.Target.Filesystems.Root.Path != "/dev/sda2" {
 		t.Fatalf("root path = %q, want /dev/sda2 when swap is off", plan.Target.Filesystems.Root.Path)
 	}
 	for _, name := range []string{"cri-o", "kubelet", "kubeadm", "kubectl", "nftables", "iptables"} {
 		if !contains(plan.Packages.Selected, name) {
-			t.Fatalf("kiki-kube-node missing package %q", name)
+			t.Fatalf("kiki-kube-compute missing package %q", name)
 		}
 	}
 	for _, unit := range []string{"crio.service", "kubelet.service"} {
 		if !contains(plan.Services.Enable, unit) {
-			t.Fatalf("kiki-kube-node missing service %q", unit)
+			t.Fatalf("kiki-kube-compute missing service %q", unit)
 		}
 	}
 }
 
-func TestKubernetesBootstrapAndControllerProfiles(t *testing.T) {
-	for _, profile := range []string{"kiki-kube-bootstrap", "kiki-kube-controller"} {
+func TestKubernetesBootstrapAndControlProfiles(t *testing.T) {
+	for _, profile := range []string{"kiki-kube-bootstrap", "kiki-kube-control"} {
 		plan := NewDefaultPlan(profile)
 
 		if plan.Packages.Profile != profile {
@@ -72,6 +75,19 @@ func TestKubernetesBootstrapAndControllerProfiles(t *testing.T) {
 			if !contains(plan.Packages.Selected, name) {
 				t.Fatalf("%s missing package %q", profile, name)
 			}
+		}
+	}
+}
+
+func TestLegacyKubernetesProfileAliases(t *testing.T) {
+	tests := map[string]string{
+		"kiki-kube-controller": "kiki-kube-control",
+		"kiki-kube-node":       "kiki-kube-compute",
+	}
+	for input, want := range tests {
+		plan := NewDefaultPlan(input)
+		if plan.Packages.Profile != want {
+			t.Fatalf("profile alias %q = %q, want %q", input, plan.Packages.Profile, want)
 		}
 	}
 }
@@ -121,7 +137,7 @@ func TestCommandLoopWritesPlan(t *testing.T) {
 	dir := t.TempDir()
 	planPath := filepath.Join(dir, "install-plan.yaml")
 	input := strings.Join([]string{
-		"profile kiki-kube-node",
+		"profile kiki-kube-compute",
 		"firewalld on",
 		"write " + planPath,
 		"quit",
@@ -144,7 +160,7 @@ func TestCommandLoopWritesPlan(t *testing.T) {
 	}
 	text := string(data)
 	for _, want := range []string{
-		`profile: "kiki-kube-node"`,
+		`profile: "kiki-kube-compute"`,
 		`container_runtime: "cri-o"`,
 		`firewalld: true`,
 		`password: "runtime-only"`,
@@ -165,7 +181,7 @@ func TestStageTwoCommandsSelectRemoteRepoAndContainerd(t *testing.T) {
 	if _, err := tui.ApplyCommand("source remote http://repo.example/kiki"); err != nil {
 		t.Fatalf("source remote error = %v", err)
 	}
-	if _, err := tui.ApplyCommand("verify-key /etc/ki2/trust/stage2-repo.hmac"); err != nil {
+	if _, err := tui.ApplyCommand("verify-key /etc/ki2/trust/stage2-v2-repo.hmac"); err != nil {
 		t.Fatalf("verify-key error = %v", err)
 	}
 	if _, err := tui.ApplyCommand("runtime containerd"); err != nil {
@@ -178,7 +194,7 @@ func TestStageTwoCommandsSelectRemoteRepoAndContainerd(t *testing.T) {
 	if tui.Plan.Source.RepoIndex != "http://repo.example/kiki/repo/index.x86_64.json" {
 		t.Fatalf("repo index = %q", tui.Plan.Source.RepoIndex)
 	}
-	if tui.Plan.Source.VerifyKey != "/etc/ki2/trust/stage2-repo.hmac" {
+	if tui.Plan.Source.VerifyKey != "/etc/ki2/trust/stage2-v2-repo.hmac" {
 		t.Fatalf("verify key = %q", tui.Plan.Source.VerifyKey)
 	}
 	if tui.Plan.Runtime.ContainerRuntime != "containerd" {

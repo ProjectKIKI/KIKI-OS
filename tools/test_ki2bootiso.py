@@ -24,17 +24,23 @@ class Ki2BootIsoTests(unittest.TestCase):
         root = Path("/repo")
         build_info = {"stamp": ki2bootiso.format_iso_build_stamp("2026-05-26", "42")}
 
-        output = ki2bootiso.default_iso_output(root, "stage2", "installer", "x86_64", build_info)
+        output = ki2bootiso.default_iso_output(root, "stage2-v2", "installer", "x86_64", build_info)
 
-        self.assertEqual(output, root / "dist/iso/kiki-stage2-installer-x86_64-20260526-rev42.iso")
+        self.assertEqual(output, root / "dist/iso/kiki-stage2-v2-installer-x86_64-20260526-rev42.iso")
 
     def test_iso_release_name_prefers_repository_channel(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            (repo / "metadata.x86_64.json").write_text('{"channel":"stage2"}\n', encoding="utf-8")
+            (repo / "metadata.x86_64.json").write_text('{"channel":"stage2-v2"}\n', encoding="utf-8")
 
-            self.assertEqual(ki2bootiso.iso_release_name(repo, "x86_64", "bootstrap-stage1"), "stage2")
+            self.assertEqual(ki2bootiso.iso_release_name(repo, "x86_64", "bootstrap-stage1"), "stage2-v2")
             self.assertEqual(ki2bootiso.iso_release_name(repo, "x86_64", "bootstrap-stage1", "testing"), "testing")
+
+    def test_iso_release_name_uses_stage1_fallback_without_repository_channel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+
+            self.assertEqual(ki2bootiso.iso_release_name(repo, "x86_64", "bootstrap-stage1"), "stage1-v1")
 
     def test_prepare_boot_iso_tree_writes_boot_files_and_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -191,11 +197,11 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn("Package selection", ki2bootiso.INIT_C)
         self.assertIn("Select minimal-systemd default package set", ki2bootiso.INIT_C)
         self.assertIn("Select kiki-kube-bootstrap package set", ki2bootiso.INIT_C)
-        self.assertIn("Select kiki-kube-controller package set", ki2bootiso.INIT_C)
-        self.assertIn("Select kiki-kube-node worker package set", ki2bootiso.INIT_C)
+        self.assertIn("Select kiki-kube-control package set", ki2bootiso.INIT_C)
+        self.assertIn("Select kiki-kube-compute package set", ki2bootiso.INIT_C)
         self.assertIn("kiki-kube-bootstrap package set (first control-plane bootstrap)", ki2bootiso.INIT_C)
-        self.assertIn("kiki-kube-controller package set (additional control-plane/controller)", ki2bootiso.INIT_C)
-        self.assertIn("kiki-kube-node package set (worker node)", ki2bootiso.INIT_C)
+        self.assertIn("kiki-kube-control package set (additional control-plane node)", ki2bootiso.INIT_C)
+        self.assertIn("kiki-kube-compute package set (compute node)", ki2bootiso.INIT_C)
         self.assertIn("Kubernetes profiles keep swap off", ki2bootiso.INIT_C)
         self.assertIn("ensure_selected_profile_packages", ki2bootiso.INIT_C)
         self.assertIn("Required Kubernetes package missing from repository index", ki2bootiso.INIT_C)
@@ -391,7 +397,7 @@ class Ki2BootIsoTests(unittest.TestCase):
     def test_default_hyperv_vhdx_output_uses_dist_iso(self):
         root = Path("/repo")
         output = ki2bootiso.default_hyperv_vhdx_output(root, "bootstrap-stage1", "x86_64")
-        self.assertEqual(output, root / "dist/iso/kiki-bootstrap-stage1-installed-hyperv-x86_64.vhdx")
+        self.assertEqual(output, root / "dist/iso/kiki-stage1-v1-installed-hyperv-x86_64.vhdx")
 
     def test_write_newc_gzip_contains_init_and_trailer(self):
         with tempfile.TemporaryDirectory() as tmp:

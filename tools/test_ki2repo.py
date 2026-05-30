@@ -33,7 +33,7 @@ class Ki2RepoTests(unittest.TestCase):
 
             metadata = json.loads((repo / "metadata.x86_64.json").read_text(encoding="utf-8"))
             self.assertEqual(metadata["schema"], "ki2-repository-metadata-v1")
-            self.assertEqual(metadata["channel"], "stage2")
+            self.assertEqual(metadata["channel"], "stage2-v2")
             self.assertEqual(metadata["index"]["package_count"], 2)
             self.assertEqual(metadata["packages"]["tiers"], {"base": 1, "shell": 1})
             self.assertEqual(metadata["artifacts"]["iso"][0]["file"], "kiki.iso")
@@ -41,8 +41,8 @@ class Ki2RepoTests(unittest.TestCase):
 
             channels = json.loads((repo / "channels.json").read_text(encoding="utf-8"))
             self.assertEqual(channels["schema"], "ki2-repository-channels-v1")
-            self.assertEqual(channels["channels"]["stage2"]["metadata"], "repo/metadata.x86_64.json")
-            self.assertTrue(channels["channels"]["stage2"]["metadata_sha256"])
+            self.assertEqual(channels["channels"]["stage2-v2"]["metadata"], "repo/metadata.x86_64.json")
+            self.assertTrue(channels["channels"]["stage2-v2"]["metadata_sha256"])
 
     def test_sign_and_verify_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -82,7 +82,7 @@ def fake_args(*, root: Path, packages: Path, repo: Path, iso: Path):
         name = "kiki-test"
         title = "KIKI Test Repository"
         description = "test repository"
-        channel = "stage2"
+        channel = "stage2-v2"
         base_url = "http://repo.example.internal:8080"
         sign_key = None
 

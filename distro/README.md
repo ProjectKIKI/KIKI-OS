@@ -4,10 +4,11 @@
 계획, 커널 설정, 템플릿을 담는 디렉터리다. 현재 목표는 완전한 self-hosting이
 아니라, 재현 가능한 초기 배포판 파이프라인을 만드는 것이다.
 
-개발 단계는 stage 1, stage 2, stage 3으로 정의한다. stage 1은 부팅과 설치
-가능성 증명, stage 2는 운영 가능한 최소 서버 배포판, stage 3은 자기 빌드와
-쿠버네티스/클러스터 운영이 가능한 독립 배포판이다. 상세 기준은
-`docs/kiki-os-stages.ko.md`에 둔다.
+개발 단계는 `stage1-v1`, `stage2-v2`, stage 3으로 관리한다. `stage1-v1`은
+부팅과 설치 가능성 증명을 마친 최종 기준선이고, `stage2-v2`는 운영 가능한
+최소 서버 배포판을 만드는 진행형 라인이다. 상세 기준은
+`docs/kiki-os-stages.ko.md`, `docs/kiki-stage1-v1-final.ko.md`,
+`docs/kiki-stage2-v2-progress.ko.md`에 둔다.
 
 ```text
 레시피 -> 의존성 계획 -> 빌드 캐시 키 -> .ki2 패키지 -> 저장소 인덱스 -> rootfs
@@ -28,8 +29,8 @@ distro/
   profiles/ki2ctl-runtime.toml   HTTP 패키지 관리자 단독 빌드 프로파일
   profiles/minimal-systemd.toml  기본 systemd 서버 노드 프로파일
   profiles/kiki-kube-bootstrap.yaml 첫 쿠버네티스 control-plane 부트스트랩 프로파일
-  profiles/kiki-kube-controller.yaml 추가 쿠버네티스 controller/control-plane 프로파일
-  profiles/kiki-kube-node.yaml   쿠버네티스 worker 노드 지향 프로파일
+  profiles/kiki-kube-control.yaml 추가 쿠버네티스 control-plane 프로파일
+  profiles/kiki-kube-compute.yaml 쿠버네티스 compute 노드 지향 프로파일
   profiles/node-network-tools.toml nftables/firewalld/bridge 도구 검증 프로파일
   install-plans/*.yaml           설치기용 선언형 계획서 예제
   builders/rocky9-wsl-deps.sh    Rocky 9/WSL 빌더 의존성 설치 스크립트
@@ -98,7 +99,7 @@ KIKI OS의 운영자용 설정 포맷은 YAML로 둔다. 기존 seed 파일에�
 - KIKI 통합: `base-files`, `ki2ctl`, `kiki-agent`, `kiki-installer-tui`
 
 쿠버네티스 관련 패키지는 선택 YAML 계층으로 분리한다. 이렇게 해야
-`minimal-systemd`는 작게 유지하고, `kiki-kube-node`는 kubeadm-ready 노드로
+`minimal-systemd`는 작게 유지하고, `kiki-kube-compute`는 kubeadm-ready compute 노드로
 확장할 수 있다. Stage 1부터 `kiki-installer-tui` preview 패키지를 포함해 같은
 설치 계획서를 Go 기반 TUI에서도 렌더링하고 테스트한다.
 
@@ -142,7 +143,7 @@ python tools/ki2build.py plan --profile distro/profiles/minimal-systemd.toml
 쿠버네티스 노드 계획 확인:
 
 ```bash
-python tools/ki2build.py plan --profile distro/profiles/kiki-kube-node.yaml
+python tools/ki2build.py plan --profile distro/profiles/kiki-kube-compute.yaml
 ```
 
 빌드 의존성까지 포함한 계획 확인:
@@ -256,9 +257,9 @@ mkdir -p distro/sources/my-os-config
 검증과 빌드:
 
 ```bash
-python tools/ki2build.py validate --profile distro/profiles/kiki-kube-node.yaml --max-packages 64
-python tools/ki2build.py plan --profile distro/profiles/kiki-kube-node.yaml
-python tools/ki2build.py build --profile distro/profiles/kiki-kube-node.yaml --allow-unpinned
+python tools/ki2build.py validate --profile distro/profiles/kiki-kube-compute.yaml --max-packages 64
+python tools/ki2build.py plan --profile distro/profiles/kiki-kube-compute.yaml
+python tools/ki2build.py build --profile distro/profiles/kiki-kube-compute.yaml --allow-unpinned
 python tools/ki2build.py repo-index
 ```
 
@@ -403,7 +404,7 @@ Go TUI preview는 같은 설치 계획서를 상태판으로 렌더링한다.
 
 ```bash
 go run ./cmd/kiki-installer-tui --render
-go run ./cmd/kiki-installer-tui --profile kiki-kube-node --render
+go run ./cmd/kiki-installer-tui --profile kiki-kube-compute --render
 ```
 
 현재 설치된 시스템에서 활성화하는 기본 유닛:

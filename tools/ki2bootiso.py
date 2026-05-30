@@ -30,6 +30,7 @@ from typing import Any
 
 
 UTC = dt.timezone.utc
+DEFAULT_STAGE1_RELEASE = "stage1-v1"
 
 INIT_C = r"""
 typedef unsigned long size_t;
@@ -1621,6 +1622,10 @@ static int selected_profile_is_kubernetes(void) {
     return starts_with(selected_package_profile, "kiki-kube-");
 }
 
+static int selected_profile_is_kube_compute(void) {
+    return kstrcmp(selected_package_profile, "kiki-kube-compute") == 0 || kstrcmp(selected_package_profile, "kiki-kube-node") == 0;
+}
+
 static int selected_add(const char *name) {
     if (!name || !name[0]) {
         return 0;
@@ -1764,12 +1769,12 @@ static void select_kube_bootstrap_packages(const char *index_path) {
     select_kube_profile_packages(index_path, "kiki-kube-bootstrap", "kiki-kube-bootstrap package set (first control-plane bootstrap)");
 }
 
-static void select_kube_controller_packages(const char *index_path) {
-    select_kube_profile_packages(index_path, "kiki-kube-controller", "kiki-kube-controller package set (additional control-plane/controller)");
+static void select_kube_control_packages(const char *index_path) {
+    select_kube_profile_packages(index_path, "kiki-kube-control", "kiki-kube-control package set (additional control-plane node)");
 }
 
-static void select_kube_node_packages(const char *index_path) {
-    select_kube_profile_packages(index_path, "kiki-kube-node", "kiki-kube-node package set (worker node)");
+static void select_kube_compute_packages(const char *index_path) {
+    select_kube_profile_packages(index_path, "kiki-kube-compute", "kiki-kube-compute package set (compute node)");
 }
 
 static int ensure_selected_profile_packages(const char *index_path) {
@@ -1842,8 +1847,8 @@ static void package_selection_menu(void) {
         say("1) Show package repository\n");
         say("2) Select minimal-systemd default package set\n");
         say("3) Select kiki-kube-bootstrap package set\n");
-        say("4) Select kiki-kube-controller package set\n");
-        say("5) Select kiki-kube-node worker package set\n");
+        say("4) Select kiki-kube-control package set\n");
+        say("5) Select kiki-kube-compute package set\n");
         say("6) Select every package on media\n");
         say("7) Add one package by name\n");
         say("8) Clear selected packages\n");
@@ -1863,10 +1868,10 @@ static void package_selection_menu(void) {
             select_kube_bootstrap_packages(index_path);
         } else if (kstrcmp(choice, "4") == 0) {
             selected_clear();
-            select_kube_controller_packages(index_path);
+            select_kube_control_packages(index_path);
         } else if (kstrcmp(choice, "5") == 0) {
             selected_clear();
-            select_kube_node_packages(index_path);
+            select_kube_compute_packages(index_path);
         } else if (kstrcmp(choice, "6") == 0) {
             selected_clear();
             selected_set_profile("world");
@@ -3156,7 +3161,7 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "swap_policy", selected_profile_is_kubernetes() ? "kubernetes-off" : plan->has_swap ? "system" : "disabled");
     out = append_string(yaml, sizeof(yaml), out, "  firewall:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "backend", "nftables");
-    out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "    ", "firewalld", selected_profile_is_kubernetes());
+    out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "    ", "firewalld", selected_profile_is_kubernetes() && !selected_profile_is_kube_compute());
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "bridge_tool", "iproute2 bridge");
     out = append_string(yaml, sizeof(yaml), out, "  artifacts:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "runtime_plan", INSTALL_PLAN_PATH);
@@ -3187,7 +3192,7 @@ static void show_runtime_status(void) {
     say("\nRuntime\n");
     say("-------\n");
     say(selected_profile_is_kubernetes() ? "selected runtime: CRI-O\n" : "selected runtime: none\n");
-    say("Kubernetes bootstrap/controller/worker profiles use CRI-O with systemd cgroup driver.\n");
+    say("Kubernetes bootstrap/control/compute profiles use CRI-O with systemd cgroup driver.\n");
     say("firewall backend direction: nftables/firewalld packages\n");
     say("Kubernetes profiles keep swap off; minimal-systemd keeps normal swap.\n");
 }
@@ -3863,10 +3868,16 @@ def read_repo_channel(repo_dir: Path, arch: str) -> str | None:
     return channel or None
 
 
+def profile_release_name(profile: str) -> str:
+    if profile == "bootstrap-stage1":
+        return DEFAULT_STAGE1_RELEASE
+    return profile
+
+
 def iso_release_name(repo_dir: Path, arch: str, profile: str, override: str | None = None) -> str:
     if override:
         return safe_filename_component(override)
-    return safe_filename_component(read_repo_channel(repo_dir, arch) or profile)
+    return safe_filename_component(read_repo_channel(repo_dir, arch) or profile_release_name(profile))
 
 
 def default_iso_output(
@@ -4770,7 +4781,7 @@ def build_hyperv_vhdx(source_image: Path, output: Path, *, required: bool = Fals
 
 
 def default_hyperv_vhdx_output(repo_root: Path, profile: str, arch: str) -> Path:
-    return repo_root / "dist" / "iso" / f"kiki-{profile}-installed-hyperv-{arch}.vhdx"
+    return repo_root / "dist" / "iso" / f"kiki-{profile_release_name(profile)}-installed-hyperv-{arch}.vhdx"
 
 
 def command_build(args: argparse.Namespace) -> None:

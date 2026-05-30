@@ -158,8 +158,8 @@ def base_smoke_steps(config: CiConfig) -> list[Step]:
             ki2build_cmd(config, "plan", "--profile", "distro/profiles/minimal-systemd.toml"),
         ),
         Step(
-            "kiki-kube-node YAML runtime plan",
-            ki2build_cmd(config, "plan", "--profile", "distro/profiles/kiki-kube-node.yaml"),
+            "kiki-kube-compute YAML runtime plan",
+            ki2build_cmd(config, "plan", "--profile", "distro/profiles/kiki-kube-compute.yaml"),
         ),
     ]
 

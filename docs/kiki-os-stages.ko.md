@@ -4,6 +4,11 @@ KIKI OS는 stage 1, stage 2, stage 3까지 진행한다. 각 stage는 “무엇�
 기준으로 나눈다. 기능이 늘어날 때마다 이 문서를 기준으로 현재 작업이 어느
 단계에 속하는지 판단한다.
 
+## 릴리스 라인 이름
+
+- `stage1-v1`: Stage 1 부팅/설치 검증 라인. 저장소 metadata가 없는 `bootstrap-stage1` 산출물의 기본 릴리스 이름이다. 최종 기준은 [KIKI OS Stage 1 V1 최종 문서](kiki-stage1-v1-final.ko.md)를 따른다.
+- `stage2-v2`: Stage 2 패키지 저장소/설치 미디어 라인. `ki2repo`의 기본 channel이며 설치 계획서의 기본 저장소 channel이다. 진행 기준은 [KIKI OS Stage 2 V2 진행 문서](kiki-stage2-v2-progress.ko.md)를 따른다.
+
 ## Stage 0: 실험과 빌드 기반
 
 목표: 배포판을 만들 수 있는 최소 도구와 패키지 형식을 검증한다.
@@ -139,7 +144,7 @@ KIKI OS는 코어 OS와 확장 애플리케이션을 분리한다.
 Stage 3의 완료 기준:
 
 - KIKI OS 위에서 KIKI OS 패키지를 빌드할 수 있음
-- 쿠버네티스 worker/control-plane 노드를 설치 계획서로 만들 수 있음
+- 쿠버네티스 bootstrap/control/compute 노드를 설치 계획서로 만들 수 있음
 - 릴리스 채널과 서명된 저장소를 운영할 수 있음
 - 패키지 업데이트, 커널 업데이트, 복구 절차가 문서화되어 있음
 - 실험용 VM을 넘어 실제 lab 인프라 노드로 운영 가능
