@@ -2,6 +2,8 @@ import gzip
 import io
 import json
 import os
+import shutil
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -210,6 +212,10 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn('"kubeadm"', ki2bootiso.INIT_C)
         self.assertIn('"kubectl"', ki2bootiso.INIT_C)
         self.assertIn('"cri-o"', ki2bootiso.INIT_C)
+        self.assertIn('"containerd"', ki2bootiso.INIT_C)
+        self.assertIn('"kube-node-config-containerd"', ki2bootiso.INIT_C)
+        self.assertIn("Use containerd", ki2bootiso.INIT_C)
+        self.assertIn("selected_container_runtime", ki2bootiso.INIT_C)
         self.assertIn("unique package names", ki2bootiso.INIT_C)
         self.assertIn("KIKI OS installer TUI", ki2bootiso.INIT_C)
         self.assertIn("KIKI OS Installer", ki2bootiso.INIT_C)
@@ -222,6 +228,15 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn("kiki-install-plan-v1", ki2bootiso.INIT_C)
         self.assertIn("/run/kiki/install-plan.yaml", ki2bootiso.INIT_C)
         self.assertIn("/var/lib/ki2/install-plan.yaml", ki2bootiso.INIT_C)
+        self.assertIn('"channel", "stage2-v2"', ki2bootiso.INIT_C)
+        self.assertIn("selected_kubernetes_role", ki2bootiso.INIT_C)
+        self.assertIn("selected_kubeadm_template", ki2bootiso.INIT_C)
+        self.assertIn("kubeadm.k8s.io/v1beta4", ki2bootiso.INIT_C)
+        self.assertIn("kubeadm init --config /etc/kubernetes/kiki/kubeadm.local.yaml", ki2bootiso.INIT_C)
+        self.assertIn("kubeadm join --config /etc/kubernetes/kiki/kubeadm.local.yaml", ki2bootiso.INIT_C)
+        self.assertIn("/etc/kubernetes/kiki/kubeadm-join-compute.yaml", ki2bootiso.INIT_C)
+        self.assertIn("unix:///run/containerd/containerd.sock", ki2bootiso.INIT_C)
+        self.assertIn("unix:///var/run/crio/crio.sock", ki2bootiso.INIT_C)
         self.assertIn("runtime-input-not-written-to-plan", ki2bootiso.INIT_C)
         self.assertIn("dependency_resolution", ki2bootiso.INIT_C)
         self.assertIn("Network setup", ki2bootiso.INIT_C)
@@ -232,6 +247,15 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn("DHCP=ipv4", ki2bootiso.INIT_C)
         self.assertIn("show_saved_install_plan", ki2bootiso.INIT_C)
         self.assertIn("find_default_install_disk", ki2bootiso.INIT_C)
+        self.assertIn("kiki.autoinstall", ki2bootiso.INIT_C)
+        self.assertIn("kiki.profile", ki2bootiso.INIT_C)
+        self.assertIn("kiki.runtime", ki2bootiso.INIT_C)
+        self.assertIn("kiki.target", ki2bootiso.INIT_C)
+        self.assertIn("kiki.hostname", ki2bootiso.INIT_C)
+        self.assertIn("maybe_run_cmdline_autoinstall", ki2bootiso.INIT_C)
+        self.assertIn("run_guided_package_installer(1, 1)", ki2bootiso.INIT_C)
+        self.assertIn("select_named_package_profile", ki2bootiso.INIT_C)
+        self.assertIn("Autoinstall target disk", ki2bootiso.INIT_C)
         self.assertIn("Press Enter or type yes to continue", ki2bootiso.INIT_C)
         self.assertIn("Hostname [localhost.localdomain]", ki2bootiso.INIT_C)
         self.assertIn("User setup", ki2bootiso.INIT_C)
@@ -290,6 +314,19 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn("lib/libncursesw.so", source)
         self.assertIn("lib/libtinfo.so", source)
         self.assertIn("lib/libsmartcols.so.1", source)
+        self.assertIn("static IPv4", source)
+        self.assertIn("Address=", source)
+        self.assertIn("Gateway=", source)
+
+    def test_generated_init_c_has_valid_syntax_when_gcc_is_available(self):
+        gcc = shutil.which("gcc")
+        if not gcc:
+            self.skipTest("gcc is not available")
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "init.c"
+            source.write_text(ki2bootiso.INIT_C, encoding="utf-8")
+
+            subprocess.run([gcc, "-Wall", "-Wextra", "-fsyntax-only", str(source)], check=True)
 
     def test_add_installer_runtime_includes_cfdisk_libraries(self):
         if os.name == "nt":
@@ -350,6 +387,9 @@ class Ki2BootIsoTests(unittest.TestCase):
             self.assertTrue((target / "lib/libsmartcols.so.1.1.0").exists())
             self.assertTrue((target / "lib/libtinfo.so.6").exists())
             self.assertTrue((target / "lib/libncursesw.so.6").exists())
+            self.assertTrue((target / "lib64/libsmartcols.so.1").is_symlink())
+            self.assertTrue((target / "lib64/libfdisk.so.1").is_symlink())
+            self.assertEqual(os.readlink(target / "lib64/libsmartcols.so.1"), "../lib/libsmartcols.so.1")
 
     def test_extract_package_members_preserves_hardlinks(self):
         with tempfile.TemporaryDirectory() as tmp:

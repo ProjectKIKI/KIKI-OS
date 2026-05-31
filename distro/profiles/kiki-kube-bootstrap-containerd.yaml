@@ -1,0 +1,77 @@
+profile:
+  name: kiki-kube-bootstrap-containerd
+  description: 첫 Kubernetes control-plane을 kubeadm init으로 부트스트랩하기 위한 Stage 2 containerd 프로파일.
+  arch: x86_64
+  packages:
+    - base-files
+    - linux
+    - glibc
+    - zlib
+    - expat
+    - openssl
+    - libcap
+    - libseccomp
+    - acl
+    - attr
+    - ncurses
+    - util-linux
+    - cfdisk
+    - kmod
+    - dbus
+    - systemd
+    - bash
+    - busybox
+    - coreutils
+    - findutils
+    - grep
+    - sed
+    - gawk
+    - tar
+    - gzip
+    - xz
+    - zstd
+    - python
+    - e2fsprogs
+    - shadow
+    - sudo
+    - iproute2
+    - ca-certificates
+    - openssh
+    - curl
+    - ki2ctl
+    - kiki-agent
+    - kiki-installer-tui
+    - runc
+    - containerd
+    - cni-plugins
+    - cri-tools
+    - kubelet
+    - kubeadm
+    - kubectl
+    - conntrack-tools
+    - iptables
+    - nftables
+    - firewalld
+    - bridge-utils
+    - socat
+    - ethtool
+    - chrony
+    - kube-node-config-containerd
+  boot:
+    init: /usr/lib/systemd/systemd
+    kernel: /boot/vmlinuz-kiki
+    kernel_args:
+      - systemd.unified_cgroup_hierarchy=1
+      - cgroup_no_v1=all
+  services:
+    enable:
+      - dbus.service
+      - getty@tty1.service
+      - systemd-logind.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+      - containerd.service
+      - kubelet.service
+      - chronyd.service
+      - kiki-agent.service

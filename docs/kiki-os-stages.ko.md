@@ -7,7 +7,7 @@ KIKI OS는 stage 1, stage 2, stage 3까지 진행한다. 각 stage는 “무엇�
 ## 릴리스 라인 이름
 
 - `stage1-v1`: Stage 1 부팅/설치 검증 라인. 저장소 metadata가 없는 `bootstrap-stage1` 산출물의 기본 릴리스 이름이다. 최종 기준은 [KIKI OS Stage 1 V1 최종 문서](kiki-stage1-v1-final.ko.md)를 따른다.
-- `stage2-v2`: Stage 2 패키지 저장소/설치 미디어 라인. `ki2repo`의 기본 channel이며 설치 계획서의 기본 저장소 channel이다. 진행 기준은 [KIKI OS Stage 2 V2 진행 문서](kiki-stage2-v2-progress.ko.md)를 따른다.
+- `stage2-v2`: Stage 2 패키지 저장소/설치 미디어 라인. `ki2repo`의 기본 channel이며 설치 계획서의 기본 저장소 channel이다. 완료 기준은 [KIKI OS Stage 2 V2 완료 문서](kiki-stage2-v2-progress.ko.md)를 따른다.
 
 ## Stage 0: 실험과 빌드 기반
 
@@ -74,19 +74,22 @@ Stage 1은 “실험용 배포판”이다. 아직 온라인 패키지 관리자
 
 필수 기능:
 
-- 온라인 패키지 관리자 `ki2ctl install/update/upgrade/remove`
+- 온라인 패키지 관리자 `ki2ctl install/update/remove`
 - 런타임 의존성 자동 해석
 - 설치된 시스템 패키지 DB: `/var/lib/ki2/`
 - 파일 충돌 탐지와 설치 트랜잭션 기록
 - 저장소 메타데이터 서명과 검증
 - 패키지 충돌 탐지
-- 패키지 install/remove hook 정책
+- 패키지 hook 후보 기록과 post-install 점검 기반
 - SSH 원격 운영 기본값
-- `systemd-networkd` 기반 DHCP/static 설정
-- 무인 설치 YAML
+- `systemd-networkd` 기반 DHCP 기본값
+- 커널 파라미터 기반 무인 설치와 YAML 설치 계획서 보존
 - disconnected 설치용 로컬 저장소/ISO
 - 설치 로그와 설치 계획서 보존
-- Go 기반 설치 계획서 TUI를 실제 주 설치기로 승격
+- Go 기반 설치 계획서 TUI preview와 Stage 1 설치기 계약 공유
+- Kubernetes bootstrap/control/compute 노드 프로파일
+- CRI-O 기본 및 containerd 선택 런타임 패키지
+- `kubelet`, `kubeadm`, `kubectl`, CNI, CRI 도구 패키징과 smoke 검증
 - 빌드 웹 콘솔에서 패키지/프로파일 단위 빌드
 - ISO와 패키지 저장소 정적 배포
 
@@ -95,12 +98,16 @@ Stage 2의 완료 기준:
 - 새 VM을 무인 설치할 수 있음
 - 네트워크 저장소에서 패키지를 설치할 수 있음
 - disconnected 환경에서도 ISO 또는 로컬 mirror로 설치 가능
-- 패키지 업데이트 후 롤백 또는 복구 경로가 있음
+- 패키지 설치 실패 시 기본 rollback 또는 복구 경로가 있음
 - 기본 보안 검사와 repo 서명 검증이 있음
 - 운영자가 문서만 보고 서버 노드를 재현할 수 있음
 
-Stage 2는 “내부 서버용 최소 배포판”이다. 쿠버네티스 노드 준비가 시작되지만,
-클러스터 전체 운영 자동화는 Stage 3의 영역이다.
+Stage 2는 “내부 서버용 최소 배포판”이다. 쿠버네티스 설치 준비, 즉 노드 역할별
+패키지 선택과 kubeadm 기반 bootstrap/control/compute 준비는 Stage 2에서 다룬다.
+Stage 2 설치 계획서는 kubeadm action, 역할별 템플릿, CRI socket, 계획서 보존 경로까지
+기록해야 하며 `verify-install-plan`으로 검증한다.
+다중 노드 토큰 배포, control-plane 인증서 운영, CNI 실제 배포, 클러스터 전체
+운영 자동화는 Stage 3의 영역이다.
 
 ## 패키지와 확장 정책
 
@@ -108,7 +115,8 @@ KIKI OS는 코어 OS와 확장 애플리케이션을 분리한다.
 
 - `ki2`: 커널, initramfs, systemd, dbus, 로그인, 네트워크, sudo, ssh,
   `ki2ctl`, CRI-O/kubelet처럼 OS 생존과 부팅에 직접 필요한 구성요소를 관리한다.
-- `CRI-O`: Kubernetes가 pod를 실행하는 표준 CRI 런타임으로 둔다.
+- `CRI-O`: Kubernetes가 pod를 실행하는 기본 CRI 런타임으로 둔다.
+- `containerd`: Stage 2 선택 CRI 런타임으로 두고 `*-containerd` 노드 프로파일에서 검증한다.
 - `Podman`: Stage 2 이후 로컬 운영 도구, 개발 도구, 관리 UI, 확장 서비스 실행용
   OCI 런타임으로 추가한다.
 - 데스크톱 환경: GNOME 같은 전체 데스크톱 세션은 컨테이너가 아니라 별도
@@ -132,7 +140,7 @@ KIKI OS는 코어 OS와 확장 애플리케이션을 분리한다.
 - signed repository 운영
 - 패키지 업그레이드/롤백 정책
 - 커널과 initramfs 업데이트 정책
-- CRI-O 기반 쿠버네티스 노드 프로파일
+- CRI-O 기본 및 containerd 선택 쿠버네티스 노드 프로파일
 - `kubelet`, `kubeadm`, `kubectl`, CNI, CRI 도구 패키징
 - 클러스터용 sysctl, cgroup v2, 네트워크 기본값
 - `nftables`, `iptables-nft`, `conntrack-tools`, `firewalld` 선택 프로파일
@@ -154,7 +162,7 @@ Stage 3은 “독립 서버/클러스터 배포판”이다.
 ## 단계별 네트워크 정책
 
 - Stage 1: `systemd-networkd` DHCP 기본값
-- Stage 2: DHCP와 static IP를 설치 계획서에서 선택
+- Stage 2: DHCP 기본값과 설치 계획서 기반 네트워크 기록
 - Stage 3: 쿠버네티스 노드, PXE, mirror, CNI와 연동
 
 `NetworkManager`는 기본값이 아니다. 데스크톱, Wi-Fi, VPN, 사용자 중심 GUI가
@@ -163,7 +171,7 @@ Stage 3은 “독립 서버/클러스터 배포판”이다.
 ## 단계별 설치기 정책
 
 - Stage 1: C 기반 콘솔 메뉴형 TUI가 실제 설치를 담당하고, Go 기반 `kiki-installer-tui`는 preview/테스트용으로 포함
-- Stage 2: Go 기반 선언형 설치 계획서 TUI를 주 설치기로 승격, 무인 설치, disconnected 설치
+- Stage 2: C 기반 설치기가 실제 설치를 담당하고, Go 기반 선언형 설치 계획서 TUI는 같은 계약을 작성/검증한다. 커널 파라미터 기반 무인 설치와 disconnected 설치를 지원한다.
 - Stage 3: 웹 기반 설치기, 원격 설치, PXE/네트워크 설치
 
 현재 C 기반 stage-1 `/init`은 계속 유지한다. Go TUI는 Stage 1부터 패키지와
@@ -182,10 +190,11 @@ Stage 3은 “독립 서버/클러스터 배포판”이다.
 
 ## 현재 판단
 
-현재 KIKI OS는 Stage 1 마무리 단계에 있다. 부팅 ISO, 설치 ISO, 패키지 추출,
-기본 systemd 유닛, 사용자 생성, DHCP 계획서, Go TUI preview, 디스크 편집 메뉴,
-설치 후 점검 명령까지 연결되어 있다. 다음 큰 전환점은 Stage 2의 온라인 패키지
-관리자 안정화, 설치된 시스템 패키지 DB, 저장소 서명, Go 기반 주 설치기다.
+현재 KIKI OS는 Stage 2 V2 기준선까지 올라와 있다. Stage 1의 부팅/설치/login
+기준선 위에 `ki2ctl`, 서명된 저장소 metadata, 설치된 패키지 DB, 커널 파라미터
+기반 무인 설치, disconnected/local mirror 검증, CRI-O/containerd Kubernetes
+bootstrap/control/compute 프로파일을 얹었다. 다음 큰 전환점은 Stage 3의 self-hosting,
+원격 YAML unattended executor, 웹 기반 설치기, 클러스터 운영 자동화다.
 
 ## Stage 1 마무리 메모
 
@@ -216,9 +225,9 @@ Stage 1에서 의도적으로 완료로 보지 않는 항목:
 - 저장소 서명, 패키지 서명, 릴리스 채널 운영
 - 안정적인 upgrade/remove/rollback 정책
 - 무인 설치, disconnected mirror 설치, PXE 설치
-- Go 기반 설치 계획서 TUI의 주 설치기 승격
-- CRI-O, CNI, kubelet, kubeadm, kubectl의 실제 빌드 패키지
-- nftables, iptables, conntrack-tools, firewalld의 실제 네트워크 운영 패키지
+- Go 기반 설치 계획서 TUI의 단독 설치기 승격
+- CRI-O 계열과 전체 CNI/쿠버네티스 도구의 source-backed 빌드 패키지
+- network userspace 패키지의 source-backed 재현 빌드
 - KIKI OS 안에서 KIKI OS를 다시 빌드하는 self-hosting toolchain
 
 Stage 2 진입 조건:
@@ -226,4 +235,4 @@ Stage 2 진입 조건:
 - Stage 1 ISO로 VM 설치와 로그인, sudo, systemctl, networkctl, sshd 동작을 반복 검증한다.
 - 새 오류는 Stage 1 안정화 버그로 처리하되, 기능 범위 확장은 Stage 2 작업으로 넘긴다.
 - Stage 2의 첫 목표는 `ki2ctl` 온라인 설치 흐름, 설치된 패키지 DB,
-  CRI-O 기반 쿠버네티스 노드 준비 패키지, Go 기반 설치 계획서 TUI 승격이다.
+  CRI-O/containerd 기반 쿠버네티스 노드 준비 패키지, Go 기반 설치 계획서 TUI 승격이다.

@@ -83,6 +83,7 @@ class BuildContext:
     jobs: int
     toolchain_id: str
     dry_run: bool
+    clean_rootfs: bool
     allow_unpinned: bool
     verbose: bool
 
@@ -411,6 +412,146 @@ def local_source_inputs(ctx: BuildContext, recipe: Recipe) -> list[dict[str, str
     return inputs
 
 
+def host_file_entries(recipe: Recipe) -> list[dict[str, Any]]:
+    value = recipe.build.get("host_files", [])
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [{"source": value}]
+    if not isinstance(value, list):
+        raise Ki2Error(f"{recipe.name}: build.host_files must be a list")
+
+    entries: list[dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, str):
+            entries.append({"source": item})
+        elif isinstance(item, dict):
+            entries.append(item)
+        else:
+            raise Ki2Error(f"{recipe.name}: build.host_files entries must be strings or mappings")
+    return entries
+
+
+def host_source_path(ctx: BuildContext, value: Any, *, recipe: str) -> Path:
+    if not isinstance(value, str) or not value:
+        raise Ki2Error(f"{recipe}: build.host_files entry requires source")
+    path = Path(value)
+    return path if path.is_absolute() else ctx.repo_root / path
+
+
+def display_input_path(ctx: BuildContext, path: Path) -> str:
+    return str(path.relative_to(ctx.repo_root) if path.is_relative_to(ctx.repo_root) else path)
+
+
+def ldd_dependencies(path: Path, *, recipe: str) -> list[Path]:
+    try:
+        result = subprocess.run(["ldd", str(path)], text=True, capture_output=True, check=False)
+    except FileNotFoundError as exc:
+        raise Ki2Error(f"{recipe}: ldd is required when include_ldd is true") from exc
+
+    output = (result.stdout or "") + "\n" + (result.stderr or "")
+    if result.returncode != 0 and "not a dynamic executable" in output:
+        return []
+    if result.returncode != 0:
+        raise Ki2Error(f"{recipe}: ldd failed for {path}: {output.strip()}")
+
+    deps: list[Path] = []
+    seen: set[Path] = set()
+    for raw in output.splitlines():
+        line = raw.strip()
+        if not line or "linux-vdso" in line or "not found" in line:
+            continue
+        candidate = ""
+        if "=>" in line:
+            candidate = line.split("=>", 1)[1].strip().split(" ", 1)[0]
+        else:
+            first = line.split(" ", 1)[0]
+            if first.startswith("/"):
+                candidate = first
+        if not candidate.startswith("/"):
+            continue
+        dep = Path(candidate)
+        if dep.exists() and dep not in seen:
+            seen.add(dep)
+            deps.append(dep)
+    return deps
+
+
+HOST_LDD_CORE_RUNTIME_NAMES = {
+    "ld-linux-aarch64.so.1",
+    "ld-linux-x86-64.so.2",
+    "ld-linux.so.2",
+    "libanl.so.1",
+    "libc.so.6",
+    "libc_malloc_debug.so.0",
+    "libcrypt.so.1",
+    "libcrypt.so.2",
+    "libdl.so.2",
+    "libm.so.6",
+    "libmvec.so.1",
+    "libnsl.so.1",
+    "libnss_compat.so.2",
+    "libnss_db.so.2",
+    "libnss_dns.so.2",
+    "libnss_files.so.2",
+    "libnss_hesiod.so.2",
+    "libpthread.so.0",
+    "libresolv.so.2",
+    "librt.so.1",
+    "libthread_db.so.1",
+    "libutil.so.1",
+}
+
+
+def should_copy_host_ldd_dependency(path: Path) -> bool:
+    """Keep host-file payloads from replacing KIKI's core ABI runtime."""
+
+    name = path.name
+    if name in HOST_LDD_CORE_RUNTIME_NAMES:
+        return False
+    if name.startswith("ld-linux-"):
+        return False
+    return True
+
+
+def host_file_inputs(ctx: BuildContext, recipe: Recipe) -> list[dict[str, str]]:
+    inputs: list[dict[str, str]] = []
+    for entry in host_file_entries(recipe):
+        source = host_source_path(ctx, entry.get("source"), recipe=recipe.name)
+        optional = bool(entry.get("optional", False))
+        if not source.exists():
+            if optional:
+                inputs.append({"field": "host_files", "path": str(source), "optional": "missing"})
+                continue
+            raise Ki2Error(f"{recipe.name}: host file not found: {source}")
+
+        def add_file(path: Path, label: str = "host_files") -> None:
+            item: dict[str, str] = {
+                "field": label,
+                "path": display_input_path(ctx, path),
+            }
+            if path.is_symlink():
+                item["symlink"] = os.readlink(path)
+            if path.is_file():
+                item["sha256"] = file_sha256(path)
+            inputs.append(item)
+
+        if source.is_dir():
+            inputs.append({"field": "host_files", "path": display_input_path(ctx, source), "type": "dir"})
+            for path in sorted(source.rglob("*")):
+                if path.is_dir():
+                    continue
+                add_file(path)
+        else:
+            add_file(source)
+            if bool(entry.get("include_ldd", False)):
+                for dep in ldd_dependencies(source, recipe=recipe.name):
+                    if not should_copy_host_ldd_dependency(dep):
+                        continue
+                    add_file(dep, "host_ldd")
+    return inputs
+
+
 def normalize_dependencies(raw: dict[str, Any], origin: Path, name: str) -> dict[str, list[str]]:
     if "dependencies" in raw and "depends" in raw:
         raise Ki2Error(f"{origin}: {name} must use dependencies or depends, not both")
@@ -637,6 +778,7 @@ def build_key(recipe: Recipe, ctx: BuildContext, dep_keys: dict[str, str]) -> st
     extra_inputs.extend(build_file_inputs(ctx, recipe, "config_fragments"))
     extra_inputs.extend(build_file_inputs(ctx, recipe, "patches"))
     extra_inputs.extend(local_source_inputs(ctx, recipe))
+    extra_inputs.extend(host_file_inputs(ctx, recipe))
     return stable_hash(
         {
             "schema": "ki2-build-key-v1",
@@ -837,6 +979,8 @@ def default_commands(recipe: Recipe, env: dict[str, str]) -> list[str]:
         return []
     if system == "stage2-stub":
         return [f"# stage2-stub payload for {recipe.name}"]
+    if system == "host-files":
+        return [f"# host-files payload for {recipe.name}"]
     raise Ki2Error(f"{recipe.name}: unknown build.system {system!r}")
 
 
@@ -873,6 +1017,61 @@ def recipe_patch_commands(ctx: BuildContext, recipe: Recipe, source_dir: Path) -
     return commands
 
 
+def fetch_url_to_cache(ctx: BuildContext, recipe: Recipe, source: dict[str, Any], label: str) -> Path:
+    url = source.get("url")
+    if not url:
+        raise Ki2Error(f"{recipe.name}: source.{label}.url is required")
+    sha = str(source.get("sha256", ""))
+    filename = source.get("file") or Path(str(url)).name
+    ctx.source_cache.mkdir(parents=True, exist_ok=True)
+    archive = ctx.source_cache / str(filename)
+
+    if ctx.dry_run:
+        print(f"[fetch] {recipe.name}: {url} -> {archive}")
+        return archive
+
+    if not archive.exists():
+        print(f"[fetch] {recipe.name}: {url}")
+        urllib.request.urlretrieve(str(url), archive)
+
+    actual_sha = file_sha256(archive)
+    if sha in PIN_PLACEHOLDERS:
+        if not ctx.allow_unpinned:
+            raise Ki2Error(
+                f"{recipe.name}: source {label} sha256 is not pinned; rerun with --allow-unpinned "
+                f"after reviewing {actual_sha}"
+            )
+        print(f"[warn] {recipe.name}: using unpinned source {label} sha256 {actual_sha}")
+    elif actual_sha != sha:
+        raise Ki2Error(f"{recipe.name}: source {label} sha256 mismatch: got {actual_sha}, want {sha}")
+    return archive
+
+
+def merge_source_payload(archive: Path, target: Path) -> None:
+    target.mkdir(parents=True, exist_ok=True)
+    if tarfile.is_tarfile(archive):
+        with tempfile.TemporaryDirectory(prefix="ki2-extra-source-") as tmp:
+            extracted = Path(tmp) / "source"
+            extract_archive(archive, extracted)
+            for child in extracted.iterdir():
+                destination = target / child.name
+                if child.is_dir():
+                    shutil.copytree(child, destination, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(child, destination)
+        return
+    shutil.copy2(archive, target / archive.name)
+
+
+def source_extra_entries(recipe: Recipe) -> list[dict[str, Any]]:
+    extra = recipe.source.get("extra", [])
+    if extra is None:
+        return []
+    if not isinstance(extra, list) or not all(isinstance(item, dict) for item in extra):
+        raise Ki2Error(f"{recipe.name}: source.extra must be a list of mappings")
+    return extra
+
+
 def fetch_source(ctx: BuildContext, recipe: Recipe, work: Path) -> Path:
     source = recipe.source
     source_type = source.get("type", "url")
@@ -902,32 +1101,12 @@ def fetch_source(ctx: BuildContext, recipe: Recipe, work: Path) -> Path:
     if source_type != "url":
         raise Ki2Error(f"{recipe.name}: unsupported source.type {source_type!r}")
 
-    url = source.get("url")
-    if not url:
-        raise Ki2Error(f"{recipe.name}: source.url is required")
-    sha = str(source.get("sha256", ""))
-    filename = source.get("file") or Path(url).name
-    ctx.source_cache.mkdir(parents=True, exist_ok=True)
-    archive = ctx.source_cache / filename
+    archive = fetch_url_to_cache(ctx, recipe, source, "url")
 
     if ctx.dry_run:
-        print(f"[fetch] {recipe.name}: {url} -> {archive}")
+        for index, extra_source in enumerate(source_extra_entries(recipe), start=1):
+            fetch_url_to_cache(ctx, recipe, extra_source, f"extra[{index}]")
         return source_dir
-
-    if not archive.exists():
-        print(f"[fetch] {recipe.name}: {url}")
-        urllib.request.urlretrieve(url, archive)
-
-    actual_sha = file_sha256(archive)
-    if sha in PIN_PLACEHOLDERS:
-        if not ctx.allow_unpinned:
-            raise Ki2Error(
-                f"{recipe.name}: source sha256 is not pinned; rerun with --allow-unpinned "
-                f"after reviewing {actual_sha}"
-            )
-        print(f"[warn] {recipe.name}: using unpinned source sha256 {actual_sha}")
-    elif actual_sha != sha:
-        raise Ki2Error(f"{recipe.name}: sha256 mismatch: got {actual_sha}, want {sha}")
 
     if tarfile.is_tarfile(archive):
         extract_archive(archive, source_dir)
@@ -936,6 +1115,11 @@ def fetch_source(ctx: BuildContext, recipe: Recipe, work: Path) -> Path:
             remove_tree(source_dir)
         source_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(archive, source_dir / archive.name)
+
+    for index, extra_source in enumerate(source_extra_entries(recipe), start=1):
+        extra_archive = fetch_url_to_cache(ctx, recipe, extra_source, f"extra[{index}]")
+        merge_source_payload(extra_archive, source_dir)
+
     children = [child for child in source_dir.iterdir()]
     if len(children) == 1 and children[0].is_dir():
         return children[0]
@@ -965,11 +1149,30 @@ def run_shell(command: str, env: dict[str, str], cwd: Path, dry_run: bool) -> No
     subprocess.run(command, shell=True, cwd=cwd, env=merged_env, check=True)
 
 
+SOURCE_COPY_IGNORE_NAMES = {
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+}
+SOURCE_COPY_IGNORE_SUFFIXES = (".pyc", ".pyo")
+
+
+def should_ignore_source_copy_entry(name: str) -> bool:
+    return name in SOURCE_COPY_IGNORE_NAMES or name.endswith(SOURCE_COPY_IGNORE_SUFFIXES)
+
+
+def copy_source_ignore(_directory: str, names: list[str]) -> set[str]:
+    return {name for name in names if should_ignore_source_copy_entry(name)}
+
+
 def copy_source_to_dest(source_dir: Path, destdir: Path) -> None:
     for child in source_dir.iterdir():
+        if should_ignore_source_copy_entry(child.name):
+            continue
         target = destdir / child.name
         if child.is_dir():
-            shutil.copytree(child, target, dirs_exist_ok=True)
+            shutil.copytree(child, target, dirs_exist_ok=True, ignore=copy_source_ignore)
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(child, target)
@@ -1031,7 +1234,8 @@ def stage2_stub_string_list(value: Any, *, field: str, recipe: str) -> list[str]
 def write_rootfs_text(destdir: Path, path: str, content: str, mode: int, *, field: str, recipe: str) -> None:
     target = destdir / rootfs_relative_path(path, field=field, recipe=recipe)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8", newline="\n")
+    with target.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(content)
     target.chmod(mode)
 
 
@@ -1066,6 +1270,8 @@ def stage2_stub_service(recipe: Recipe, entry: dict[str, Any]) -> str:
     wanted_by = str(entry.get("wanted_by") or "multi-user.target")
     after = stage2_stub_string_list(entry.get("after"), field=f"services.{name}.after", recipe=recipe.name)
     wants = stage2_stub_string_list(entry.get("wants"), field=f"services.{name}.wants", recipe=recipe.name)
+    environment = stage2_stub_string_list(entry.get("environment"), field=f"services.{name}.environment", recipe=recipe.name)
+    environment_files = stage2_stub_string_list(entry.get("environment_files"), field=f"services.{name}.environment_files", recipe=recipe.name)
 
     lines = [
         "[Unit]",
@@ -1083,6 +1289,14 @@ def stage2_stub_service(recipe: Recipe, entry: dict[str, Any]) -> str:
             "",
             "[Service]",
             f"Type={service_type}",
+        ]
+    )
+    for value in environment:
+        lines.append(f"Environment={value}")
+    for value in environment_files:
+        lines.append(f"EnvironmentFile={value}")
+    lines.extend(
+        [
             f"ExecStart={exec_start}",
             "",
             "[Install]",
@@ -1189,6 +1403,95 @@ def install_stage2_stub(ctx: BuildContext, recipe: Recipe, destdir: Path) -> Non
         field="metadata",
         recipe=recipe.name,
     )
+
+
+def install_stage2_support_files(recipe: Recipe, destdir: Path) -> None:
+    stub = recipe.build.get("stub", {})
+    if stub is None:
+        stub = {}
+    if not isinstance(stub, dict):
+        raise Ki2Error(f"{recipe.name}: build.stub must be a mapping")
+
+    services = stage2_stub_list(stub.get("services"), field="services", recipe=recipe.name)
+    files = stage2_stub_list(stub.get("files"), field="files", recipe=recipe.name)
+    directories = stage2_stub_string_list(stub.get("directories"), field="directories", recipe=recipe.name)
+
+    for directory in directories:
+        target = destdir / rootfs_relative_path(directory, field="directories", recipe=recipe.name)
+        target.mkdir(parents=True, exist_ok=True)
+
+    for entry in services:
+        name = str(entry.get("name") or "")
+        if not name:
+            raise Ki2Error(f"{recipe.name}: build.stub.services entry requires name")
+        write_rootfs_text(
+            destdir,
+            f"/usr/lib/systemd/system/{name}",
+            stage2_stub_service(recipe, entry),
+            0o644,
+            field="services",
+            recipe=recipe.name,
+        )
+
+    for entry in files:
+        path = str(entry.get("path") or "")
+        if not path:
+            raise Ki2Error(f"{recipe.name}: build.stub.files entry requires path")
+        content = stage2_stub_file_content(entry, recipe=recipe.name)
+        write_rootfs_text(
+            destdir,
+            path,
+            content,
+            parse_file_mode(entry.get("mode"), default=0o644),
+            field="files",
+            recipe=recipe.name,
+        )
+
+
+def host_file_destination(entry: dict[str, Any], source: Path, *, recipe: str) -> str:
+    destination = entry.get("destination", entry.get("dest"))
+    if destination is None:
+        destination = str(source)
+    if not isinstance(destination, str) or not destination:
+        raise Ki2Error(f"{recipe}: build.host_files.destination must be a non-empty string")
+    return destination
+
+
+def copy_host_file(source: Path, destdir: Path, destination: str, mode: int | None, *, recipe: str) -> None:
+    target = destdir / rootfs_relative_path(destination, field="host_files.destination", recipe=recipe)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target, follow_symlinks=True)
+    if mode is not None:
+        target.chmod(mode)
+
+
+def install_host_files(ctx: BuildContext, recipe: Recipe, destdir: Path) -> None:
+    for entry in host_file_entries(recipe):
+        source = host_source_path(ctx, entry.get("source"), recipe=recipe.name)
+        optional = bool(entry.get("optional", False))
+        if not source.exists():
+            if optional:
+                continue
+            raise Ki2Error(f"{recipe.name}: host file not found: {source}")
+
+        destination = host_file_destination(entry, source, recipe=recipe.name)
+        mode = parse_file_mode(entry.get("mode"), default=-1)
+        chmod_mode = None if mode < 0 else mode
+
+        if source.is_dir():
+            if not bool(entry.get("recursive", False)):
+                raise Ki2Error(f"{recipe.name}: directory host file requires recursive: true: {source}")
+            target = destdir / rootfs_relative_path(destination, field="host_files.destination", recipe=recipe.name)
+            shutil.copytree(source, target, dirs_exist_ok=True, symlinks=False)
+        else:
+            copy_host_file(source, destdir, destination, chmod_mode, recipe=recipe.name)
+            if bool(entry.get("include_ldd", False)):
+                for dep in ldd_dependencies(source, recipe=recipe.name):
+                    if not should_copy_host_ldd_dependency(dep):
+                        continue
+                    copy_host_file(dep, destdir, str(dep), None, recipe=recipe.name)
+
+    install_stage2_support_files(recipe, destdir)
 
 
 def remove_tree(path: Path) -> None:
@@ -1368,6 +1671,50 @@ def extract_package_rootfs(package: Path, target: Path) -> None:
                 os.chmod(extracted, mode)
 
 
+def package_manifest_files(manifest: dict[str, Any]) -> list[str]:
+    files = manifest.get("files", [])
+    if not isinstance(files, list):
+        return []
+    paths: list[str] = []
+    for entry in files:
+        if not isinstance(entry, dict):
+            continue
+        path = str(entry.get("path") or "")
+        if path:
+            paths.append(path)
+    return sorted(paths)
+
+
+def write_rootfs_installed_state(rootfs: Path, packages: list[tuple[Path, dict[str, Any]]]) -> None:
+    state_dir = rootfs / "var" / "lib" / "ki2"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    records: dict[str, Any] = {}
+    installed_at = dt.datetime.now(UTC).isoformat()
+    for package_path, manifest in packages:
+        name = str(manifest.get("name") or package_path.name)
+        records[name] = {
+            "name": name,
+            "version": str(manifest.get("version") or ""),
+            "release": str(manifest.get("release") or ""),
+            "arch": str(manifest.get("arch") or ""),
+            "file": package_path.name,
+            "sha256": file_sha256(package_path),
+            "summary": str(manifest.get("summary") or ""),
+            "dependencies": manifest.get("dependencies", {}),
+            "repository": {"name": "rootfs-assembly", "url": ""},
+            "installed_at": installed_at,
+            "files": package_manifest_files(manifest),
+        }
+    installed = {
+        "schema": "ki2-installed-v1",
+        "created_at": installed_at,
+        "packages": records,
+    }
+    (state_dir / "installed.json").write_text(json.dumps(installed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    installed_list = "\n".join(sorted(records))
+    (state_dir / "installed.list").write_text(installed_list + ("\n" if installed_list else ""), encoding="utf-8")
+
+
 def systemd_unit_path(rootfs: Path, unit: str) -> Path | None:
     candidates = [
         rootfs / "etc" / "systemd" / "system" / unit,
@@ -1499,6 +1846,13 @@ def package_artifact_by_name(ctx: BuildContext, name: str) -> Path | None:
     return max(matches, key=lambda item: item[0])[1] if matches else None
 
 
+def package_artifact_for_recipe(ctx: BuildContext, recipe: Recipe) -> Path | None:
+    output = package_path(ctx, recipe)
+    if output.exists():
+        return output
+    return package_artifact_by_name(ctx, recipe.name)
+
+
 def prepare_sysroot(
     ctx: BuildContext,
     recipe: Recipe,
@@ -1564,7 +1918,8 @@ def build_recipes(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list[s
         build_dir.mkdir(parents=True, exist_ok=True)
         destdir.mkdir(parents=True, exist_ok=True)
 
-        prepare_sysroot(ctx, recipe, recipes, state)
+        if recipe.build.get("system") != "host-files":
+            prepare_sysroot(ctx, recipe, recipes, state)
         source_dir = fetch_source(ctx, recipe, work)
         env = command_env(ctx, recipe, work, source_dir, build_dir, destdir)
 
@@ -1576,9 +1931,13 @@ def build_recipes(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list[s
             copy_source_to_dest(source_dir, destdir)
         elif recipe.build.get("system") == "stage2-stub":
             install_stage2_stub(ctx, recipe, destdir)
+        elif recipe.build.get("system") == "host-files":
+            install_host_files(ctx, recipe, destdir)
         else:
             for command in commands:
                 run_shell(command, env, work, dry_run=False)
+            if recipe.build.get("system") == "upstream-binary":
+                install_stage2_support_files(recipe, destdir)
 
         create_package(ctx, recipe, destdir, output, key, dep_keys)
         state[name] = make_build_record(ctx, recipe, output, key, dep_keys)
@@ -1588,8 +1947,18 @@ def build_recipes(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list[s
 def write_repo_index(ctx: BuildContext) -> None:
     packages_root = ctx.packages_dir / ctx.arch
     packages: list[dict[str, Any]] = []
+    current_files: set[str] = set()
+    if ctx.recipe_dir.exists():
+        recipes = load_recipes(ctx.recipe_dir)
+        current_files = {
+            package_filename(recipe, ctx.arch)
+            for recipe in recipes.values()
+            if recipe.supports_arch(ctx.arch)
+        }
     if packages_root.exists():
         for path in sorted(packages_root.glob("*.ki2")):
+            if current_files and path.name not in current_files:
+                continue
             manifest = read_package_manifest(path)
             dependencies = manifest.get(
                 "dependencies",
@@ -1624,24 +1993,29 @@ def write_repo_index(ctx: BuildContext) -> None:
     print(f"[repo] wrote {out} ({len(packages)} packages)")
 
 
-def assemble_rootfs(ctx: BuildContext, ordered: list[str], profile: dict[str, Any] | None = None) -> None:
+def assemble_rootfs(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list[str], profile: dict[str, Any] | None = None) -> None:
     if ctx.rootfs_dir is None:
         raise Ki2Error("--rootfs-dir is required for rootfs assembly")
+    if ctx.clean_rootfs and ctx.rootfs_dir.exists() and not ctx.dry_run:
+        shutil.rmtree(ctx.rootfs_dir)
     if ctx.dry_run:
         print(f"[rootfs] would assemble {ctx.rootfs_dir}")
     else:
         ctx.rootfs_dir.mkdir(parents=True, exist_ok=True)
 
     missing: list[str] = []
+    installed_packages: list[tuple[Path, dict[str, Any]]] = []
     for name in ordered:
-        package = package_artifact_by_name(ctx, name)
+        package = package_artifact_for_recipe(ctx, recipes[name])
         if package is None:
             missing.append(name)
             continue
         print(f"[rootfs] {package.name}")
         if ctx.dry_run:
             continue
+        manifest = read_package_manifest(package)
         extract_package_rootfs(package, ctx.rootfs_dir)
+        installed_packages.append((package, manifest))
 
     if missing:
         raise Ki2Error("missing package artifacts: " + ", ".join(missing))
@@ -1651,6 +2025,8 @@ def assemble_rootfs(ctx: BuildContext, ordered: list[str], profile: dict[str, An
         enable = services.get("enable", [])
         if isinstance(enable, list) and not ctx.dry_run:
             enable_systemd_units(ctx.rootfs_dir, [unit for unit in enable if isinstance(unit, str)])
+    if not ctx.dry_run:
+        write_rootfs_installed_state(ctx.rootfs_dir, installed_packages)
 
 
 def command_list(args: argparse.Namespace) -> None:
@@ -1692,6 +2068,7 @@ def make_context(args: argparse.Namespace) -> BuildContext:
         jobs=args.jobs,
         toolchain_id=args.toolchain_id,
         dry_run=args.dry_run,
+        clean_rootfs=getattr(args, "clean_rootfs", False),
         allow_unpinned=args.allow_unpinned,
         verbose=args.verbose,
     )
@@ -1702,6 +2079,15 @@ def command_build(args: argparse.Namespace) -> None:
     profile = load_profile(args.profile)
     validate_recipes(recipes, args.arch, profile, None)
     ordered = dependency_closure(recipes, list(profile["packages"]), args.arch, include_build_deps=True)
+    if args.only:
+        requested = set(args.only)
+        unknown = requested - set(recipes)
+        if unknown:
+            raise Ki2Error(f"unknown --only package(s): {', '.join(sorted(unknown))}")
+        outside_profile = requested - set(ordered)
+        if outside_profile:
+            raise Ki2Error(f"--only package(s) are not in the selected profile closure: {', '.join(sorted(outside_profile))}")
+        ordered = [name for name in ordered if name in requested]
     build_recipes(make_context(args), recipes, ordered)
 
 
@@ -1713,7 +2099,7 @@ def command_rootfs(args: argparse.Namespace) -> None:
     recipes = load_recipes(args.recipe_dir)
     profile = load_profile(args.profile)
     ordered = dependency_closure(recipes, list(profile["packages"]), args.arch, include_build_deps=False)
-    assemble_rootfs(make_context(args), ordered, profile)
+    assemble_rootfs(make_context(args), recipes, ordered, profile)
 
 
 def add_common_options(parser: argparse.ArgumentParser) -> None:
@@ -1733,6 +2119,7 @@ def add_build_paths(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--source-cache", type=Path, default=None)
     parser.add_argument("--rootfs-dir", type=Path, default=None)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--clean-rootfs", action="store_true", help="remove --rootfs-dir before assembling a rootfs")
     parser.add_argument("--allow-unpinned", action="store_true")
 
 
@@ -1781,6 +2168,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     build_parser_cmd = subcommands.add_parser("build", help="build packages for a profile")
     build_parser_cmd.add_argument("--profile", type=Path, required=True)
+    build_parser_cmd.add_argument("--only", nargs="+", default=[], help="build only these packages from the selected profile closure")
     add_build_paths(build_parser_cmd)
     build_parser_cmd.set_defaults(func=command_build)
 

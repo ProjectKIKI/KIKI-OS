@@ -26,9 +26,10 @@ publish/
 런타임 의존성을 담는다. `ki2ctl`은 이 인덱스를 내려받은 뒤 필요한 `.ki2`
 파일을 HTTP로 가져와 대상 rootfs에 추출한다.
 
-현재 Stage 2 초반 기준으로 저장소 서명은 아직 구현 전이다. 인덱스의 sha256으로
-패키지 파일 무결성은 검증하지만, 저장소 메타데이터 자체의 서명 검증은 이후
-작업으로 남겨둔다.
+현재 Stage 2 V2 기준으로 저장소 메타데이터는 개발용 HMAC-SHA256 방식으로
+서명하고 검증할 수 있다. 인덱스의 sha256으로 패키지 파일 무결성을 확인하고,
+`metadata.x86_64.json`의 서명으로 저장소 메타데이터와 index 해시를 함께
+검증한다. 운영 배포에서는 HMAC 대신 공개키 기반 서명으로 교체하는 것이 맞다.
 
 ## 빌드 서버 준비
 
@@ -61,11 +62,14 @@ dist/ki2/repo/index.x86_64.json
 Stage 2부터는 저장소 운영 메타데이터도 함께 생성할 수 있다.
 
 ```bash
+python3 tools/ki2repo.py keygen --output build/ki2/keys/stage2-v2-repo.hmac --force
 python3 tools/ki2repo.py generate \
   --name kiki-os \
   --title "KIKI OS Package Repository" \
   --channel stage2-v2 \
-  --base-url http://repo.example.internal:8080
+  --base-url http://repo.example.internal:8080 \
+  --sign-key build/ki2/keys/stage2-v2-repo.hmac
+python3 tools/ki2repo.py verify --key build/ki2/keys/stage2-v2-repo.hmac
 ```
 
 생성되는 메타데이터:
@@ -135,7 +139,9 @@ dist/iso/                      -> <target>/iso/
 
 ```bash
 python3 tools/ki2build.py build --profile distro/profiles/minimal-systemd.toml --allow-unpinned
-python3 tools/ki2repo.py generate --channel stage2-v2 --base-url http://repo.example.internal:8080
+python3 tools/ki2repo.py keygen --output build/ki2/keys/stage2-v2-repo.hmac --force
+python3 tools/ki2repo.py generate --channel stage2-v2 --base-url http://repo.example.internal:8080 --sign-key build/ki2/keys/stage2-v2-repo.hmac
+python3 tools/ki2repo.py verify --key build/ki2/keys/stage2-v2-repo.hmac
 python3 tools/ki2publish.py --target /srv/www/kiki
 ```
 
@@ -165,8 +171,8 @@ server {
 ```
 
 운영 환경에서는 저장소 서버를 사설망, VPN, 방화벽 또는 인증 리버스 프록시 뒤에
-둔다. Stage 2 초반에는 저장소 서명이 없으므로, 신뢰할 수 없는 네트워크에 직접
-노출하지 않는다.
+둔다. Stage 2 V2의 HMAC 서명은 개발/랩 검증용이므로, 신뢰할 수 없는 네트워크에
+직접 노출하지 않는다.
 
 ## KIKI OS에서 저장소 등록
 
@@ -175,6 +181,24 @@ server {
 ```bash
 sudo ki2ctl repo set http://repo.example.internal:8080
 sudo ki2ctl repo list
+```
+
+Disconnected 설치나 ISO 내부 저장소를 사용할 때는 로컬 경로나 `file://` URL을
+그대로 등록할 수 있다.
+
+```bash
+sudo ki2ctl repo set /run/install-media/kiki
+sudo ki2ctl update
+
+ki2ctl --repo file:///srv/kiki-mirror info systemd
+```
+
+저장소를 교체하거나 mirror 테스트를 끝낸 뒤에는 설정과 캐시된 인덱스를 함께
+정리할 수 있다.
+
+```bash
+sudo ki2ctl repo remove
+sudo ki2ctl repo remove lab-mirror
 ```
 
 저장소 설정 파일은 다음 위치에 저장된다.
@@ -278,7 +302,7 @@ sudo ki2ctl upgrade ki2ctl
 ```
 
 현재 `upgrade`는 설치된 패키지 DB와 저장소 인덱스의 최신 버전을 비교해서 더 높은
-버전/릴리스가 있을 때 다시 설치한다. Stage 2 초반 기준으로 파일 충돌 탐지와
+버전/릴리스가 있을 때 다시 설치한다. Stage 2 V2 기준으로 파일 충돌 탐지와
 기본 트랜잭션 rollback은 들어갔지만, systemd hook, pre/post script, 완전한
 스냅샷 rollback은 아직 남은 작업이다.
 
@@ -320,15 +344,17 @@ python3 -m http.server 8080 --directory /srv/www/kiki
 
 1. 패키지 레시피 또는 소스 수정
 2. 필요한 패키지 빌드
-3. `python3 tools/ki2repo.py generate --channel stage2-v2 --base-url http://repo.example.internal:8080`
-4. `python3 tools/ki2publish.py --target /srv/www/kiki`
-5. 클라이언트에서 `sudo ki2ctl update`
-6. `sudo ki2ctl upgrade --dry-run`
-7. 문제가 없으면 `sudo ki2ctl upgrade`
+3. `python3 tools/ki2ci.py run stage2`
+4. 외부 URL로 다시 게시하려면 `python3 tools/ki2repo.py generate --channel stage2-v2 --base-url http://repo.example.internal:8080 --sign-key build/ki2/keys/stage2-v2-repo.hmac`
+5. `python3 tools/ki2repo.py verify --key build/ki2/keys/stage2-v2-repo.hmac`
+6. `python3 tools/ki2publish.py --target /srv/www/kiki`
+7. 클라이언트에서 `sudo ki2ctl update`
+8. `sudo ki2ctl upgrade --dry-run`
+9. 문제가 없으면 `sudo ki2ctl upgrade`
 
 ## Stage 2 남은 저장소 작업
 
-- 저장소 인덱스 서명과 공개키 배포
+- HMAC 개발용 서명을 공개키 기반 저장소 서명으로 교체
 - 패키지 파일 서명 또는 manifest 서명
 - 디렉터리 정리까지 포함하는 완전한 rollback
 - pre/post install/remove hook 정책

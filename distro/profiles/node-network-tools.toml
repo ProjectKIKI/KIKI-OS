@@ -28,4 +28,5 @@ packages = [
   "bridge-utils",
   "socat",
   "ethtool",
+  "chrony",
 ]

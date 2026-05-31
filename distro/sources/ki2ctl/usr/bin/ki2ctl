@@ -45,9 +45,12 @@ def norm_url(url: str) -> str:
     value = url.strip()
     if not value:
         raise Ki2CtlError("repository URL is empty")
-    if not value.startswith(("http://", "https://")):
-        raise Ki2CtlError("repository URL must start with http:// or https://")
-    return value.rstrip("/")
+    if value.startswith(("http://", "https://", "file://")):
+        return value.rstrip("/")
+    path = Path(value).expanduser()
+    if path.is_absolute() or value.startswith(".") or "/" in value or (os.altsep and os.altsep in value):
+        return path.resolve().as_uri().rstrip("/")
+    raise Ki2CtlError("repository URL must start with http://, https://, file://, or be a local path")
 
 
 def root_join(root: Path, *parts: str) -> Path:
@@ -85,6 +88,10 @@ def pending_hooks_path(root: Path) -> Path:
 
 def repo_file(root: Path, name: str) -> Path:
     return repo_config_dir(root) / f"{name}.repo"
+
+
+def valid_repo_name(name: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9._-]+", name)) and name not in (".", "..")
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
@@ -728,6 +735,8 @@ def execute_install_plan(args: argparse.Namespace, plan: list[tuple[Repo, dict[s
 
 def command_repo_set(args: argparse.Namespace) -> None:
     name = args.name or DEFAULT_REPO_NAME
+    if not valid_repo_name(name):
+        raise Ki2CtlError(f"invalid repository name: {name}")
     data = {
         "schema": "ki2-repo-config-v1",
         "name": name,
@@ -736,6 +745,25 @@ def command_repo_set(args: argparse.Namespace) -> None:
     path = repo_file(args.root, name)
     write_json(path, data)
     print(f"repo {name}: {data['url']}")
+
+
+def command_repo_remove(args: argparse.Namespace) -> None:
+    name = args.name or DEFAULT_REPO_NAME
+    if not valid_repo_name(name):
+        raise Ki2CtlError(f"invalid repository name: {name}")
+    removed = False
+    path = repo_file(args.root, name)
+    if path.exists():
+        path.unlink()
+        removed = True
+    state = repo_state_dir(args.root, name)
+    if state.exists():
+        shutil.rmtree(state)
+        removed = True
+    if removed:
+        print(f"removed repo {name}")
+    else:
+        print(f"repo {name} is not configured")
 
 
 def command_repo_list(args: argparse.Namespace) -> None:
@@ -921,16 +949,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="KIKI HTTP package manager")
     parser.add_argument("--root", type=Path, default=Path("/"), help="target root, defaults to /")
     parser.add_argument("--arch", default=DEFAULT_ARCH)
-    parser.add_argument("--repo", default="", help="temporary repository base URL")
+    parser.add_argument("--repo", default="", help="temporary repository base URL or local path")
     parser.add_argument("--version", action="version", version=f"ki2ctl {APP_VERSION}")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     repo = subcommands.add_parser("repo", help="manage repositories")
     repo_sub = repo.add_subparsers(dest="repo_command", required=True)
-    repo_set = repo_sub.add_parser("set", help="set a repository URL")
+    repo_set = repo_sub.add_parser("set", help="set a repository URL or local path")
     repo_set.add_argument("url")
     repo_set.add_argument("--name", default=DEFAULT_REPO_NAME)
     repo_set.set_defaults(func=command_repo_set)
+    repo_remove = repo_sub.add_parser("remove", help="remove a repository config and cached index")
+    repo_remove.add_argument("name", nargs="?", default=DEFAULT_REPO_NAME)
+    repo_remove.set_defaults(func=command_repo_remove)
     repo_list = repo_sub.add_parser("list", help="list configured repositories")
     repo_list.set_defaults(func=command_repo_list)
 

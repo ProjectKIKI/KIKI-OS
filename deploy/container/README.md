@@ -49,6 +49,11 @@ podman run --rm -it \
   -v "$PWD:/work" \
   -e KIKI_JOBS="$(nproc)" \
   kiki-buildd:rocky9 run smoke
+
+podman run --rm -it \
+  -v "$PWD:/work" \
+  -e KIKI_JOBS="$(nproc)" \
+  kiki-buildd:rocky9 run stage2
 ```
 
 사용 가능한 파이프라인:
@@ -57,6 +62,7 @@ podman run --rm -it \
 smoke
 bootstrap
 minimal-systemd
+stage2
 security
 iso
 bootiso

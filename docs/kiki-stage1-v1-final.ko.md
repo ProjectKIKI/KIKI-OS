@@ -50,8 +50,8 @@ Stage 1 V1은 완성형 운영 배포판이 아니라 “설치 가능한 최소
 - 무인 설치
 - disconnected mirror 설치
 - PXE 또는 네트워크 부팅 설치
-- Go TUI를 주 설치기로 승격
-- CRI-O, CNI, kubelet, kubeadm, kubectl 실제 바이너리 패키징
+- Go TUI를 단독 설치기로 승격
+- CRI-O, CNI, kubelet, kubeadm, kubectl의 Stage 2/3 패키징
 - Kubernetes bootstrap/control/compute 노드 자동 가입
 - KIKI OS 안에서 KIKI OS를 다시 빌드하는 self-hosting toolchain
 
@@ -101,12 +101,12 @@ ISO 생성을 요청하지 않은 일반 작업에서는 마지막 명령을 실
 
 ## Stage 2로 넘기는 기준
 
-다음 작업은 `stage2-v2` 진행형 문서에서 관리한다.
+다음 작업은 `stage2-v2` 완료 문서와 Stage 3 계획에서 관리한다.
 
 - `ki2ctl` 온라인 설치 흐름
 - HTTP 저장소 metadata와 channel 운영
 - 저장소 서명
-- Go TUI 설치 계획서 주 설치기 승격
+- Go TUI 설치 계획서 단독 설치기 승격
 - Kubernetes 패키지 프로파일
 - CRI-O/containerd 런타임 선택
 - bootstrap/control/compute 노드 역할

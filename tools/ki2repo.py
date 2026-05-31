@@ -15,6 +15,9 @@ import tarfile
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ki2build  # type: ignore  # noqa: E402
+
 
 UTC = dt.timezone.utc
 INDEX_SCHEMA = "ki2-repository-v1"
@@ -101,11 +104,25 @@ def package_entry(path: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def scan_packages(packages_dir: Path, arch: str) -> list[dict[str, Any]]:
+def current_recipe_package_files(repo_root: Path, arch: str) -> set[str] | None:
+    recipe_dir = repo_root / "distro" / "recipes"
+    if not recipe_dir.exists():
+        return None
+    recipes = ki2build.load_recipes(recipe_dir)
+    return {
+        ki2build.package_filename(recipe, arch)
+        for recipe in recipes.values()
+        if recipe.supports_arch(arch)
+    }
+
+
+def scan_packages(packages_dir: Path, arch: str, *, current_files: set[str] | None = None) -> list[dict[str, Any]]:
     if not packages_dir.exists():
         raise Ki2RepoError(f"package directory not found: {packages_dir}")
     packages: list[dict[str, Any]] = []
     for path in sorted(packages_dir.glob("*.ki2")):
+        if current_files is not None and path.name not in current_files:
+            continue
         manifest = read_package_manifest(path)
         package_arch = str(manifest.get("arch", ""))
         if package_arch not in (arch, "all"):
@@ -341,7 +358,11 @@ def build_channels(
 
 def generate(args: argparse.Namespace) -> dict[str, Any]:
     created_at = dt.datetime.now(UTC).isoformat()
-    packages = scan_packages(args.packages_dir, args.arch)
+    packages = scan_packages(
+        args.packages_dir,
+        args.arch,
+        current_files=current_recipe_package_files(args.repo_root, args.arch),
+    )
     index = build_index(packages, args.arch, created_at)
     index_path = args.repo_dir / f"index.{args.arch}.json"
     write_json(index_path, index)

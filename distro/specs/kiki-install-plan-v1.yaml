@@ -1,6 +1,6 @@
 schema: kiki-install-plan-spec-v1
 name: kiki-install-plan-v1
-status: draft
+status: stage2-v2
 description: stage-1 TUI 설치기와 향후 웹 설치기가 공유할 선언형 설치 계획서 계약.
 
 document:
@@ -22,10 +22,12 @@ required:
   - packages
   - services
   - boot
-
-optional:
   - runtime
+  - kubernetes
   - firewall
+  - artifacts
+
+optional: []
 
 fields:
   schema: kiki-install-plan-v1이어야 한다.
@@ -71,10 +73,14 @@ identity:
 network:
   manager: 네트워크 관리 구성요소. 기본값은 systemd-networkd이다.
   resolver: DNS resolver 구성요소. 기본값은 systemd-resolved이다.
-  mode: dhcp 또는 off. 기본값은 dhcp이다.
+  mode: dhcp, static, off 중 하나. 기본값은 dhcp이다.
   interface_match: systemd-networkd Match Name 값. 기본값은 en* eth*이다.
   dhcp4: DHCPv4 사용 여부.
   ipv6_accept_ra: IPv6 Router Advertisement 수락 여부.
+  address: static 모드에서 사용할 CIDR 표기 IPv4 주소. 예: 192.168.122.50/24.
+  gateway: static 모드에서 사용할 기본 게이트웨이. 없으면 빈 문자열.
+  dns: static 모드에서 사용할 DNS 서버 목록. 공백 구분 문자열.
+  ntp: static 모드에서 사용할 NTP 서버 목록. 공백 구분 문자열.
 
 users:
   admin:
@@ -106,10 +112,25 @@ runtime:
   cgroup_driver: systemd를 기본값으로 한다.
   swap_policy: system, disabled, kubernetes-off 중 하나.
 
+kubernetes:
+  role: none, bootstrap-control-plane, control-plane, compute 중 하나.
+  kubeadm:
+    config_api: kubeadm.k8s.io/v1beta4를 사용한다.
+    action: none, init, join 중 하나.
+    config_template: kubeadm 로컬 설정을 만들 때 사용할 템플릿 경로.
+    config_output: 렌더링된 로컬 kubeadm 설정 경로. 기본값은 /etc/kubernetes/kiki/kubeadm.local.yaml이다.
+    command: 운영자가 실행하거나 자동화가 호출할 kubeadm 명령.
+    control_plane: bootstrap/control-plane 역할이면 true, compute 역할이면 false.
+    cri_socket: 선택한 CRI 런타임의 kubelet/kubeadm endpoint.
+
 firewall:
   backend: nftables를 기본값으로 한다.
   firewalld: firewalld 서비스를 활성화할지 여부. Kubernetes 노드 기본값은 false이다.
   bridge_tool: bridge 점검 도구. 기본값은 iproute2 bridge이다.
+
+artifacts:
+  runtime_plan: 설치 중 생성된 계획서 경로. 기본값은 /run/kiki/install-plan.yaml이다.
+  installed_plan: 설치 후 대상 rootfs에 보존할 계획서 경로. 기본값은 /var/lib/ki2/install-plan.yaml이다.
 
 safety:
   rules:
@@ -118,3 +139,8 @@ safety:
     - 자동 모드는 /dev/sda1 같은 파티션 경로를 대상 디스크로 거부해야 한다.
     - 수동 모드는 운영자가 명시한 파티션 경로만 포맷할 수 있다.
     - 생성된 계획서는 패키지 추출 후 /var/lib/ki2/install-plan.yaml에 복사해야 한다.
+    - Kubernetes 프로파일은 swap을 기본적으로 비활성화하고 swap_policy를 kubernetes-off로 기록해야 한다.
+    - containerd 프로파일은 cri_socket을 unix:///run/containerd/containerd.sock으로 기록해야 한다.
+    - CRI-O 프로파일은 cri_socket을 unix:///var/run/crio/crio.sock으로 기록해야 한다.
+    - 무인 설치는 kiki.autoinstall=erase 또는 kiki.autoinstall=quick-vm이 명시된 경우에만 콘솔 확인을 생략할 수 있다.
+    - 무인 설치의 kiki.target 값도 /dev/sda 같은 전체 디스크여야 하며 파티션 경로는 거부해야 한다.

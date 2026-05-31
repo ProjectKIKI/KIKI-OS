@@ -1,0 +1,91 @@
+install_plan:
+  name: kiki-kube-bootstrap-containerd
+  description: 첫 Kubernetes control-plane 부트스트랩 노드를 containerd 런타임으로 설치하는 계획서.
+  profile: kiki-kube-bootstrap-containerd
+  target:
+    partition_table: gpt
+    efi_system_partition:
+      size: 512MiB
+      filesystem: vfat
+      mountpoint: /boot/efi
+    root:
+      filesystem: ext4
+      mountpoint: /
+      min_size: 32GiB
+    swap:
+      enabled: false
+      policy: kubernetes-off
+  package_sets:
+    base:
+      - base-files
+      - linux
+      - ncurses
+      - cfdisk
+      - systemd
+      - openssh
+      - ca-certificates
+    kubernetes_control_plane:
+      - runc
+      - containerd
+      - cni-plugins
+      - cri-tools
+      - kubelet
+      - kubeadm
+      - kubectl
+      - kube-node-config-containerd
+    network:
+      - iproute2
+      - iptables
+      - nftables
+      - conntrack-tools
+      - firewalld
+      - bridge-utils
+      - socat
+      - ethtool
+      - chrony
+      - kiki-installer-tui
+  prompts:
+    role:
+      default: bootstrap-control-plane
+      choices:
+        - bootstrap-control-plane
+    node_name:
+      default: kiki-bootstrap
+    pod_cidr:
+      default: 10.244.0.0/16
+    service_cidr:
+      default: 10.96.0.0/12
+    control_plane_endpoint:
+      default: ""
+  post_install:
+    enable_services:
+      - dbus.service
+      - getty@tty1.service
+      - systemd-logind.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+      - containerd.service
+      - kubelet.service
+      - chronyd.service
+    write_files:
+      - path: /etc/kiki/install-role
+        content: bootstrap-control-plane
+  runtime:
+    container_runtime: containerd
+    cgroup_driver: systemd
+    swap_policy: kubernetes-off
+  kubernetes:
+    role: bootstrap-control-plane
+    kubeadm:
+      config_api: kubeadm.k8s.io/v1beta4
+      action: init
+      config_template: /etc/kubernetes/kiki/kubeadm-init.yaml
+      config_output: /etc/kubernetes/kiki/kubeadm.local.yaml
+      command: kubeadm init --config /etc/kubernetes/kiki/kubeadm.local.yaml
+      control_plane: true
+      cri_socket: unix:///run/containerd/containerd.sock
+  firewall:
+    backend: nftables
+    firewalld: true
+    bridge_tool: iproute2 bridge

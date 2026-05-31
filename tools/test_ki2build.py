@@ -216,6 +216,137 @@ enable = ["test.service"]
             self.assertTrue((root / "dist/rootfs/etc/systemd/system/multi-user.target.wants/test.service").exists())
             self.assertTrue((root / "dist/rootfs/etc/systemd/system/sysinit.target.wants/helper.service").exists())
             self.assertTrue((root / "dist/rootfs/etc/systemd/system/test-alias.service").exists())
+            installed = json.loads((root / "dist/rootfs/var/lib/ki2/installed.json").read_text(encoding="utf-8"))
+            self.assertEqual(installed["schema"], "ki2-installed-v1")
+            self.assertEqual(set(installed["packages"]), {"app", "app-tools", "base", "middle"})
+            self.assertEqual(installed["packages"]["app"]["dependencies"]["runtime"], ["middle"])
+            self.assertIn("/usr/bin/hello", installed["packages"]["app"]["files"])
+            self.assertEqual(
+                (root / "dist/rootfs/var/lib/ki2/installed.list").read_text(encoding="utf-8").splitlines(),
+                ["app", "app-tools", "base", "middle"],
+            )
+
+    def test_host_files_build_copies_payload_and_support_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "distro/recipes").mkdir(parents=True)
+            (root / "distro/profiles").mkdir(parents=True)
+            host_tool = root / "host/bin/host-tool"
+            host_tool.parent.mkdir(parents=True)
+            host_tool.write_bytes(b"#!/bin/sh\necho host-tool\n")
+            host_tool.chmod(0o700)
+
+            (root / "distro/recipes/host.toml").write_text(
+                f"""
+[[recipe]]
+name = "host-tool"
+version = "1"
+release = 1
+summary = "host file package"
+license = "MIT"
+architectures = ["all"]
+[recipe.source]
+type = "virtual"
+[recipe.dependencies]
+build = []
+runtime = []
+[recipe.build]
+system = "host-files"
+host_files = [
+  {{ source = "{host_tool.as_posix()}", destination = "/usr/bin/host-tool", mode = "0755" }},
+]
+
+[[recipe.build.stub.files]]
+path = "/usr/sbin/compat-tool"
+mode = "0755"
+content = "#!/bin/sh\\nexec /usr/bin/host-tool \\"$@\\"\\n"
+""",
+                encoding="utf-8",
+            )
+            (root / "distro/profiles/test.toml").write_text(
+                """
+[profile]
+name = "test"
+packages = ["host-tool"]
+""",
+                encoding="utf-8",
+            )
+
+            self.run_ki2(root, "build", "--profile", "distro/profiles/test.toml")
+            package = root / "dist/ki2/packages/x86_64/host-tool-1-1.x86_64.ki2"
+            with tarfile.open(package, "r:gz") as tar:
+                self.assertEqual(tar.getmember("rootfs/usr/bin/host-tool").mode, 0o755)
+                self.assertEqual(tar.extractfile("rootfs/usr/bin/host-tool").read().decode("utf-8"), "#!/bin/sh\necho host-tool\n")
+                self.assertEqual(tar.getmember("rootfs/usr/sbin/compat-tool").mode, 0o755)
+                names = set(tar.getnames())
+                self.assertNotIn("rootfs/usr/share/kiki/stage2/host-tool.json", names)
+                self.assertNotIn("rootfs/usr/share/doc/kiki-stage2/host-tool.txt", names)
+
+    def test_host_ldd_filter_keeps_core_runtime_owned_by_kiki_packages(self):
+        self.assertFalse(ki2build.should_copy_host_ldd_dependency(Path("/lib64/libc.so.6")))
+        self.assertFalse(ki2build.should_copy_host_ldd_dependency(Path("/lib64/ld-linux-x86-64.so.2")))
+        self.assertFalse(ki2build.should_copy_host_ldd_dependency(Path("/lib64/libcrypt.so.2")))
+        self.assertTrue(ki2build.should_copy_host_ldd_dependency(Path("/lib64/libnftnl.so.11")))
+
+    def test_build_only_limits_profile_closure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "distro/recipes").mkdir(parents=True)
+            (root / "distro/profiles").mkdir(parents=True)
+            for name in ("one", "two"):
+                source = root / "distro/sources" / name / "usr/bin" / name
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_text(f"#!/bin/sh\necho {name}\n", encoding="utf-8")
+
+            (root / "distro/recipes/local.toml").write_text(
+                """
+[[recipe]]
+name = "one"
+version = "1"
+release = 1
+summary = "one"
+license = "MIT"
+architectures = ["all"]
+[recipe.source]
+type = "local"
+path = "distro/sources/one"
+[recipe.dependencies]
+build = []
+runtime = []
+[recipe.build]
+system = "copy"
+
+[[recipe]]
+name = "two"
+version = "1"
+release = 1
+summary = "two"
+license = "MIT"
+architectures = ["all"]
+[recipe.source]
+type = "local"
+path = "distro/sources/two"
+[recipe.dependencies]
+build = []
+runtime = []
+[recipe.build]
+system = "copy"
+""",
+                encoding="utf-8",
+            )
+            (root / "distro/profiles/test.toml").write_text(
+                """
+[profile]
+name = "test"
+packages = ["one", "two"]
+""",
+                encoding="utf-8",
+            )
+
+            self.run_ki2(root, "build", "--profile", "distro/profiles/test.toml", "--only", "one")
+
+            self.assertTrue((root / "dist/ki2/packages/x86_64/one-1-1.x86_64.ki2").exists())
+            self.assertFalse((root / "dist/ki2/packages/x86_64/two-1-1.x86_64.ki2").exists())
 
     def test_kernel_config_fragments_are_merged_and_keyed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -518,6 +649,7 @@ profile:
                 jobs=1,
                 toolchain_id="test",
                 dry_run=False,
+                clean_rootfs=False,
                 allow_unpinned=False,
                 verbose=False,
             )
@@ -588,6 +720,38 @@ packages = ["runtime-demo"]
                 self.assertIsNotNone(manifest_file)
                 manifest = json.loads(manifest_file.read().decode("utf-8"))
                 self.assertEqual(manifest["payload"]["file_count"], 5)
+
+    def test_kiki_console_defaults_enable_ansi_and_disable_systemd_hyperlinks(self):
+        repo_root = SCRIPT.parents[1]
+        profile = (repo_root / "distro/sources/base-files/etc/profile").read_text(encoding="utf-8")
+        self.assertIn("SYSTEMD_COLORS=1", profile)
+        self.assertIn("SYSTEMD_URLIFY=0", profile)
+        self.assertIn("SYSTEMD_LESS=FRSXMK", profile)
+        self.assertIn("LESS=-R", profile)
+        self.assertIn("ls --color=auto", profile)
+
+        stage1_check = (repo_root / "distro/sources/kiki-agent/usr/bin/kiki-stage1-check").read_text(encoding="utf-8")
+        self.assertIn('"OK": "\\033[32m"', stage1_check)
+        self.assertIn('"WARN": "\\033[33m"', stage1_check)
+        self.assertIn('"FAIL": "\\033[31m"', stage1_check)
+
+    def test_copy_source_to_dest_ignores_python_cache_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source"
+            dest = root / "dest"
+            (source / "usr/bin").mkdir(parents=True)
+            (source / "usr/bin/tool").write_text("tool\n", encoding="utf-8")
+            (source / "__pycache__").mkdir()
+            (source / "__pycache__/top.pyc").write_bytes(b"cache")
+            (source / "usr/__pycache__").mkdir()
+            (source / "usr/__pycache__/nested.pyc").write_bytes(b"cache")
+
+            ki2build.copy_source_to_dest(source, dest)
+
+            self.assertTrue((dest / "usr/bin/tool").exists())
+            self.assertFalse((dest / "__pycache__").exists())
+            self.assertFalse((dest / "usr/__pycache__").exists())
 
 
 if __name__ == "__main__":

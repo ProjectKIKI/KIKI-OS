@@ -66,4 +66,5 @@ packages = [
   "ethtool",
   "chrony",
   "kube-node-config",
+  "kube-node-config-containerd",
 ]

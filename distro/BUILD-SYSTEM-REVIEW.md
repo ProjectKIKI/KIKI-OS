@@ -4,7 +4,7 @@
 
 저장소에는 패키지 빌드부터 OS 이미지 조립까지 이어지는 기본 뼈대가 있다.
 전체 로드맵은 stage 1, stage 2, stage 3으로 나누며 상세 정의는
-`docs/kiki-os-stages.ko.md`를 기준으로 한다. 현재 위치는 stage 1 후반이다.
+`docs/kiki-os-stages.ko.md`를 기준으로 한다. 현재 위치는 stage 2 개발 라인이다.
 
 - `tools/ki2build.py`
   - TOML/YAML 레시피 로드
@@ -30,6 +30,8 @@
 - `distro/sources/ki2ctl/usr/bin/ki2ctl`
   - HTTP 저장소 인덱스 다운로드
   - 패키지 검색, 정보 조회, 의존성 해석, 설치/삭제 preview
+  - 파일 충돌 탐지, 설치 트랜잭션 기록, 실패 시 기본 rollback
+  - HTTP, `file://`, 로컬 경로 저장소와 서명 metadata 검증
 
 ## 패키지 범위
 
@@ -68,11 +70,10 @@
 
 부족하거나 진행 중인 부분:
 
-- rootfs 추출 전 패키지 파일 충돌 탐지
 - install/remove script 실행
 - 설치된 시스템 내부 패키지 DB 고도화
-- 패키지 업그레이드/롤백
-- 서명된 저장소 메타데이터
+- 패키지 업그레이드 정책 고도화
+- 공개키 기반 저장소 서명
 
 ## 웹 콘솔 기능
 
@@ -89,7 +90,7 @@
 
 - 패키지별 빌드 버튼
 - 프로파일별 rootfs/ISO 빌드 버튼
-- 패키지 충돌 리포트
+- 패키지 충돌 리포트의 웹 표시
 - 설치 계획서 미리보기의 웹 통합
 - 저장소 서명 상태 표시
 
@@ -109,7 +110,8 @@
 
 ## 쿠버네티스 방향
 
-쿠버네티스 프로파일은 CRI-O 기반이다.
+쿠버네티스 프로파일은 CRI-O를 기본 런타임으로 두고, Stage 2에서는 containerd 변형
+프로파일도 함께 검증한다.
 
 - `cri-o`
 - `conmon`
@@ -119,20 +121,24 @@
 - `kubelet`
 - `kubeadm`
 - `kubectl`
+- `containerd`
+- `runc`
+- `kube-node-config-containerd`
 
-현재 일부 레시피는 resolver-visible metadata 또는 local config 패키지다. 다음
-실제 패키지 작업은 `crun`, `conmon`, `cri-o`를 하나씩 source-backed build
-recipe로 바꾸는 것이다.
+현재 일부 레시피는 resolver-visible metadata 또는 local config 패키지다. Stage 2의
+네트워크 userspace는 `host-files` payload로 실제 명령을 제공하며, 다음 실제 패키지
+작업은 `crun`, `conmon`, `cri-o`와 네트워크 userspace를 source-backed build recipe로
+바꾸는 것이다.
 
-네트워크와 방화벽 계층은 `nftables`, `iptables`, `conntrack-tools`를 먼저
-실제 패키지화하고, `firewalld`와 `bridge-utils`는 선택 프로파일로 둔다. 기본
-bridge 점검은 `iproute2`의 `bridge` 명령을 기준으로 한다.
+네트워크와 방화벽 계층은 `nftables`, `iptables`, `conntrack-tools`, `firewalld`,
+`bridge-utils`, `socat`, `ethtool`, `chrony`를 Stage 2 검증용 `.ki2` payload로
+제공한다. 기본 bridge 점검은 `iproute2`의 `bridge` 명령을 기준으로 하고,
+`brctl`은 호환 wrapper로 둔다.
 
 ## 다음 점검 항목
 
 - `distro/recipes/core.toml`의 남은 source hash pin 처리
-- manifest `files` 목록 기반 패키지 충돌 탐지 추가
-- 설치된 시스템의 `/var/lib/ki2/` 패키지 DB 추가
-- repo metadata 서명 추가
+- 설치된 시스템의 `/var/lib/ki2/` 패키지 DB 고도화
+- repo metadata 공개키 서명 전환
 - 웹 UI에 패키지별 빌드 버튼과 로그 추가
 - 설치 계획서 YAML을 웹 설치기와 무인 설치에서 재사용

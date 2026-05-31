@@ -6,7 +6,7 @@
 
 개발 단계는 `stage1-v1`, `stage2-v2`, stage 3으로 관리한다. `stage1-v1`은
 부팅과 설치 가능성 증명을 마친 최종 기준선이고, `stage2-v2`는 운영 가능한
-최소 서버 배포판을 만드는 진행형 라인이다. 상세 기준은
+최소 서버 배포판 기준선이다. 상세 기준은
 `docs/kiki-os-stages.ko.md`, `docs/kiki-stage1-v1-final.ko.md`,
 `docs/kiki-stage2-v2-progress.ko.md`에 둔다.
 
@@ -49,21 +49,40 @@ tools/ki2publish.py   빌드 산출물 배포 트리 생성
 cmd/kiki-installer-tui Go 기반 설치 계획서 TUI preview
 ```
 
-## Stage 2 stub 패키지
+## Stage 2 bootstrap 패키지
 
-`tools/ki2build.py`는 Stage 2 전용 `stage2-stub` 빌드 타입을 지원한다. 이 타입은
-아직 upstream source-backed 빌드가 준비되지 않은 런타임과 Kubernetes 패키지에 사용한다.
-빈 virtual 패키지와 달리 다음 항목을 실제 `.ki2` payload에 넣는다.
+`tools/ki2build.py`는 Stage 2 전용 `stage2-stub`와 `host-files` 빌드 타입을 지원한다.
+`stage2-stub`는 아직 실제 payload가 없는 패키지 경로를 예약할 때만 쓰고,
+`host-files`는 빌더 호스트에 설치된 검증용 실행 파일과 공유 라이브러리를 `.ki2`
+payload로 묶는다. Stage 2의 Kubernetes 경로는 실제 upstream release binary 패키지와
+host-files bootstrap 패키지가 섞여 있다.
 
-- 예약된 명령 경로
-- systemd unit
-- 기본 설정 파일 또는 README
-- `/usr/share/doc/kiki-stage2/<package>.txt`
-- `/usr/share/kiki/stage2/<package>.json`
+현재 실제 upstream release binary를 `.ki2` payload에 넣는 항목:
 
-현재 `cri-o`, `containerd`, `kubelet`, `kubeadm`, `kubectl`, `nftables`,
-`iptables`, `conntrack-tools` 등은 이 방식으로 패키징되어 있다. 서비스 unit은 실제
-바이너리가 들어오기 전까지 부팅 실패를 만들지 않도록 `ConditionPathExists`를 사용한다.
+- `runc`
+- `containerd`
+- `conmon`
+- `crun`
+- `cri-o`
+- `cni-plugins`
+- `cri-tools`
+- `kubelet`
+- `kubeadm`
+- `kubectl`
+
+현재 `host-files` payload로 실제 명령을 넣는 항목:
+
+- `conntrack-tools`
+- `nftables`
+- `iptables`
+- `firewalld`
+- `bridge-utils`
+- `socat`
+- `ethtool`
+- `chrony`
+
+이 계층은 Stage 2 VM 검증용 bootstrap packaging이다. 장기적으로는 Stage 3에서
+source-backed build 또는 공식 release artifact 기반 패키지로 승격한다.
 
 ## YAML 운영 방침
 
@@ -100,7 +119,9 @@ KIKI OS의 운영자용 설정 포맷은 YAML로 둔다. 기존 seed 파일에�
 
 쿠버네티스 관련 패키지는 선택 YAML 계층으로 분리한다. 이렇게 해야
 `minimal-systemd`는 작게 유지하고, `kiki-kube-compute`는 kubeadm-ready compute 노드로
-확장할 수 있다. Stage 1부터 `kiki-installer-tui` preview 패키지를 포함해 같은
+확장할 수 있다. CRI 런타임은 CRI-O를 기본으로 두되,
+`kiki-kube-compute-containerd`처럼 `*-containerd` 프로필로 containerd도 검증한다.
+Stage 1부터 `kiki-installer-tui` preview 패키지를 포함해 같은
 설치 계획서를 Go 기반 TUI에서도 렌더링하고 테스트한다.
 
 ## 네트워크 정책
@@ -131,7 +152,7 @@ KIKI OS의 운영자용 설정 포맷은 YAML로 둔다. 기존 seed 파일에�
 카탈로그 검증:
 
 ```bash
-python tools/ki2build.py validate --profile distro/profiles/world.toml --max-packages 64
+python tools/ki2build.py validate --profile distro/profiles/world.toml --max-packages 72
 ```
 
 기본 systemd 이미지 계획 확인:
@@ -273,6 +294,7 @@ python tools/ki2build.py repo-index
 - `smoke`: 빠른 Go/Python/레시피 검증
 - `bootstrap`: pre-systemd 패키지, 저장소, rootfs 빌드
 - `minimal-systemd`: systemd 기반 기본 프로파일 빌드
+- `stage2`: ISO 없이 Stage 2 저장소 metadata, CRI-O/containerd Kubernetes 계획, Go TUI 렌더링 검증
 - `security`: 소스 pin, shell 문법, 선택 스캐너 확인
 - `iso`: bootstrap rootfs와 저장소를 payload ISO로 패키징
 - `bootiso`: KIKI 커널과 initramfs를 포함한 GRUB 부팅 ISO 생성
@@ -284,9 +306,16 @@ CLI 실행:
 
 ```bash
 python tools/ki2ci.py run smoke
+python tools/ki2stage2.py verify-kubernetes
+python tools/ki2ci.py run stage2
 python tools/ki2ci.py run bootstrap --jobs "$(nproc)" --toolchain-id rocky9-stage0-gcc11-v1
 python tools/ki2ci.py run publish --publish-dir /srv/www/kiki
 ```
+
+운영용 Stage 2 완료 여부는 `python tools/ki2ci.py run stage2` 통과 여부로 확인한다.
+이 파이프라인은 `verify-kubernetes --strict-production`, `verify-network-userspace
+--strict-production`, CRI-O/containerd rootfs 검증, Go TUI 설치 계획서 계약 검증,
+저장소 서명 검증을 함께 수행한다.
 
 ## HTTP 패키지 저장소
 

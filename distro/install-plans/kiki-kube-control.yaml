@@ -75,6 +75,16 @@ install_plan:
     container_runtime: cri-o
     cgroup_driver: systemd
     swap_policy: kubernetes-off
+  kubernetes:
+    role: control-plane
+    kubeadm:
+      config_api: kubeadm.k8s.io/v1beta4
+      action: join
+      config_template: /etc/kubernetes/kiki/kubeadm-join-control-plane.yaml
+      config_output: /etc/kubernetes/kiki/kubeadm.local.yaml
+      command: kubeadm join --config /etc/kubernetes/kiki/kubeadm.local.yaml
+      control_plane: true
+      cri_socket: unix:///var/run/crio/crio.sock
   firewall:
     backend: nftables
     firewalld: true

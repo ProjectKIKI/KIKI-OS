@@ -107,6 +107,28 @@ def ki2bootiso_cmd(config: CiConfig, profile: str, *, mode: str = "smoke") -> li
     )
 
 
+def ki2repo_cmd(config: CiConfig, *args: str) -> list[str]:
+    return python_cmd(
+        config,
+        "tools/ki2repo.py",
+        "--repo-root",
+        str(config.repo_root),
+        "--arch",
+        config.arch,
+        *args,
+    )
+
+
+def stage2_repo_signing_key(config: CiConfig) -> Path:
+    return config.artifact_root / "keys" / "stage2-v2-repo.hmac"
+
+
+def stage2_rootfs_dir(config: CiConfig, profile: str) -> Path:
+    if os.name == "posix":
+        return Path(os.environ.get("TMPDIR", "/tmp")) / "kiki-ki2ci" / config.artifact_root.name / "rootfs" / profile
+    return config.artifact_root / "rootfs" / profile
+
+
 def ki2publish_cmd(config: CiConfig) -> list[str]:
     return python_cmd(
         config,
@@ -134,14 +156,24 @@ def base_smoke_steps(config: CiConfig) -> list[Step]:
                 "tools/ki2ci.py",
                 "tools/ki2iso.py",
                 "tools/ki2publish.py",
+                "tools/ki2repo.py",
+                "tools/ki2stage2.py",
                 "tools/test_ki2build.py",
                 "tools/test_ki2bootiso.py",
                 "tools/test_ki2ci.py",
+                "tools/test_ki2ctl.py",
                 "tools/test_ki2iso.py",
                 "tools/test_ki2publish.py",
+                "tools/test_ki2repo.py",
+                "tools/test_ki2stage2.py",
             ),
         ),
         Step("ki2build unit tests", python_cmd(config, "tools/test_ki2build.py")),
+        Step("ki2bootiso unit tests", python_cmd(config, "tools/test_ki2bootiso.py")),
+        Step("ki2ctl unit tests", python_cmd(config, "tools/test_ki2ctl.py")),
+        Step("ki2repo unit tests", python_cmd(config, "tools/test_ki2repo.py")),
+        Step("ki2stage2 unit tests", python_cmd(config, "tools/test_ki2stage2.py")),
+        Step("ki2ci unit tests", python_cmd(config, "tools/test_ki2ci.py")),
         Step(
             "Core seed profile validation",
             ki2build_cmd(
@@ -150,7 +182,7 @@ def base_smoke_steps(config: CiConfig) -> list[Step]:
                 "--profile",
                 "distro/profiles/world.toml",
                 "--max-packages",
-                "64",
+                "72",
             ),
         ),
         Step(
@@ -158,8 +190,32 @@ def base_smoke_steps(config: CiConfig) -> list[Step]:
             ki2build_cmd(config, "plan", "--profile", "distro/profiles/minimal-systemd.toml"),
         ),
         Step(
-            "kiki-kube-compute YAML runtime plan",
+            "kiki-kube-bootstrap CRI-O runtime plan",
+            ki2build_cmd(config, "plan", "--profile", "distro/profiles/kiki-kube-bootstrap.yaml"),
+        ),
+        Step(
+            "kiki-kube-control CRI-O runtime plan",
+            ki2build_cmd(config, "plan", "--profile", "distro/profiles/kiki-kube-control.yaml"),
+        ),
+        Step(
+            "kiki-kube-compute CRI-O runtime plan",
             ki2build_cmd(config, "plan", "--profile", "distro/profiles/kiki-kube-compute.yaml"),
+        ),
+        Step(
+            "kiki-kube-bootstrap containerd runtime plan",
+            ki2build_cmd(config, "plan", "--profile", "distro/profiles/kiki-kube-bootstrap-containerd.yaml"),
+        ),
+        Step(
+            "kiki-kube-control containerd runtime plan",
+            ki2build_cmd(config, "plan", "--profile", "distro/profiles/kiki-kube-control-containerd.yaml"),
+        ),
+        Step(
+            "kiki-kube-compute containerd runtime plan",
+            ki2build_cmd(config, "plan", "--profile", "distro/profiles/kiki-kube-compute-containerd.yaml"),
+        ),
+        Step(
+            "Go TUI containerd install plan render",
+            ["go", "run", "./cmd/kiki-installer-tui", "--profile", "kiki-kube-compute-containerd", "--render"],
         ),
     ]
 
@@ -253,11 +309,150 @@ def publish_steps(config: CiConfig) -> list[Step]:
     ]
 
 
+def stage2_steps(config: CiConfig) -> list[Step]:
+    signing_key = stage2_repo_signing_key(config)
+    crio_rootfs = stage2_rootfs_dir(config, "kiki-kube-compute")
+    containerd_rootfs = stage2_rootfs_dir(config, "kiki-kube-compute-containerd")
+    go_tui_plan = config.artifact_root / "plans" / "kiki-kube-compute-containerd.install-plan.yaml"
+    return [
+        Step("Write package repository index", ki2build_cmd(config, "repo-index")),
+        Step("Generate Stage 2 repository signing key", ki2repo_cmd(config, "keygen", "--output", str(signing_key), "--force")),
+        Step("Generate signed Stage 2 repository metadata", ki2repo_cmd(config, "generate", "--channel", "stage2-v2", "--sign-key", str(signing_key))),
+        Step("Verify signed Stage 2 repository metadata", ki2repo_cmd(config, "verify", "--key", str(signing_key))),
+        Step(
+            "Verify Stage 2 Kubernetes readiness",
+            python_cmd(
+                config,
+                "tools/ki2stage2.py",
+                "verify-kubernetes",
+                "--repo-root",
+                str(config.repo_root),
+                "--arch",
+                config.arch,
+                "--require-signed-metadata",
+                "--strict-production",
+            ),
+        ),
+        Step(
+            "Verify Stage 2 network userspace package status",
+            python_cmd(
+                config,
+                "tools/ki2stage2.py",
+                "verify-network-userspace",
+                "--repo-root",
+                str(config.repo_root),
+                "--arch",
+                config.arch,
+                "--strict-production",
+            ),
+        ),
+        Step(
+            "Verify Stage 2 runtime and Kubernetes binary smoke",
+            python_cmd(
+                config,
+                "tools/ki2stage2.py",
+                "verify-binary-smoke",
+                "--repo-root",
+                str(config.repo_root),
+                "--arch",
+                config.arch,
+            ),
+        ),
+        Step(
+            "Write Go TUI Stage 2 containerd install plan",
+            [
+                "go",
+                "run",
+                "./cmd/kiki-installer-tui",
+                "--profile",
+                "kiki-kube-compute-containerd",
+                "--write",
+                "--plan",
+                str(go_tui_plan),
+            ],
+        ),
+        Step(
+            "Verify Go TUI Stage 2 install plan contract",
+            python_cmd(
+                config,
+                "tools/ki2stage2.py",
+                "verify-install-plan",
+                "--plan",
+                str(go_tui_plan),
+                "--runtime",
+                "containerd",
+                "--role",
+                "compute",
+            ),
+        ),
+        Step(
+            "Assemble Stage 2 CRI-O Kubernetes rootfs",
+            ki2build_cmd(
+                config,
+                "rootfs",
+                "--profile",
+                "distro/profiles/kiki-kube-compute.yaml",
+                "--rootfs-dir",
+                str(crio_rootfs),
+                "--clean-rootfs",
+            ),
+        ),
+        Step(
+            "Verify installed Stage 2 CRI-O Kubernetes rootfs",
+            python_cmd(
+                config,
+                "tools/ki2stage2.py",
+                "verify-installed-rootfs",
+                "--root",
+                str(crio_rootfs),
+                "--runtime",
+                "cri-o",
+            ),
+        ),
+        Step(
+            "Assemble Stage 2 containerd Kubernetes rootfs",
+            ki2build_cmd(
+                config,
+                "rootfs",
+                "--profile",
+                "distro/profiles/kiki-kube-compute-containerd.yaml",
+                "--rootfs-dir",
+                str(containerd_rootfs),
+                "--clean-rootfs",
+            ),
+        ),
+        Step(
+            "Verify installed Stage 2 containerd Kubernetes rootfs",
+            python_cmd(
+                config,
+                "tools/ki2stage2.py",
+                "verify-installed-rootfs",
+                "--root",
+                str(containerd_rootfs),
+                "--runtime",
+                "containerd",
+            ),
+        ),
+        Step(
+            "Verify Stage 2 package manager repository flows",
+            python_cmd(
+                config,
+                "tools/ki2stage2.py",
+                "verify-package-manager",
+                "--repo-root",
+                str(config.repo_root),
+            ),
+        ),
+        Step("Summarize Stage 2 repository", ki2repo_cmd(config, "summary")),
+    ]
+
+
 def pipeline_steps(config: CiConfig, name: str) -> list[Step]:
     pipelines: dict[str, Callable[[CiConfig], list[Step]]] = {
         "smoke": base_smoke_steps,
         "bootstrap": lambda cfg: [*base_smoke_steps(cfg), *bootstrap_steps(cfg)],
         "minimal-systemd": lambda cfg: [*base_smoke_steps(cfg), *minimal_systemd_steps(cfg)],
+        "stage2": lambda cfg: [*base_smoke_steps(cfg), *stage2_steps(cfg)],
         "security": security_steps,
         "iso": lambda cfg: [*base_smoke_steps(cfg), *iso_steps(cfg)],
         "bootiso": lambda cfg: [*base_smoke_steps(cfg), *boot_iso_steps(cfg)],
@@ -266,6 +461,7 @@ def pipeline_steps(config: CiConfig, name: str) -> list[Step]:
         "release": lambda cfg: [
             *base_smoke_steps(cfg),
             *bootstrap_steps(cfg),
+            *stage2_steps(cfg),
             *security_steps(cfg),
             *iso_steps(cfg),
             *boot_iso_steps(cfg),
@@ -283,6 +479,7 @@ def pipeline_names() -> list[str]:
         "smoke",
         "bootstrap",
         "minimal-systemd",
+        "stage2",
         "security",
         "iso",
         "bootiso",
@@ -354,6 +551,9 @@ def run_step(config: CiConfig, step: Step, log_path: Path) -> int:
     append_log(log_path, "+ " + " ".join(step.command) + "\n")
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+    pycache = config.artifact_root / "pycache"
+    pycache.mkdir(parents=True, exist_ok=True)
+    env["PYTHONPYCACHEPREFIX"] = str(pycache)
     proc = subprocess.Popen(
         step.command,
         cwd=config.repo_root,

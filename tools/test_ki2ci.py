@@ -13,6 +13,7 @@ class Ki2CiTests(unittest.TestCase):
                 "smoke",
                 "bootstrap",
                 "minimal-systemd",
+                "stage2",
                 "security",
                 "iso",
                 "bootiso",
@@ -38,6 +39,39 @@ class Ki2CiTests(unittest.TestCase):
         self.assertIn("go test ./cmd/... ./internal/...", commands[0])
         self.assertTrue(any("distro/profiles/world.toml" in command for command in commands))
         self.assertTrue(any("distro/profiles/kiki-kube-compute.yaml" in command for command in commands))
+        self.assertTrue(any("distro/profiles/kiki-kube-compute-containerd.yaml" in command for command in commands))
+        self.assertTrue(any("tools/test_ki2repo.py" in command for command in commands))
+        self.assertTrue(any("tools/test_ki2stage2.py" in command for command in commands))
+
+    def test_stage2_pipeline_generates_signed_repository_metadata_without_iso(self):
+        config = ki2ci.CiConfig(
+            repo_root=Path("/repo"),
+            artifact_root=Path("/repo/build/ki2ci"),
+            arch="x86_64",
+            jobs=4,
+            toolchain_id="test-toolchain",
+            publish_dir=Path("/repo/dist/publish"),
+        )
+
+        commands = [" ".join(step.command) for step in ki2ci.pipeline_steps(config, "stage2")]
+
+        self.assertTrue(any("tools/ki2build.py" in command and "repo-index" in command for command in commands))
+        self.assertTrue(any("tools/ki2stage2.py" in command and "verify-kubernetes" in command for command in commands))
+        self.assertTrue(any("tools/ki2repo.py" in command and "keygen" in command and "stage2-v2-repo.hmac" in command for command in commands))
+        self.assertTrue(any("tools/ki2repo.py" in command and "generate --channel stage2-v2 --sign-key" in command for command in commands))
+        self.assertTrue(any("tools/ki2repo.py" in command and "verify --key" in command for command in commands))
+        self.assertTrue(any("tools/ki2stage2.py" in command and "--require-signed-metadata" in command for command in commands))
+        self.assertTrue(any("tools/ki2stage2.py" in command and "--strict-production" in command for command in commands))
+        self.assertTrue(any("tools/ki2stage2.py" in command and "verify-binary-smoke" in command for command in commands))
+        self.assertTrue(any("go run ./cmd/kiki-installer-tui" in command and "--write" in command and "kiki-kube-compute-containerd.install-plan.yaml" in command for command in commands))
+        self.assertTrue(any("tools/ki2stage2.py" in command and "verify-install-plan" in command and "--runtime containerd" in command for command in commands))
+        self.assertTrue(any("tools/ki2build.py" in command and "rootfs" in command and "kiki-kube-compute.yaml" in command and "--clean-rootfs" in command for command in commands))
+        self.assertTrue(any("tools/ki2stage2.py" in command and "verify-installed-rootfs" in command and "--runtime cri-o" in command for command in commands))
+        self.assertTrue(any("tools/ki2build.py" in command and "rootfs" in command and "kiki-kube-compute-containerd.yaml" in command and "--clean-rootfs" in command for command in commands))
+        self.assertTrue(any("tools/ki2stage2.py" in command and "verify-installed-rootfs" in command and "--runtime containerd" in command for command in commands))
+        self.assertTrue(any("tools/ki2stage2.py" in command and "verify-package-manager" in command for command in commands))
+        self.assertTrue(any("tools/ki2repo.py" in command and "summary" in command for command in commands))
+        self.assertFalse(any("tools/ki2bootiso.py --repo-root" in command for command in commands))
 
     def test_job_store_round_trips_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -190,6 +190,47 @@ class Ki2CtlTests(unittest.TestCase):
             info = self.run_ki2ctl(target, "--repo", repo_url, "info", "tool").stdout
             self.assertIn("Name    : tool", info)
 
+    def test_local_file_repository_path_supports_disconnected_install(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            target = base / "target"
+            (repo / "packages/x86_64").mkdir(parents=True)
+            (repo / "repo").mkdir(parents=True)
+            package = repo / "packages/x86_64/tool-1-1.x86_64.ki2"
+            write_ki2_package(package, name="tool", dependencies=[], files={"rootfs/usr/bin/tool": b"tool\n"})
+            write_index(repo / "repo/index.x86_64.json", [package])
+
+            self.run_ki2ctl(target, "repo", "set", str(repo))
+            repos = self.run_ki2ctl(target, "repo", "list").stdout
+            self.assertIn(repo.resolve().as_uri(), repos)
+
+            update = self.run_ki2ctl(target, "update").stdout
+            self.assertIn("1 packages", update)
+            install = self.run_ki2ctl(target, "install", "tool").stdout
+            self.assertIn("installed tool", install)
+            self.assertEqual((target / "usr/bin/tool").read_text(encoding="utf-8"), "tool\n")
+
+            removed = self.run_ki2ctl(target, "repo", "remove").stdout
+            self.assertIn("removed repo default", removed)
+            self.assertFalse((target / "etc/ki2/repos.d/default.repo").exists())
+            self.assertFalse((target / "var/lib/ki2/repos/default").exists())
+
+    def test_temporary_local_file_repo_without_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            target = base / "target"
+            (repo / "packages").mkdir(parents=True)
+            (repo / "repo").mkdir(parents=True)
+            package = repo / "packages/tool-1-1.x86_64.ki2"
+            write_ki2_package(package, name="tool", dependencies=[], files={"rootfs/usr/bin/tool": b"tool\n"})
+            write_index(repo / "repo/index.x86_64.json", [package])
+
+            info = self.run_ki2ctl(target, "--repo", str(repo), "info", "tool").stdout
+            self.assertIn("Repo    : cli", info)
+            self.assertIn("Name    : tool", info)
+
     def test_update_can_verify_signed_repository_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

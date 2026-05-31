@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	appVersion      = "0.1.0"
-	defaultPlanPath = "/run/kiki/install-plan.yaml"
+	appVersion       = "0.1.0"
+	defaultPlanPath  = "/run/kiki/install-plan.yaml"
+	defaultMediaRoot = "/run/install-media"
 )
 
 type InstallPlan struct {
@@ -30,7 +31,9 @@ type InstallPlan struct {
 	Services    ServicesPlan
 	Boot        BootPlan
 	Runtime     RuntimePlan
+	Kubernetes  KubernetesPlan
 	Firewall    FirewallPlan
+	Artifacts   ArtifactsPlan
 }
 
 type SourcePlan struct {
@@ -85,6 +88,10 @@ type NetworkPlan struct {
 	InterfaceMatch string
 	DHCP4          bool
 	IPv6AcceptRA   bool
+	Address        string
+	Gateway        string
+	DNS            string
+	NTP            string
 }
 
 type UsersPlan struct {
@@ -128,10 +135,30 @@ type RuntimePlan struct {
 	SwapPolicy       string
 }
 
+type KubernetesPlan struct {
+	Role    string
+	Kubeadm KubeadmPlan
+}
+
+type KubeadmPlan struct {
+	ConfigAPI      string
+	Action         string
+	ConfigTemplate string
+	ConfigOutput   string
+	Command        string
+	ControlPlane   bool
+	CRISocket      string
+}
+
 type FirewallPlan struct {
 	Backend    string
 	Firewalld  bool
 	BridgeTool string
+}
+
+type ArtifactsPlan struct {
+	RuntimePlan   string
+	InstalledPlan string
 }
 
 type Check struct {
@@ -158,6 +185,7 @@ func main() {
 	flag.Parse()
 
 	plan := NewDefaultPlan(*profile)
+	plan.Artifacts.RuntimePlan = *planPath
 	tui := &TUI{
 		Plan:     plan,
 		PlanPath: *planPath,
@@ -170,6 +198,7 @@ func main() {
 		return
 	}
 	if *writeOnly {
+		plan.Artifacts.RuntimePlan = *planPath
 		if err := WritePlanFile(*planPath, plan); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
@@ -202,8 +231,8 @@ func NewDefaultPlan(profile string) InstallPlan {
 		Mode:        "guided",
 		Source: SourcePlan{
 			Type:                "local-installer-media",
-			MediaRoot:           "/run/install/repo",
-			RepoIndex:           "/run/install/repo/kiki/repo/index.x86_64.json",
+			MediaRoot:           defaultMediaRoot,
+			RepoIndex:           localMediaRepoIndex(defaultMediaRoot),
 			RepoURL:             "",
 			Channel:             "stage2-v2",
 			VerifyKey:           "",
@@ -282,10 +311,20 @@ func NewDefaultPlan(profile string) InstallPlan {
 			CgroupDriver:     "systemd",
 			SwapPolicy:       "system",
 		},
+		Kubernetes: KubernetesPlan{
+			Role: "none",
+			Kubeadm: KubeadmPlan{
+				ConfigAPI: "kubeadm.k8s.io/v1beta4",
+			},
+		},
 		Firewall: FirewallPlan{
 			Backend:    "nftables",
 			Firewalld:  false,
 			BridgeTool: "iproute2 bridge",
+		},
+		Artifacts: ArtifactsPlan{
+			RuntimePlan:   defaultPlanPath,
+			InstalledPlan: "/var/lib/ki2/install-plan.yaml",
 		},
 	}
 	ApplyProfile(&plan, profile)
@@ -334,11 +373,8 @@ var minimalSystemdPackages = []string{
 	"kiki-installer-tui",
 }
 
-var kubeNodePackages = []string{
+var kubernetesCommonPackages = []string{
 	"bridge-utils",
-	"conmon",
-	"crun",
-	"cri-o",
 	"cni-plugins",
 	"cri-tools",
 	"conntrack-tools",
@@ -351,10 +387,22 @@ var kubeNodePackages = []string{
 	"kubeadm",
 	"ethtool",
 	"chrony",
+}
+
+var crioRuntimePackages = []string{
+	"conmon",
+	"crun",
+	"cri-o",
 	"kube-node-config",
 }
 
-var containerdPackages = []string{
+var containerdRuntimePackages = []string{
+	"runc",
+	"containerd",
+	"kube-node-config-containerd",
+}
+
+var containerdStandalonePackages = []string{
 	"runc",
 	"containerd",
 	"cni-plugins",
@@ -383,9 +431,12 @@ var containerdServices = []string{
 }
 
 var kubernetesProfiles = map[string]string{
-	"kiki-kube-bootstrap": "first cluster bootstrap node",
-	"kiki-kube-control":   "additional control-plane node",
-	"kiki-kube-compute":   "compute node",
+	"kiki-kube-bootstrap":            "first cluster bootstrap node",
+	"kiki-kube-bootstrap-containerd": "first cluster bootstrap node with containerd",
+	"kiki-kube-control":              "additional control-plane node",
+	"kiki-kube-control-containerd":   "additional control-plane node with containerd",
+	"kiki-kube-compute":              "compute node",
+	"kiki-kube-compute-containerd":   "compute node with containerd",
 }
 
 var legacyProfileAliases = map[string]string{
@@ -406,7 +457,29 @@ func isKubernetesProfile(profile string) bool {
 }
 
 func isKubernetesComputeProfile(profile string) bool {
-	return canonicalProfile(profile) == "kiki-kube-compute"
+	normalized := canonicalProfile(profile)
+	return normalized == "kiki-kube-compute" || normalized == "kiki-kube-compute-containerd"
+}
+
+func kubeRoleForProfile(profile string) string {
+	normalized := canonicalProfile(profile)
+	switch normalized {
+	case "kiki-kube-bootstrap", "kiki-kube-bootstrap-containerd":
+		return "bootstrap-control-plane"
+	case "kiki-kube-control", "kiki-kube-control-containerd":
+		return "control-plane"
+	case "kiki-kube-compute", "kiki-kube-compute-containerd":
+		return "compute"
+	default:
+		return "none"
+	}
+}
+
+func defaultRuntimeForProfile(profile string) string {
+	if strings.HasSuffix(canonicalProfile(profile), "-containerd") {
+		return "containerd"
+	}
+	return "cri-o"
 }
 
 func ApplyProfile(plan *InstallPlan, profile string) {
@@ -420,15 +493,18 @@ func ApplyProfile(plan *InstallPlan, profile string) {
 	plan.Services.Enable = append([]string{}, minimalSystemdServices...)
 	plan.Runtime.ContainerRuntime = "none"
 	plan.Runtime.SwapPolicy = "system"
+	plan.Kubernetes = KubernetesPlan{
+		Role: "none",
+		Kubeadm: KubeadmPlan{
+			ConfigAPI: "kubeadm.k8s.io/v1beta4",
+		},
+	}
 	plan.Target.Filesystems.Swap.Enabled = true
 	plan.Target.Filesystems.Swap.Path = "/dev/sda2"
 	plan.Target.Filesystems.Swap.Policy = "system"
 	plan.Firewall.Firewalld = false
 
 	if isKubernetesProfile(normalized) {
-		plan.Packages.Selected = appendUnique(plan.Packages.Selected, kubeNodePackages...)
-		plan.Services.Enable = appendUnique(plan.Services.Enable, kubeNodeServices...)
-		plan.Runtime.ContainerRuntime = "cri-o"
 		plan.Runtime.SwapPolicy = "kubernetes-off"
 		plan.Target.Filesystems.Swap.Enabled = false
 		plan.Target.Filesystems.Swap.Path = ""
@@ -436,7 +512,120 @@ func ApplyProfile(plan *InstallPlan, profile string) {
 		plan.Target.Filesystems.Root.Path = partitionPath(plan.Target.Disk, 2)
 		plan.Boot.Root = partitionPath(plan.Target.Disk, 2)
 		plan.Firewall.Firewalld = !isKubernetesComputeProfile(normalized)
+		applyContainerRuntime(plan, defaultRuntimeForProfile(normalized))
+		configureKubeadm(plan)
 	}
+}
+
+func applyContainerRuntime(plan *InstallPlan, runtime string) {
+	plan.Packages.Selected = removeItems(plan.Packages.Selected, crioRuntimePackages...)
+	plan.Packages.Selected = removeItems(plan.Packages.Selected, containerdRuntimePackages...)
+	plan.Packages.Selected = removeItems(plan.Packages.Selected, containerdStandalonePackages...)
+	plan.Services.Enable = removeItems(plan.Services.Enable, "crio.service", "containerd.service")
+
+	if runtime == "containerd" {
+		plan.Runtime.ContainerRuntime = "containerd"
+		if isKubernetesProfile(plan.Packages.Profile) {
+			plan.Packages.Selected = appendUnique(plan.Packages.Selected, kubernetesCommonPackages...)
+			plan.Packages.Selected = appendUnique(plan.Packages.Selected, containerdRuntimePackages...)
+			plan.Services.Enable = appendUnique(plan.Services.Enable, containerdServices...)
+			plan.Services.Enable = appendUnique(plan.Services.Enable, "kubelet.service", "chronyd.service")
+			configureKubeadm(plan)
+		} else {
+			plan.Packages.Selected = appendUnique(plan.Packages.Selected, containerdStandalonePackages...)
+			plan.Services.Enable = appendUnique(plan.Services.Enable, containerdServices...)
+		}
+		return
+	}
+
+	plan.Runtime.ContainerRuntime = "cri-o"
+	plan.Packages.Selected = appendUnique(plan.Packages.Selected, crioRuntimePackages...)
+	plan.Services.Enable = appendUnique(plan.Services.Enable, "crio.service")
+	if isKubernetesProfile(plan.Packages.Profile) {
+		plan.Packages.Selected = appendUnique(plan.Packages.Selected, kubernetesCommonPackages...)
+		plan.Services.Enable = appendUnique(plan.Services.Enable, "kubelet.service", "chronyd.service")
+		configureKubeadm(plan)
+	}
+}
+
+func configureKubeadm(plan *InstallPlan) {
+	role := kubeRoleForProfile(plan.Packages.Profile)
+	runtime := plan.Runtime.ContainerRuntime
+	criSocket := "unix:///var/run/crio/crio.sock"
+	if runtime == "containerd" {
+		criSocket = "unix:///run/containerd/containerd.sock"
+	}
+	kubeadm := KubeadmPlan{
+		ConfigAPI:      "kubeadm.k8s.io/v1beta4",
+		ConfigOutput:   "/etc/kubernetes/kiki/kubeadm.local.yaml",
+		CRISocket:      criSocket,
+		ControlPlane:   role == "bootstrap-control-plane" || role == "control-plane",
+		ConfigTemplate: "/etc/kubernetes/kiki/kubeadm-join-compute.yaml",
+		Action:         "join",
+		Command:        "kubeadm join --config /etc/kubernetes/kiki/kubeadm.local.yaml",
+	}
+	if role == "bootstrap-control-plane" {
+		kubeadm.Action = "init"
+		kubeadm.ConfigTemplate = "/etc/kubernetes/kiki/kubeadm-init.yaml"
+		kubeadm.Command = "kubeadm init --config /etc/kubernetes/kiki/kubeadm.local.yaml"
+	} else if role == "control-plane" {
+		kubeadm.ConfigTemplate = "/etc/kubernetes/kiki/kubeadm-join-control-plane.yaml"
+	}
+	plan.Kubernetes = KubernetesPlan{Role: role, Kubeadm: kubeadm}
+}
+
+func setLocalSource(plan *InstallPlan, mediaRoot string) {
+	mediaRoot = strings.TrimRight(strings.TrimSpace(mediaRoot), "/")
+	if mediaRoot == "" {
+		mediaRoot = defaultMediaRoot
+	}
+	plan.Source.Type = "local-installer-media"
+	plan.Source.MediaRoot = mediaRoot
+	plan.Source.RepoIndex = localMediaRepoIndex(mediaRoot)
+	plan.Source.RepoURL = ""
+	plan.Source.DisconnectedInstall = true
+}
+
+func setRemoteSource(plan *InstallPlan, repoURL string) error {
+	base := normalizeRepoBase(repoURL)
+	if !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
+		return fmt.Errorf("remote source requires http:// or https:// URL")
+	}
+	plan.Source.Type = "remote-repository"
+	plan.Source.MediaRoot = ""
+	plan.Source.RepoIndex = repoIndexFromBase(base)
+	plan.Source.RepoURL = base
+	plan.Source.DisconnectedInstall = false
+	return nil
+}
+
+func setMirrorSource(plan *InstallPlan, repoBase string) error {
+	base := normalizeRepoBase(repoBase)
+	if base == "" {
+		return fmt.Errorf("mirror source path or URL is empty")
+	}
+	plan.Source.Type = "mirror"
+	plan.Source.MediaRoot = ""
+	plan.Source.RepoIndex = repoIndexFromBase(base)
+	plan.Source.RepoURL = base
+	plan.Source.DisconnectedInstall = true
+	return nil
+}
+
+func normalizeRepoBase(value string) string {
+	value = strings.TrimRight(strings.TrimSpace(value), "/")
+	if strings.HasPrefix(value, "/") {
+		return "file://" + value
+	}
+	return value
+}
+
+func repoIndexFromBase(base string) string {
+	return strings.TrimRight(base, "/") + "/repo/index.x86_64.json"
+}
+
+func localMediaRepoIndex(mediaRoot string) string {
+	return strings.TrimRight(mediaRoot, "/") + "/kiki/repo/index.x86_64.json"
 }
 
 func (t *TUI) Run() error {
@@ -484,13 +673,14 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		fmt.Fprintln(t.Out, "Use: disk /dev/sda")
 	case "2":
 		fmt.Fprintln(t.Out, "Network:", dashboardNetworkSummary(t.Plan))
-		fmt.Fprintln(t.Out, "Use: network dhcp [en* eth*] or network off")
+		fmt.Fprintln(t.Out, "Use: network dhcp [en* eth*], network static 192.168.122.50/24 192.168.122.1 1.1.1.1 [en* eth*], or network off")
 	case "3":
 		fmt.Fprintln(t.Out, "Account:", dashboardAccountSummary(t.Plan))
 		fmt.Fprintln(t.Out, "Use: user kiki and hostname localhost.localdomain")
 	case "4":
 		fmt.Fprintln(t.Out, "Profile:", t.Plan.Packages.Profile)
 		fmt.Fprintln(t.Out, "Use: profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
+		fmt.Fprintln(t.Out, "     add -containerd to a Kubernetes profile to use containerd by default")
 	case "5":
 		fmt.Fprintln(t.Out, "Runtime:", t.Plan.Runtime.ContainerRuntime)
 		fmt.Fprintln(t.Out, "Use: runtime none, runtime crio, or runtime containerd")
@@ -507,10 +697,20 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		t.Reviewed = true
 		t.Render()
 		fmt.Fprintln(t.Out)
-		fmt.Fprintln(t.Out, "Start install is executed by the stage-1 installer. In this preview, run: write", t.PlanPath)
+		if !ReviewReady(t.Plan) {
+			fmt.Fprintln(t.Out, "Start install blocked. Fix BLOCK items before install.")
+			return false, nil
+		}
+		t.Plan.Artifacts.RuntimePlan = t.PlanPath
+		if err := WritePlanFile(t.PlanPath, t.Plan); err != nil {
+			return false, err
+		}
+		t.PlanWritten = true
+		fmt.Fprintln(t.Out, "wrote", t.PlanPath)
+		fmt.Fprintln(t.Out, "Stage-1 installer can consume this install plan.")
 	case "profile":
 		if len(fields) != 2 {
-			return false, fmt.Errorf("usage: profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
+			return false, fmt.Errorf("usage: profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute[-containerd]")
 		}
 		ApplyProfile(&t.Plan, fields[1])
 		t.Render()
@@ -560,32 +760,71 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		}
 		t.Render()
 	case "network":
-		if len(fields) < 2 || (fields[1] != "dhcp" && fields[1] != "off") {
-			return false, fmt.Errorf("usage: network dhcp|off [interface-match]")
+		if len(fields) < 2 || (fields[1] != "dhcp" && fields[1] != "static" && fields[1] != "off") {
+			return false, fmt.Errorf("usage: network dhcp|off [interface-match] | network static <address/prefix> <gateway|none> <dns|none> [interface-match]")
 		}
 		t.Plan.Network.Mode = fields[1]
-		t.Plan.Network.DHCP4 = fields[1] == "dhcp"
-		t.Plan.Network.IPv6AcceptRA = fields[1] == "dhcp"
-		if len(fields) > 2 {
-			t.Plan.Network.InterfaceMatch = strings.Join(fields[2:], " ")
+		t.Plan.Network.DHCP4 = false
+		t.Plan.Network.IPv6AcceptRA = false
+		t.Plan.Network.Address = ""
+		t.Plan.Network.Gateway = ""
+		t.Plan.Network.DNS = ""
+		t.Plan.Network.NTP = ""
+		switch fields[1] {
+		case "dhcp":
+			t.Plan.Network.DHCP4 = true
+			t.Plan.Network.IPv6AcceptRA = true
+			if len(fields) > 2 {
+				t.Plan.Network.InterfaceMatch = strings.Join(fields[2:], " ")
+			}
+		case "static":
+			if len(fields) < 5 {
+				return false, fmt.Errorf("usage: network static <address/prefix> <gateway|none> <dns|none> [interface-match]")
+			}
+			t.Plan.Network.Address = fields[2]
+			if fields[3] != "none" {
+				t.Plan.Network.Gateway = fields[3]
+			}
+			if fields[4] != "none" {
+				t.Plan.Network.DNS = strings.ReplaceAll(fields[4], ",", " ")
+			}
+			if len(fields) > 5 {
+				t.Plan.Network.InterfaceMatch = strings.Join(fields[5:], " ")
+			}
+		case "off":
+			if len(fields) > 2 {
+				t.Plan.Network.InterfaceMatch = strings.Join(fields[2:], " ")
+			}
 		}
 		t.Render()
 	case "source":
-		if len(fields) < 2 || (fields[1] != "local" && fields[1] != "remote") {
-			return false, fmt.Errorf("usage: source local|remote [repo-url]")
+		if len(fields) < 2 || (fields[1] != "local" && fields[1] != "remote" && fields[1] != "mirror") {
+			return false, fmt.Errorf("usage: source local [media-root] | remote http://repo.example/kiki | mirror /srv/kiki-mirror")
 		}
-		if fields[1] == "local" {
-			t.Plan.Source.Type = "local-installer-media"
-			t.Plan.Source.DisconnectedInstall = true
-			t.Plan.Source.RepoURL = ""
-		} else {
+		switch fields[1] {
+		case "local":
+			if len(fields) > 3 {
+				return false, fmt.Errorf("usage: source local [media-root]")
+			}
+			mediaRoot := defaultMediaRoot
+			if len(fields) == 3 {
+				mediaRoot = fields[2]
+			}
+			setLocalSource(&t.Plan, mediaRoot)
+		case "remote":
 			if len(fields) != 3 {
 				return false, fmt.Errorf("usage: source remote http://repo.example/kiki")
 			}
-			t.Plan.Source.Type = "remote-repository"
-			t.Plan.Source.DisconnectedInstall = false
-			t.Plan.Source.RepoURL = fields[2]
-			t.Plan.Source.RepoIndex = strings.TrimRight(fields[2], "/") + "/repo/index.x86_64.json"
+			if err := setRemoteSource(&t.Plan, fields[2]); err != nil {
+				return false, err
+			}
+		case "mirror":
+			if len(fields) != 3 {
+				return false, fmt.Errorf("usage: source mirror /srv/kiki-mirror")
+			}
+			if err := setMirrorSource(&t.Plan, fields[2]); err != nil {
+				return false, err
+			}
 		}
 		t.Render()
 	case "verify-key":
@@ -616,25 +855,21 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		}
 		if fields[1] == "none" {
 			if isKubernetesProfile(t.Plan.Packages.Profile) {
-				return false, fmt.Errorf("Kubernetes profiles require a CRI runtime; use runtime crio")
+				return false, fmt.Errorf("Kubernetes profiles require a CRI runtime; use runtime crio or runtime containerd")
 			}
 			t.Plan.Runtime.ContainerRuntime = "none"
-			runtimePackages := append([]string{}, kubeNodePackages...)
-			runtimePackages = append(runtimePackages, containerdPackages...)
+			runtimePackages := append([]string{}, kubernetesCommonPackages...)
+			runtimePackages = append(runtimePackages, crioRuntimePackages...)
+			runtimePackages = append(runtimePackages, containerdRuntimePackages...)
+			runtimePackages = append(runtimePackages, containerdStandalonePackages...)
 			t.Plan.Packages.Selected = removeItems(t.Plan.Packages.Selected, runtimePackages...)
 			t.Plan.Services.Enable = removeItems(t.Plan.Services.Enable, kubeNodeServices...)
 			t.Plan.Services.Enable = removeItems(t.Plan.Services.Enable, containerdServices...)
 		} else {
 			if fields[1] == "containerd" {
-				t.Plan.Runtime.ContainerRuntime = "containerd"
-				t.Plan.Packages.Selected = removeItems(t.Plan.Packages.Selected, "cri-o")
-				t.Plan.Packages.Selected = appendUnique(t.Plan.Packages.Selected, containerdPackages...)
-				t.Plan.Services.Enable = appendUnique(removeItems(t.Plan.Services.Enable, "crio.service"), containerdServices...)
+				applyContainerRuntime(&t.Plan, "containerd")
 			} else {
-				t.Plan.Runtime.ContainerRuntime = "cri-o"
-				t.Plan.Packages.Selected = removeItems(t.Plan.Packages.Selected, "containerd", "runc")
-				t.Plan.Packages.Selected = appendUnique(t.Plan.Packages.Selected, kubeNodePackages...)
-				t.Plan.Services.Enable = appendUnique(removeItems(t.Plan.Services.Enable, "containerd.service"), kubeNodeServices...)
+				applyContainerRuntime(&t.Plan, "cri-o")
 			}
 		}
 		t.Render()
@@ -669,6 +904,7 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		} else if len(fields) > 2 {
 			return false, fmt.Errorf("usage: write [path]")
 		}
+		t.Plan.Artifacts.RuntimePlan = path
 		if err := WritePlanFile(path, t.Plan); err != nil {
 			return false, err
 		}
@@ -770,6 +1006,9 @@ func dashboardNetworkSummary(plan InstallPlan) string {
 	if mode == "" {
 		mode = "OFF"
 	}
+	if plan.Network.Mode == "static" && plan.Network.Address != "" {
+		return fmt.Sprintf("%s, %s, %s", mode, plan.Network.Address, plan.Network.InterfaceMatch)
+	}
 	return fmt.Sprintf("%s, %s, %s", mode, plan.Network.Manager, plan.Network.InterfaceMatch)
 }
 
@@ -788,11 +1027,15 @@ func dashboardAccountSummary(plan InstallPlan) string {
 func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Commands:")
 	fmt.Fprintln(w, "  profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
+	fmt.Fprintln(w, "  profile kiki-kube-bootstrap-containerd|kiki-kube-control-containerd|kiki-kube-compute-containerd")
 	fmt.Fprintln(w, "    legacy aliases: kiki-kube-controller -> kiki-kube-control, kiki-kube-node -> kiki-kube-compute")
 	fmt.Fprintln(w, "  disk /dev/sda")
 	fmt.Fprintln(w, "  swap on|off")
 	fmt.Fprintln(w, "  network dhcp|off [en* eth*]")
-	fmt.Fprintln(w, "  source local|remote [repo-url]")
+	fmt.Fprintln(w, "  network static <address/prefix> <gateway|none> <dns|none> [en* eth*]")
+	fmt.Fprintln(w, "  source local [media-root]")
+	fmt.Fprintln(w, "  source remote http://repo.example/kiki")
+	fmt.Fprintln(w, "  source mirror /srv/kiki-mirror|file:///srv/kiki-mirror")
 	fmt.Fprintln(w, "  verify-key /etc/ki2/trust/stage2-v2-repo.hmac")
 	fmt.Fprintln(w, "  user kiki")
 	fmt.Fprintln(w, "  hostname localhost.localdomain")
@@ -843,8 +1086,11 @@ func checkDisk(plan InstallPlan) Check {
 }
 
 func checkNetwork(plan InstallPlan) Check {
-	if plan.Network.Mode != "dhcp" && plan.Network.Mode != "off" {
-		return Check{Name: "Network", State: "BLOCK", Summary: "network mode must be dhcp or off"}
+	if plan.Network.Mode != "dhcp" && plan.Network.Mode != "static" && plan.Network.Mode != "off" {
+		return Check{Name: "Network", State: "BLOCK", Summary: "network mode must be dhcp, static, or off"}
+	}
+	if plan.Network.Mode == "static" && plan.Network.Address == "" {
+		return Check{Name: "Network", State: "BLOCK", Summary: "static network mode requires address/prefix"}
 	}
 	return Check{Name: "Network", State: "OK", Summary: fmt.Sprintf("%s via %s (%s)", plan.Network.Mode, plan.Network.Manager, plan.Network.InterfaceMatch)}
 }
@@ -961,6 +1207,10 @@ func WritePlanYAML(w io.Writer, plan InstallPlan) error {
 	line("    interface_match: %s", quoteYAML(plan.Network.InterfaceMatch))
 	line("    dhcp4: %t", plan.Network.DHCP4)
 	line("    ipv6_accept_ra: %t", plan.Network.IPv6AcceptRA)
+	line("    address: %s", quoteYAML(plan.Network.Address))
+	line("    gateway: %s", quoteYAML(plan.Network.Gateway))
+	line("    dns: %s", quoteYAML(plan.Network.DNS))
+	line("    ntp: %s", quoteYAML(plan.Network.NTP))
 	line("  users:")
 	line("    admin:")
 	line("      name: %s", quoteYAML(plan.Users.Admin.Name))
@@ -989,10 +1239,23 @@ func WritePlanYAML(w io.Writer, plan InstallPlan) error {
 	line("    container_runtime: %s", quoteYAML(plan.Runtime.ContainerRuntime))
 	line("    cgroup_driver: %s", quoteYAML(plan.Runtime.CgroupDriver))
 	line("    swap_policy: %s", quoteYAML(plan.Runtime.SwapPolicy))
+	line("  kubernetes:")
+	line("    role: %s", quoteYAML(plan.Kubernetes.Role))
+	line("    kubeadm:")
+	line("      config_api: %s", quoteYAML(plan.Kubernetes.Kubeadm.ConfigAPI))
+	line("      action: %s", quoteYAML(plan.Kubernetes.Kubeadm.Action))
+	line("      config_template: %s", quoteYAML(plan.Kubernetes.Kubeadm.ConfigTemplate))
+	line("      config_output: %s", quoteYAML(plan.Kubernetes.Kubeadm.ConfigOutput))
+	line("      command: %s", quoteYAML(plan.Kubernetes.Kubeadm.Command))
+	line("      control_plane: %t", plan.Kubernetes.Kubeadm.ControlPlane)
+	line("      cri_socket: %s", quoteYAML(plan.Kubernetes.Kubeadm.CRISocket))
 	line("  firewall:")
 	line("    backend: %s", quoteYAML(plan.Firewall.Backend))
 	line("    firewalld: %t", plan.Firewall.Firewalld)
 	line("    bridge_tool: %s", quoteYAML(plan.Firewall.BridgeTool))
+	line("  artifacts:")
+	line("    runtime_plan: %s", quoteYAML(plan.Artifacts.RuntimePlan))
+	line("    installed_plan: %s", quoteYAML(plan.Artifacts.InstalledPlan))
 	return bw.Flush()
 }
 

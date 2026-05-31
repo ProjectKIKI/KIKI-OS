@@ -145,6 +145,15 @@ static int starts_with(const char *value, const char *prefix) {
     return 1;
 }
 
+static int ends_with(const char *value, const char *suffix) {
+    size_t value_len = kstrlen(value);
+    size_t suffix_len = kstrlen(suffix);
+    if (suffix_len > value_len) {
+        return 0;
+    }
+    return kstrcmp(value + value_len - suffix_len, suffix) == 0;
+}
+
 static int contains(const char *value, const char *needle) {
     if (!*needle) {
         return 1;
@@ -1364,6 +1373,7 @@ static void show_network_tools(void) {
     say("\nNetwork tools\n");
     say("-------------\n");
     say("installed default: systemd-networkd DHCP on wired interfaces (en* eth*)\n");
+    say("install-time modes: dhcp, static IPv4, or off\n");
     if (fd < 0) {
         say("Cannot read /sys/class/net.\n");
         return;
@@ -1417,7 +1427,7 @@ static void show_network_tools(void) {
     if (!count) {
         say("  no network interfaces found\n");
     }
-    say("\nThe installer writes a DHCP-first systemd-networkd profile into the target rootfs.\n");
+    say("\nThe installer writes a systemd-networkd profile into the target rootfs.\n");
 }
 
 static char package_index_buffer[128 * 1024];
@@ -1426,6 +1436,7 @@ static char package_index_buffer[128 * 1024];
 static char selected_packages[MAX_SELECTED_PACKAGES][PACKAGE_NAME_LEN];
 static int selected_package_count = 0;
 static char selected_package_profile[PACKAGE_NAME_LEN] = "minimal-systemd";
+static char selected_container_runtime[32] = "none";
 
 static int read_small_file_raw(const char *path, char *buffer, size_t size, long *out_len) {
     if (size == 0) {
@@ -1618,12 +1629,80 @@ static void selected_set_profile(const char *profile) {
     copy_string(selected_package_profile, sizeof(selected_package_profile), profile && profile[0] ? profile : "custom");
 }
 
+static void selected_set_runtime(const char *runtime) {
+    copy_string(selected_container_runtime, sizeof(selected_container_runtime), runtime && runtime[0] ? runtime : "none");
+}
+
 static int selected_profile_is_kubernetes(void) {
     return starts_with(selected_package_profile, "kiki-kube-");
 }
 
 static int selected_profile_is_kube_compute(void) {
-    return kstrcmp(selected_package_profile, "kiki-kube-compute") == 0 || kstrcmp(selected_package_profile, "kiki-kube-node") == 0;
+    return kstrcmp(selected_package_profile, "kiki-kube-compute") == 0 ||
+           kstrcmp(selected_package_profile, "kiki-kube-compute-containerd") == 0 ||
+           kstrcmp(selected_package_profile, "kiki-kube-node") == 0;
+}
+
+static int selected_runtime_is_containerd(void) {
+    return kstrcmp(selected_container_runtime, "containerd") == 0;
+}
+
+static const char *selected_kubernetes_role(void) {
+    if (!selected_profile_is_kubernetes()) {
+        return "none";
+    }
+    if (starts_with(selected_package_profile, "kiki-kube-bootstrap")) {
+        return "bootstrap-control-plane";
+    }
+    if (starts_with(selected_package_profile, "kiki-kube-control") ||
+        kstrcmp(selected_package_profile, "kiki-kube-controller") == 0) {
+        return "control-plane";
+    }
+    return "compute";
+}
+
+static const char *selected_kubeadm_action(void) {
+    if (!selected_profile_is_kubernetes()) {
+        return "";
+    }
+    return kstrcmp(selected_kubernetes_role(), "bootstrap-control-plane") == 0 ? "init" : "join";
+}
+
+static const char *selected_kubeadm_template(void) {
+    const char *role = selected_kubernetes_role();
+    if (kstrcmp(role, "bootstrap-control-plane") == 0) {
+        return "/etc/kubernetes/kiki/kubeadm-init.yaml";
+    }
+    if (kstrcmp(role, "control-plane") == 0) {
+        return "/etc/kubernetes/kiki/kubeadm-join-control-plane.yaml";
+    }
+    if (kstrcmp(role, "compute") == 0) {
+        return "/etc/kubernetes/kiki/kubeadm-join-compute.yaml";
+    }
+    return "";
+}
+
+static const char *selected_kubeadm_command(void) {
+    if (!selected_profile_is_kubernetes()) {
+        return "";
+    }
+    return kstrcmp(selected_kubeadm_action(), "init") == 0 ?
+        "kubeadm init --config /etc/kubernetes/kiki/kubeadm.local.yaml" :
+        "kubeadm join --config /etc/kubernetes/kiki/kubeadm.local.yaml";
+}
+
+static const char *selected_kubeadm_cri_socket(void) {
+    if (!selected_profile_is_kubernetes()) {
+        return "";
+    }
+    return selected_runtime_is_containerd() ?
+        "unix:///run/containerd/containerd.sock" :
+        "unix:///var/run/crio/crio.sock";
+}
+
+static int selected_kubernetes_control_plane(void) {
+    const char *role = selected_kubernetes_role();
+    return kstrcmp(role, "bootstrap-control-plane") == 0 || kstrcmp(role, "control-plane") == 0;
 }
 
 static int selected_add(const char *name) {
@@ -1640,6 +1719,23 @@ static int selected_add(const char *name) {
     copy_string(selected_packages[selected_package_count], PACKAGE_NAME_LEN, name);
     selected_package_count++;
     return 1;
+}
+
+static int selected_remove(const char *name) {
+    int removed = 0;
+    for (int i = 0; i < selected_package_count; i++) {
+        if (kstrcmp(selected_packages[i], name) != 0) {
+            continue;
+        }
+        for (int j = i; j + 1 < selected_package_count; j++) {
+            copy_string(selected_packages[j], PACKAGE_NAME_LEN, selected_packages[j + 1]);
+        }
+        selected_package_count--;
+        selected_packages[selected_package_count][0] = 0;
+        i--;
+        removed++;
+    }
+    return removed;
 }
 
 static void show_selected_packages(void) {
@@ -1738,6 +1834,7 @@ static int select_package_set(const char *index_path, const char *profile, const
 }
 
 static void select_minimal_systemd_packages(const char *index_path) {
+    selected_set_runtime("none");
     const char *const defaults[] = {
         "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
         "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
@@ -1750,19 +1847,37 @@ static void select_minimal_systemd_packages(const char *index_path) {
 }
 
 static void select_kube_profile_packages(const char *index_path, const char *profile, const char *label) {
-    const char *const defaults[] = {
+    if (kstrcmp(selected_container_runtime, "none") == 0) {
+        selected_set_runtime("cri-o");
+    }
+    const char *const common[] = {
         "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
         "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
         "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
         "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
         "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-installer-tui",
         "bridge-utils", "ethtool", "nftables", "iptables", "conntrack-tools", "firewalld",
-        "conmon", "crun", "cri-o", "cni-plugins", "cri-tools", "socat", "chrony",
-        "kubelet", "kubeadm", "kubectl", "kube-node-config",
+        "cni-plugins", "cri-tools", "socat", "chrony",
+        "kubelet", "kubeadm", "kubectl",
         NULL,
     };
-    select_package_set(index_path, profile, label, defaults);
-    say("runtime default: CRI-O, cgroup driver systemd, swap off for Kubernetes.\n");
+    const char *const crio_runtime[] = {
+        "conmon", "crun", "cri-o", "kube-node-config",
+        NULL,
+    };
+    const char *const containerd_runtime[] = {
+        "runc", "containerd", "kube-node-config-containerd",
+        NULL,
+    };
+    select_package_set(index_path, profile, label, common);
+    if (selected_runtime_is_containerd()) {
+        select_package_set(index_path, profile, "containerd runtime package set", containerd_runtime);
+        say("runtime selected: containerd, cgroup driver systemd, swap off for Kubernetes.\n");
+    } else {
+        selected_set_runtime("cri-o");
+        select_package_set(index_path, profile, "CRI-O runtime package set", crio_runtime);
+        say("runtime selected: CRI-O, cgroup driver systemd, swap off for Kubernetes.\n");
+    }
 }
 
 static void select_kube_bootstrap_packages(const char *index_path) {
@@ -1777,36 +1892,120 @@ static void select_kube_compute_packages(const char *index_path) {
     select_kube_profile_packages(index_path, "kiki-kube-compute", "kiki-kube-compute package set (compute node)");
 }
 
+static int select_named_package_profile(const char *index_path, const char *profile, const char *runtime_override) {
+    char effective_profile[96];
+    int want_containerd = 0;
+    int want_crio = 0;
+    copy_string(effective_profile, sizeof(effective_profile), profile && profile[0] ? profile : "minimal-systemd");
+
+    if (runtime_override && runtime_override[0]) {
+        if (kstrcmp(runtime_override, "containerd") == 0) {
+            want_containerd = 1;
+        } else if (kstrcmp(runtime_override, "cri-o") == 0 || kstrcmp(runtime_override, "crio") == 0) {
+            want_crio = 1;
+        } else if (kstrcmp(runtime_override, "none") != 0) {
+            say("Invalid kiki.runtime value. Use cri-o, crio, containerd, or none.\n");
+            return 0;
+        }
+    }
+
+    selected_clear();
+    if (kstrcmp(effective_profile, "minimal-systemd") == 0) {
+        if (want_containerd || want_crio) {
+            say("Runtime override ignored for minimal-systemd; Kubernetes profiles own CRI selection.\n");
+        }
+        select_minimal_systemd_packages(index_path);
+        return 1;
+    }
+
+    if (kstrcmp(effective_profile, "kiki-kube-controller") == 0) {
+        copy_string(effective_profile, sizeof(effective_profile), "kiki-kube-control");
+    } else if (kstrcmp(effective_profile, "kiki-kube-node") == 0) {
+        copy_string(effective_profile, sizeof(effective_profile), "kiki-kube-compute");
+    }
+
+    if (!starts_with(effective_profile, "kiki-kube-")) {
+        say("Unknown kiki.profile value. Use minimal-systemd or a kiki-kube-* profile.\n");
+        return 0;
+    }
+
+    if (ends_with(effective_profile, "-containerd")) {
+        want_containerd = 1;
+    }
+    if (want_containerd && !ends_with(effective_profile, "-containerd")) {
+        size_t out = kstrlen(effective_profile);
+        append_string(effective_profile, sizeof(effective_profile), out, "-containerd");
+    }
+    if (want_crio && ends_with(effective_profile, "-containerd")) {
+        size_t trim = kstrlen(effective_profile) - kstrlen("-containerd");
+        effective_profile[trim] = 0;
+    }
+
+    if (ends_with(effective_profile, "-containerd")) {
+        selected_set_runtime("containerd");
+    } else {
+        selected_set_runtime("cri-o");
+    }
+
+    if (starts_with(effective_profile, "kiki-kube-bootstrap")) {
+        select_kube_profile_packages(index_path, effective_profile, "kiki-kube-bootstrap autoinstall package set");
+        return 1;
+    }
+    if (starts_with(effective_profile, "kiki-kube-control")) {
+        select_kube_profile_packages(index_path, effective_profile, "kiki-kube-control autoinstall package set");
+        return 1;
+    }
+    if (starts_with(effective_profile, "kiki-kube-compute")) {
+        select_kube_profile_packages(index_path, effective_profile, "kiki-kube-compute autoinstall package set");
+        return 1;
+    }
+
+    say("Unknown kiki.profile value. Use kiki-kube-bootstrap/control/compute with optional -containerd.\n");
+    return 0;
+}
+
 static int ensure_selected_profile_packages(const char *index_path) {
     if (!selected_profile_is_kubernetes()) {
         return 1;
     }
-    const char *const required[] = {
+    const char *const common[] = {
         "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
         "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
         "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
         "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
         "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-installer-tui",
         "bridge-utils", "ethtool", "nftables", "iptables", "conntrack-tools", "firewalld",
-        "conmon", "crun", "cri-o", "cni-plugins", "cri-tools", "socat", "chrony",
-        "kubelet", "kubeadm", "kubectl", "kube-node-config",
+        "cni-plugins", "cri-tools", "socat", "chrony",
+        "kubelet", "kubeadm", "kubectl",
         NULL,
     };
+    const char *const crio_runtime[] = {
+        "conmon", "crun", "cri-o", "kube-node-config",
+        NULL,
+    };
+    const char *const containerd_runtime[] = {
+        "runc", "containerd", "kube-node-config-containerd",
+        NULL,
+    };
+    const char *const *sets[] = {common, selected_runtime_is_containerd() ? containerd_runtime : crio_runtime, NULL};
     int missing = 0;
     int added = 0;
     char line[160];
-    for (int i = 0; required[i]; i++) {
-        if (!package_exists_in_index(index_path, required[i])) {
-            size_t out = 0;
-            out = append_string(line, sizeof(line), out, "Required Kubernetes package missing from repository index: ");
-            out = append_string(line, sizeof(line), out, required[i]);
-            append_string(line, sizeof(line), out, "\n");
-            say(line);
-            missing++;
-            continue;
-        }
-        if (selected_add(required[i])) {
-            added++;
+    for (int set = 0; sets[set]; set++) {
+        const char *const *required = sets[set];
+        for (int i = 0; required[i]; i++) {
+            if (!package_exists_in_index(index_path, required[i])) {
+                size_t out = 0;
+                out = append_string(line, sizeof(line), out, "Required Kubernetes package missing from repository index: ");
+                out = append_string(line, sizeof(line), out, required[i]);
+                append_string(line, sizeof(line), out, "\n");
+                say(line);
+                missing++;
+                continue;
+            }
+            if (selected_add(required[i])) {
+                added++;
+            }
         }
     }
     if (missing) {
@@ -1821,6 +2020,62 @@ static int ensure_selected_profile_packages(const char *index_path) {
         say(line);
     }
     return 1;
+}
+
+static void apply_runtime_to_selected_packages(const char *runtime) {
+    if (!selected_profile_is_kubernetes()) {
+        selected_set_runtime("none");
+        return;
+    }
+    selected_set_runtime(runtime);
+    selected_remove("conmon");
+    selected_remove("crun");
+    selected_remove("cri-o");
+    selected_remove("kube-node-config");
+    selected_remove("runc");
+    selected_remove("containerd");
+    selected_remove("kube-node-config-containerd");
+    if (selected_runtime_is_containerd()) {
+        selected_add("runc");
+        selected_add("containerd");
+        selected_add("kube-node-config-containerd");
+    } else {
+        selected_set_runtime("cri-o");
+        selected_add("conmon");
+        selected_add("crun");
+        selected_add("cri-o");
+        selected_add("kube-node-config");
+    }
+}
+
+static void show_runtime_status(void);
+
+static void runtime_menu(void) {
+    char choice[16];
+    tui_header("Runtime");
+    show_runtime_status();
+    if (!selected_profile_is_kubernetes()) {
+        say("Select a Kubernetes profile before choosing CRI runtime.\n");
+        tui_wait();
+        return;
+    }
+    say("\nRuntime actions\n");
+    say("---------------\n");
+    say("1) Use CRI-O\n");
+    say("2) Use containerd\n");
+    say("3) Back to installer\n");
+    say("\nSelect [3]: ");
+    if (read_line(choice, sizeof(choice)) != 0) {
+        return;
+    }
+    if (kstrcmp(choice, "1") == 0) {
+        apply_runtime_to_selected_packages("cri-o");
+        say("Runtime set to CRI-O.\n");
+    } else if (kstrcmp(choice, "2") == 0) {
+        apply_runtime_to_selected_packages("containerd");
+        say("Runtime set to containerd.\n");
+    }
+    tui_wait();
 }
 
 static void show_package_media(void);
@@ -1875,6 +2130,7 @@ static void package_selection_menu(void) {
         } else if (kstrcmp(choice, "6") == 0) {
             selected_clear();
             selected_set_profile("world");
+            selected_set_runtime("none");
             int added = select_all_packages_from_index(index_path);
             out = 0;
             out = append_string(line, sizeof(line), out, "selected unique packages from media: ");
@@ -1889,6 +2145,7 @@ static void package_selection_menu(void) {
                 say("Package not found in repository index.\n");
             } else if (selected_add(name)) {
                 selected_set_profile("custom");
+                selected_set_runtime("none");
                 say("Package selected.\n");
             } else {
                 say("Package is already selected or selection is full.\n");
@@ -1896,6 +2153,7 @@ static void package_selection_menu(void) {
         } else if (kstrcmp(choice, "8") == 0) {
             selected_clear();
             selected_set_profile("custom");
+            selected_set_runtime("none");
             say("Package selection cleared.\n");
         } else if (kstrcmp(choice, "9") == 0) {
             show_selected_packages();
@@ -2259,8 +2517,11 @@ static void enable_default_systemd_units(void) {
 
 static void enable_kubernetes_systemd_units(void) {
     mkdir_p("/mnt/target/etc/systemd/system/multi-user.target.wants", 0755);
-    if (file_exists("/mnt/target/usr/lib/systemd/system/crio.service")) {
+    if (!selected_runtime_is_containerd() && file_exists("/mnt/target/usr/lib/systemd/system/crio.service")) {
         make_symlink("/usr/lib/systemd/system/crio.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/crio.service");
+    }
+    if (selected_runtime_is_containerd() && file_exists("/mnt/target/usr/lib/systemd/system/containerd.service")) {
+        make_symlink("/usr/lib/systemd/system/containerd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/containerd.service");
     }
     if (file_exists("/mnt/target/usr/lib/systemd/system/kubelet.service")) {
         make_symlink("/usr/lib/systemd/system/kubelet.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/kubelet.service");
@@ -2542,6 +2803,10 @@ struct network_setup {
     int dhcp4;
     int ipv6_ra;
     char match_name[96];
+    char address[96];
+    char gateway[96];
+    char dns[160];
+    char ntp[160];
 };
 
 #define INSTALL_PLAN_PATH "/run/kiki/install-plan.yaml"
@@ -2592,7 +2857,7 @@ static int is_valid_username(const char *value) {
     return 1;
 }
 
-static void collect_account_setup(struct account_setup *account, int quick_mode) {
+static void collect_account_setup(struct account_setup *account, int quick_mode, int unattended_mode) {
     char input[128];
     char confirm[128];
     copy_string(account->admin_user, sizeof(account->admin_user), "kiki");
@@ -2603,6 +2868,10 @@ static void collect_account_setup(struct account_setup *account, int quick_mode)
     say("----------\n");
     say("Root login is disabled by default. The kiki user is added to the sudo group.\n");
     say("Password input is visible on this early installer console.\n");
+    if (unattended_mode) {
+        say("Autoinstall uses lab defaults: user kiki, password kiki, root locked.\n");
+        return;
+    }
     say("Admin username [kiki]: ");
     if (read_line(input, sizeof(input)) == 0 && input[0]) {
         if (!is_valid_username(input)) {
@@ -2635,8 +2904,12 @@ static void collect_account_setup(struct account_setup *account, int quick_mode)
 }
 
 static void collect_network_setup(struct network_setup *network, int quick_mode) {
-    char input[128];
+    char input[192];
     copy_string(network->match_name, sizeof(network->match_name), "en* eth*");
+    copy_string(network->address, sizeof(network->address), "");
+    copy_string(network->gateway, sizeof(network->gateway), "");
+    copy_string(network->dns, sizeof(network->dns), "");
+    copy_string(network->ntp, sizeof(network->ntp), "");
     network->enabled = 1;
     network->dhcp4 = 1;
     network->ipv6_ra = 1;
@@ -2649,13 +2922,43 @@ static void collect_network_setup(struct network_setup *network, int quick_mode)
         return;
     }
 
-    say("Network mode [dhcp] (dhcp/off): ");
+    say("Network mode [dhcp] (dhcp/static/off): ");
     if (read_line(input, sizeof(input)) == 0 && input[0]) {
         if (kstrcmp(input, "off") == 0 || kstrcmp(input, "none") == 0 || kstrcmp(input, "disabled") == 0) {
             network->enabled = 0;
             network->dhcp4 = 0;
             network->ipv6_ra = 0;
             say("Network autoconfiguration will be disabled in the target rootfs.\n");
+            return;
+        }
+        if (kstrcmp(input, "static") == 0 || kstrcmp(input, "STATIC") == 0) {
+            network->dhcp4 = 0;
+            network->ipv6_ra = 0;
+            say("Interface match [en* eth*]: ");
+            if (read_line(input, sizeof(input)) == 0 && input[0]) {
+                copy_string(network->match_name, sizeof(network->match_name), input);
+            }
+            say("Static IPv4 address with prefix, for example 192.168.122.50/24: ");
+            if (read_line(input, sizeof(input)) != 0 || !input[0]) {
+                say("No static address entered. Falling back to DHCP.\n");
+                network->dhcp4 = 1;
+                network->ipv6_ra = 1;
+                return;
+            }
+            copy_string(network->address, sizeof(network->address), input);
+            say("Gateway [none]: ");
+            if (read_line(input, sizeof(input)) == 0 && input[0] && kstrcmp(input, "none") != 0) {
+                copy_string(network->gateway, sizeof(network->gateway), input);
+            }
+            say("DNS servers, space separated [none]: ");
+            if (read_line(input, sizeof(input)) == 0 && input[0] && kstrcmp(input, "none") != 0) {
+                copy_string(network->dns, sizeof(network->dns), input);
+            }
+            say("NTP servers, space separated [none]: ");
+            if (read_line(input, sizeof(input)) == 0 && input[0] && kstrcmp(input, "none") != 0) {
+                copy_string(network->ntp, sizeof(network->ntp), input);
+            }
+            say("Static network profile will be written to the target rootfs.\n");
             return;
         }
         if (kstrcmp(input, "dhcp") != 0 && kstrcmp(input, "DHCP") != 0) {
@@ -2676,7 +2979,7 @@ static void collect_network_setup(struct network_setup *network, int quick_mode)
 
 static int write_target_network_config(const char *target_root, const struct network_setup *network) {
     char path[256];
-    char text[1024];
+    char text[1536];
     size_t out = 0;
     mkdir_p("/mnt/target/etc/systemd/network", 0755);
     path3(path, sizeof(path), target_root, "/etc/systemd/network/20-wired.network", "");
@@ -2689,7 +2992,31 @@ static int write_target_network_config(const char *target_root, const struct net
     out = append_string(text, sizeof(text), out, "\n[Match]\nName=");
     out = append_string(text, sizeof(text), out, network->match_name[0] ? network->match_name : "en* eth*");
     out = append_string(text, sizeof(text), out, "\n\n[Link]\nRequiredForOnline=routable\n\n[Network]\n");
-    out = append_string(text, sizeof(text), out, "DHCP=ipv4\n");
+    if (network->dhcp4) {
+        out = append_string(text, sizeof(text), out, "DHCP=ipv4\n");
+    } else {
+        out = append_string(text, sizeof(text), out, "DHCP=no\n");
+        if (network->address[0]) {
+            out = append_string(text, sizeof(text), out, "Address=");
+            out = append_string(text, sizeof(text), out, network->address);
+            out = append_string(text, sizeof(text), out, "\n");
+        }
+        if (network->gateway[0]) {
+            out = append_string(text, sizeof(text), out, "Gateway=");
+            out = append_string(text, sizeof(text), out, network->gateway);
+            out = append_string(text, sizeof(text), out, "\n");
+        }
+        if (network->dns[0]) {
+            out = append_string(text, sizeof(text), out, "DNS=");
+            out = append_string(text, sizeof(text), out, network->dns);
+            out = append_string(text, sizeof(text), out, "\n");
+        }
+        if (network->ntp[0]) {
+            out = append_string(text, sizeof(text), out, "NTP=");
+            out = append_string(text, sizeof(text), out, network->ntp);
+            out = append_string(text, sizeof(text), out, "\n");
+        }
+    }
     out = append_string(text, sizeof(text), out, "IPv6AcceptRA=");
     out = append_string(text, sizeof(text), out, network->ipv6_ra ? "yes\n" : "no\n");
     out = append_string(text, sizeof(text), out, "LinkLocalAddressing=ipv6\n");
@@ -2697,7 +3024,9 @@ static int write_target_network_config(const char *target_root, const struct net
     out = append_string(text, sizeof(text), out, "EmitLLDP=nearest-bridge\n");
     out = append_string(text, sizeof(text), out, "LLMNR=no\n");
     out = append_string(text, sizeof(text), out, "MulticastDNS=no\n");
-    out = append_string(text, sizeof(text), out, "\n[DHCPv4]\nClientIdentifier=mac\nUseDNS=yes\nUseNTP=yes\nUseHostname=no\nRouteMetric=100\n");
+    if (network->dhcp4) {
+        out = append_string(text, sizeof(text), out, "\n[DHCPv4]\nClientIdentifier=mac\nUseDNS=yes\nUseNTP=yes\nUseHostname=no\nRouteMetric=100\n");
+    }
     if (!write_text_file(path, text)) {
         return 0;
     }
@@ -3063,6 +3392,10 @@ static void build_install_plan(struct install_plan *plan, int quick_mode, int au
     plan->network.dhcp4 = network->dhcp4;
     plan->network.ipv6_ra = network->ipv6_ra;
     copy_string(plan->network.match_name, sizeof(plan->network.match_name), network->match_name);
+    copy_string(plan->network.address, sizeof(plan->network.address), network->address);
+    copy_string(plan->network.gateway, sizeof(plan->network.gateway), network->gateway);
+    copy_string(plan->network.dns, sizeof(plan->network.dns), network->dns);
+    copy_string(plan->network.ntp, sizeof(plan->network.ntp), network->ntp);
 }
 
 static int write_install_plan_yaml(const char *path, const struct install_plan *plan) {
@@ -3080,6 +3413,7 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "type", "local-installer-media");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "media_root", plan->media_root);
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "repo_index", plan->index_path);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "channel", "stage2-v2");
     out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "    ", "disconnected_install", 1);
     out = append_string(yaml, sizeof(yaml), out, "  target:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "disk", plan->target_disk);
@@ -3108,10 +3442,14 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_string(yaml, sizeof(yaml), out, "  network:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "manager", "systemd-networkd");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "resolver", "systemd-resolved");
-    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "mode", plan->network.enabled ? "dhcp" : "off");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "mode", !plan->network.enabled ? "off" : plan->network.dhcp4 ? "dhcp" : "static");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "interface_match", plan->network.match_name);
     out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "    ", "dhcp4", plan->network.dhcp4);
     out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "    ", "ipv6_accept_ra", plan->network.ipv6_ra);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "address", plan->network.address);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "gateway", plan->network.gateway);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "dns", plan->network.dns);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "ntp", plan->network.ntp);
     out = append_string(yaml, sizeof(yaml), out, "  users:\n");
     out = append_string(yaml, sizeof(yaml), out, "    admin:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "      ", "name", plan->account.admin_user);
@@ -3146,7 +3484,11 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_string(yaml, sizeof(yaml), out, "      - sshd.service\n");
     out = append_string(yaml, sizeof(yaml), out, "      - kiki-agent.service\n");
     if (selected_profile_is_kubernetes()) {
-        out = append_string(yaml, sizeof(yaml), out, "      - crio.service\n");
+        if (selected_runtime_is_containerd()) {
+            out = append_string(yaml, sizeof(yaml), out, "      - containerd.service\n");
+        } else {
+            out = append_string(yaml, sizeof(yaml), out, "      - crio.service\n");
+        }
         out = append_string(yaml, sizeof(yaml), out, "      - kubelet.service\n");
         out = append_string(yaml, sizeof(yaml), out, "      - chronyd.service\n");
     }
@@ -3156,9 +3498,19 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "initramfs", "/boot/initramfs-kiki.img");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "root", plan->root_part);
     out = append_string(yaml, sizeof(yaml), out, "  runtime:\n");
-    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "container_runtime", selected_profile_is_kubernetes() ? "cri-o" : "none");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "container_runtime", selected_profile_is_kubernetes() ? selected_container_runtime : "none");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "cgroup_driver", "systemd");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "swap_policy", selected_profile_is_kubernetes() ? "kubernetes-off" : plan->has_swap ? "system" : "disabled");
+    out = append_string(yaml, sizeof(yaml), out, "  kubernetes:\n");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "role", selected_kubernetes_role());
+    out = append_string(yaml, sizeof(yaml), out, "    kubeadm:\n");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "      ", "config_api", "kubeadm.k8s.io/v1beta4");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "      ", "action", selected_kubeadm_action());
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "      ", "config_template", selected_kubeadm_template());
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "      ", "config_output", "/etc/kubernetes/kiki/kubeadm.local.yaml");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "      ", "command", selected_kubeadm_command());
+    out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "      ", "control_plane", selected_kubernetes_control_plane());
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "      ", "cri_socket", selected_kubeadm_cri_socket());
     out = append_string(yaml, sizeof(yaml), out, "  firewall:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "backend", "nftables");
     out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "    ", "firewalld", selected_profile_is_kubernetes() && !selected_profile_is_kube_compute());
@@ -3191,8 +3543,14 @@ static void show_account_status(void) {
 static void show_runtime_status(void) {
     say("\nRuntime\n");
     say("-------\n");
-    say(selected_profile_is_kubernetes() ? "selected runtime: CRI-O\n" : "selected runtime: none\n");
-    say("Kubernetes bootstrap/control/compute profiles use CRI-O with systemd cgroup driver.\n");
+    if (selected_profile_is_kubernetes()) {
+        say("selected runtime: ");
+        say(selected_container_runtime);
+        say("\n");
+    } else {
+        say("selected runtime: none\n");
+    }
+    say("Kubernetes bootstrap/control/compute profiles support CRI-O or containerd with systemd cgroup driver.\n");
     say("firewall backend direction: nftables/firewalld packages\n");
     say("Kubernetes profiles keep swap off; minimal-systemd keeps normal swap.\n");
 }
@@ -3209,7 +3567,7 @@ static void show_installer_dashboard(void) {
     say("KIKI OS Installer\n\n");
     say("Install Plan: " INSTALL_PLAN_PATH "\n\n");
     say("[!] Disk        auto partition: target disk, ESP + root, swap policy\n");
-    say("[OK] Network   DHCP, systemd-networkd, en* eth*\n");
+    say("[OK] Network   DHCP default, static available, systemd-networkd\n");
     say("[OK] Account   user: kiki, sudo enabled, root locked\n");
     if (selected_package_count > 0) {
         char line[96];
@@ -3224,7 +3582,13 @@ static void show_installer_dashboard(void) {
     } else {
         say("[ ] Profile    minimal-systemd\n");
     }
-    say(selected_profile_is_kubernetes() ? "[OK] Runtime    CRI-O, swap off for Kubernetes\n" : "[ ] Runtime    none\n");
+    if (selected_profile_is_kubernetes()) {
+        say("[OK] Runtime    ");
+        say(selected_container_runtime);
+        say(", swap off for Kubernetes\n");
+    } else {
+        say("[ ] Runtime    none\n");
+    }
     say(file_exists(INSTALL_PLAN_PATH) ? "[OK] Review     ready\n" : "[ ] Review     not ready\n");
     say("\n");
 }
@@ -3241,7 +3605,9 @@ static void persist_install_plan_to_target(void) {
     }
 }
 
-static void run_guided_package_installer(int quick_mode) {
+static int cmdline_value(const char *key, char *out, size_t out_size);
+
+static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     char media_root[256];
     char index_path[384];
     char target[128];
@@ -3252,6 +3618,10 @@ static void run_guided_package_installer(int quick_mode) {
     char hostname[64];
     char layout_choice[32];
     char partition_command[160];
+    char cmdline_profile[96];
+    char cmdline_runtime[32];
+    char cmdline_target[128];
+    char cmdline_hostname[64];
     struct account_setup account;
     struct network_setup network;
     int auto_layout = 1;
@@ -3272,8 +3642,16 @@ static void run_guided_package_installer(int quick_mode) {
     swap_part[0] = 0;
     root_part[0] = 0;
     partition_command[0] = 0;
+    cmdline_profile[0] = 0;
+    cmdline_runtime[0] = 0;
+    cmdline_target[0] = 0;
+    cmdline_hostname[0] = 0;
 
-    if (quick_mode) {
+    if (unattended_mode) {
+        tui_header("Autoinstall");
+        say("Automatic path from kernel command line: kiki.autoinstall=erase|quick-vm.\n");
+        say("This mode is destructive and intended for controlled VM or lab automation.\n\n");
+    } else if (quick_mode) {
         tui_header("Quick VM install");
         say("Automatic path: pick the largest VM disk, create ESP + swap + root, then install the selected package set.\n");
         say("This mode is intended for disposable VM testing.\n\n");
@@ -3293,13 +3671,19 @@ static void run_guided_package_installer(int quick_mode) {
         say("Cannot find package repository index on installer media.\n");
         return;
     }
-    if (selected_package_count == 0) {
+    if (unattended_mode) {
+        cmdline_value("kiki.profile", cmdline_profile, sizeof(cmdline_profile));
+        cmdline_value("kiki.runtime", cmdline_runtime, sizeof(cmdline_runtime));
+        if (!select_named_package_profile(index_path, cmdline_profile[0] ? cmdline_profile : "minimal-systemd", cmdline_runtime)) {
+            return;
+        }
+    } else if (selected_package_count == 0) {
         select_minimal_systemd_packages(index_path);
     }
     say("Selected package install plan:\n");
     show_selected_packages();
 
-    if (!quick_mode) {
+    if (!quick_mode && !unattended_mode) {
         say("\nPartitioning mode\n");
         say("-----------------\n");
         say("1) Automatic whole-disk layout: ESP + swap + root\n");
@@ -3328,8 +3712,25 @@ static void run_guided_package_installer(int quick_mode) {
         u64 total_sectors = 0;
         list_disks();
         say("\n");
-        if (!prompt_whole_disk(target, sizeof(target))) {
-            return;
+        if (unattended_mode) {
+            if (cmdline_value("kiki.target", cmdline_target, sizeof(cmdline_target))) {
+                if (!is_whole_disk_path(cmdline_target)) {
+                    say("Invalid kiki.target value. Use a whole disk such as /dev/sda.\n");
+                    return;
+                }
+                copy_string(target, sizeof(target), cmdline_target);
+            } else if (!get_default_install_disk(target, sizeof(target))) {
+                say("No default install disk was found for autoinstall.\n");
+                return;
+            }
+            remember_preferred_install_disk(target);
+            say("Autoinstall target disk: ");
+            say(target);
+            say("\n");
+        } else {
+            if (!prompt_whole_disk(target, sizeof(target))) {
+                return;
+            }
         }
         if (!read_block_sectors(target, &total_sectors)) {
             say("Cannot read target disk size from sysfs.\n");
@@ -3392,18 +3793,29 @@ static void run_guided_package_installer(int quick_mode) {
         has_swap = swap_part[0] ? 1 : 0;
     }
 
-    say("Hostname [localhost.localdomain]: ");
-    if (read_line(hostname, sizeof(hostname)) != 0 || !hostname[0]) {
-        copy_string(hostname, sizeof(hostname), "localhost.localdomain");
+    if (unattended_mode) {
+        if (!cmdline_value("kiki.hostname", cmdline_hostname, sizeof(cmdline_hostname)) || !cmdline_hostname[0]) {
+            copy_string(hostname, sizeof(hostname), "localhost.localdomain");
+        } else {
+            copy_string(hostname, sizeof(hostname), cmdline_hostname);
+        }
+        say("Hostname: ");
+        say(hostname);
+        say("\n");
+    } else {
+        say("Hostname [localhost.localdomain]: ");
+        if (read_line(hostname, sizeof(hostname)) != 0 || !hostname[0]) {
+            copy_string(hostname, sizeof(hostname), "localhost.localdomain");
+        }
     }
-    collect_network_setup(&network, quick_mode);
-    collect_account_setup(&account, quick_mode);
+    collect_network_setup(&network, quick_mode || unattended_mode);
+    collect_account_setup(&account, quick_mode, unattended_mode);
     if (!ensure_selected_profile_packages(index_path)) {
         return;
     }
 
     struct install_plan plan;
-    build_install_plan(&plan, quick_mode, auto_layout, has_swap, media_root, index_path, target, esp_part, swap_part, root_part, hostname, disk_mib, mem_mib, esp_mib, swap_mib, root_mib, &account, &network);
+    build_install_plan(&plan, quick_mode || unattended_mode, auto_layout, has_swap, media_root, index_path, target, esp_part, swap_part, root_part, hostname, disk_mib, mem_mib, esp_mib, swap_mib, root_mib, &account, &network);
     if (!write_install_plan_yaml(INSTALL_PLAN_PATH, &plan)) {
         say("Failed to write declarative install plan.\n");
         return;
@@ -3418,7 +3830,11 @@ static void run_guided_package_installer(int quick_mode) {
     size_t out = 0;
     out = append_string(expected, sizeof(expected), out, "INSTALL ");
     append_string(expected, sizeof(expected), out, auto_layout ? target : root_part);
-    if (quick_mode) {
+    if (unattended_mode) {
+        say("\nAutoinstall confirmation\n");
+        say("------------------------\n");
+        say("kiki.autoinstall requested destructive installation without console prompts.\n");
+    } else if (quick_mode) {
         say("\nVM test confirmation\n");
         say("--------------------\n");
         say("This will erase and repartition ");
@@ -3612,6 +4028,19 @@ static int cmdline_value(const char *key, char *out, size_t out_size) {
     return 0;
 }
 
+static int maybe_run_cmdline_autoinstall(void) {
+    char mode[32];
+    if (!cmdline_value("kiki.autoinstall", mode, sizeof(mode))) {
+        return 0;
+    }
+    if (kstrcmp(mode, "erase") == 0 || kstrcmp(mode, "quick-vm") == 0 || kstrcmp(mode, "yes") == 0 || kstrcmp(mode, "1") == 0) {
+        run_guided_package_installer(1, 1);
+        return 1;
+    }
+    say("Ignoring unknown kiki.autoinstall value. Use erase or quick-vm.\n");
+    return 0;
+}
+
 static int handoff_to_installed_system(void) {
     char rootdev[160];
     if (!cmdline_value("root", rootdev, sizeof(rootdev))) {
@@ -3685,15 +4114,13 @@ static void installer_menu(void) {
         } else if (kstrcmp(choice, "4") == 0) {
             package_selection_menu();
         } else if (kstrcmp(choice, "5") == 0) {
-            tui_header("Runtime");
-            show_runtime_status();
-            tui_wait();
+            runtime_menu();
         } else if (kstrcmp(choice, "6") == 0) {
             tui_header("Install plan");
             show_saved_install_plan();
             tui_wait();
         } else if (kstrcmp(choice, "7") == 0) {
-            run_guided_package_installer(0);
+            run_guided_package_installer(0, 0);
             tui_wait();
         } else if (kstrcmp(choice, "s") == 0 || kstrcmp(choice, "S") == 0) {
             run_installer_shell();
@@ -3709,7 +4136,7 @@ static void installer_menu(void) {
             run_image_installer();
             tui_wait();
         } else if (kstrcmp(choice, "x") == 0 || kstrcmp(choice, "X") == 0) {
-            run_guided_package_installer(1);
+            run_guided_package_installer(1, 0);
             tui_wait();
         } else if (kstrcmp(choice, "r") == 0 || kstrcmp(choice, "R") == 0) {
             reboot_now();
@@ -3780,7 +4207,9 @@ static int kmain(void) {
     show_cmdline();
 
 #ifdef KIKI_ENABLE_INSTALLER
-    installer_menu();
+    if (!maybe_run_cmdline_autoinstall()) {
+        installer_menu();
+    }
 #elif defined(KIKI_INSTALLED_STAGE1)
     handoff_to_installed_system();
     installed_prompt();
@@ -4041,6 +4470,21 @@ def chmod_dynamic_loaders(root: Path) -> None:
             path.chmod(0o755)
 
 
+def link_installer_runtime_lib64(root: Path) -> None:
+    lib = root / "lib"
+    lib64 = root / "lib64"
+    if not lib.exists():
+        return
+    lib64.mkdir(parents=True, exist_ok=True)
+    for path in sorted(lib.glob("*.so*")):
+        if not path.is_file() and not path.is_symlink():
+            continue
+        dest = lib64 / path.name
+        if dest.exists() or dest.is_symlink():
+            continue
+        dest.symlink_to(Path("../lib") / path.name)
+
+
 def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
     runtime = {
         "schema": "ki2-installer-runtime-v1",
@@ -4119,6 +4563,7 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
             "usr/sbin/mkfs.ext4",
         },
     )
+    link_installer_runtime_lib64(root)
 
     for dirname in ("bin", "sbin", "usr/sbin", "usr/etc", "install"):
         (root / dirname).mkdir(parents=True, exist_ok=True)

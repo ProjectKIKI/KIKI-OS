@@ -19,12 +19,12 @@
 개발 단계 기준:
 
 - `stage1-v1`: 부팅과 설치 가능성 증명을 마친 최종 기준선
-- `stage2-v2`: 운영 가능한 최소 서버 배포판을 만드는 진행형 라인
+- `stage2-v2`: 운영 가능한 최소 서버 배포판 기준선
 - stage 3: 자기 빌드와 쿠버네티스/클러스터 운영이 가능한 독립 배포판
 
 상세 정의는 [KIKI OS 개발 단계 정의](kiki-os-stages.ko.md)를 따른다. Stage 1의
 고정 범위는 [KIKI OS Stage 1 V1 최종 문서](kiki-stage1-v1-final.ko.md), Stage 2의
-진행 범위는 [KIKI OS Stage 2 V2 진행 문서](kiki-stage2-v2-progress.ko.md)를 우선한다.
+완료 범위는 [KIKI OS Stage 2 V2 완료 문서](kiki-stage2-v2-progress.ko.md)를 우선한다.
 
 주요 디렉터리:
 
@@ -165,6 +165,12 @@ kiki-agent.service
 `resolved.conf`, `system.conf`, `login.defs`, `securetty`, `/etc/profile`,
 `/etc/motd`, tmpfiles 설정, 기본 DHCP networkd 설정을 제공한다.
 
+콘솔 환경은 `/etc/profile`에서 `LESS=-R`, `LESSCHARSET=utf-8`,
+`SYSTEMD_COLORS=1`, `SYSTEMD_URLIFY=0`, `SYSTEMD_LESS=FRSXMK`를 기본값으로
+둔다. 이 설정은 `systemctl status`와 `journalctl`의 ANSI color를 보존하고,
+Hyper-V 콘솔처럼 OSC 8 hyperlink escape를 제대로 표시하지 못하는 환경에서
+`file://...` 제어 문자열이 화면에 노출되는 문제를 피하기 위한 기본값이다.
+
 ## 네트워크 설계
 
 KIKI OS의 기본 네트워크 관리는 `systemd-networkd`와 `systemd-resolved`로 한다.
@@ -201,6 +207,7 @@ KIKI OS의 기본 네트워크 관리는 `systemd-networkd`와 `systemd-resolved
 smoke             빠른 Go/Python/레시피 검증
 bootstrap         bootstrap-stage1 패키지, repo, rootfs 빌드
 minimal-systemd   systemd 기반 기본 OS 패키지 빌드
+stage2           ISO 없이 서명된 Stage 2 저장소 metadata, CRI-O/containerd Kubernetes 계획, Go TUI 렌더링 검증
 security          소스 pin, shell syntax, scanner 확인
 iso               payload ISO 생성
 bootiso           GRUB 부팅 ISO 생성
@@ -213,9 +220,16 @@ CLI 실행:
 
 ```bash
 python tools/ki2ci.py run smoke
+python tools/ki2stage2.py verify-kubernetes --require-signed-metadata
+python tools/ki2stage2.py verify-network-userspace
+python tools/ki2stage2.py verify-installed-rootfs --root /mnt/target --runtime containerd
+python tools/ki2ci.py run stage2
 python tools/ki2ci.py run minimal-systemd --jobs 8 --toolchain-id rocky9-stage0-gcc11-v1
 python tools/ki2ci.py run publish --publish-dir /srv/www/kiki
 ```
+
+`ki2stage2.py verify-kubernetes --strict-production`은 placeholder 패키지를 실패로
+처리한다. Stage 2 최종 완료 판정에서는 이 strict 모드가 통과해야 한다.
 
 웹 콘솔 실행:
 
@@ -309,7 +323,8 @@ Stage 1에서는 이 C 설치기가 실제 설치 경로를 담당한다.
 
 동시에 Stage 1부터 Go 기반 `kiki-installer-tui` preview를 패키지로 포함한다.
 이 도구는 설치를 직접 실행하기보다 같은 선언형 설치 계획서를 상태판 형태로
-렌더링하고, Stage 2의 주 설치기로 승격하기 전에 테스트할 수 있는 기반이다.
+렌더링하고, Stage 2에서 설치 계획서 계약을 검증하는 기반이다. Go TUI를 단독
+설치기로 승격하는 작업은 Stage 3 후보로 둔다.
 
 주요 기능:
 
@@ -368,6 +383,14 @@ Stage 1에서는 이 C 설치기가 실제 설치 경로를 담당한다.
 계획서를 `/var/lib/ki2/install-plan.yaml`로 복사한다. 비밀번호는 계획서에
 저장하지 않는다.
 
+Stage 2 무인 설치:
+
+```text
+kiki.autoinstall=erase kiki.profile=kiki-kube-compute-containerd kiki.runtime=containerd kiki.target=/dev/sda kiki.hostname=localhost.localdomain
+```
+
+무인 설치 파라미터는 ISO 부팅 항목의 kernel command line에 추가한다. `kiki.autoinstall`이 없으면 기존 TUI가 뜨고, `erase` 또는 `quick-vm`일 때만 콘솔 확인 없이 진행한다. `kiki.target`을 생략하면 인스톨러가 가장 큰 VM 디스크를 선택한다. Kubernetes 프로파일은 설치 계획서에 `runtime`, `kubernetes`, `firewall`, `artifacts` 섹션을 기록하고 swap을 끈다.
+
 Go TUI preview:
 
 ```bash
@@ -376,12 +399,24 @@ kiki-installer-tui --profile kiki-kube-compute --render
 kiki-installer-tui --write --plan /run/kiki/install-plan.yaml
 ```
 
+Stage 2 Go TUI의 저장소 source 명령:
+
+```text
+source local /run/install-media
+source mirror /srv/kiki-mirror
+source remote http://repo.example.internal:8080
+verify-key /etc/ki2/trust/stage2-v2-repo.hmac
+```
+
 Go TUI는 다음 원칙을 따른다.
 
 - 첫 화면은 “상태판 + 편집 명령” 구조로 둔다.
 - TUI의 중심 데이터는 `/run/kiki/install-plan.yaml`이다.
+- `start`와 `--write`는 Stage 1 설치기가 소비할 계획서를 작성하는 handoff 단계다.
 - 비밀번호 평문은 계획서에 저장하지 않는다.
 - Kubernetes 역할 프로필은 기본적으로 swap을 끈다.
+- Kubernetes 계획서는 kubeadm action, role template, local config output,
+  command, CRI socket을 기록하고 `verify-install-plan`으로 검증한다.
 - 방화벽 backend는 `nftables`로 기록하고, `firewalld`는 선택값으로 둔다.
 - bridge 점검 기본 도구는 `iproute2`의 `bridge` 명령이다.
 
@@ -395,7 +430,15 @@ network:
   interface_match: "en* eth*"
   dhcp4: true
   ipv6_accept_ra: true
+  address: ""
+  gateway: ""
+  dns: ""
+  ntp: ""
 ```
+
+`mode`는 `dhcp`, `static`, `off` 중 하나다. `static` 모드에서는 `dhcp4`와
+`ipv6_accept_ra`를 끄고 `address`, `gateway`, `dns`, `ntp` 값을
+`systemd-networkd`의 `Address=`, `Gateway=`, `DNS=`, `NTP=`로 렌더링한다.
 
 ## 사용자와 로그인
 
@@ -530,6 +573,18 @@ ki2ctl upgrade
 ki2ctl list
 ```
 
+Disconnected 설치나 ISO 내부 저장소 테스트에서는 HTTP 서버 없이 로컬 경로를
+저장소로 등록할 수 있다. `ki2ctl`은 로컬 경로를 `file://` 저장소로 정규화한다.
+
+```bash
+ki2ctl repo set /run/install-media/kiki
+ki2ctl update
+ki2ctl install curl --dry-run
+
+ki2ctl --repo file:///srv/kiki-mirror info systemd
+ki2ctl repo remove
+```
+
 테스트 또는 설치 중 대상 rootfs에는 `--root`를 사용할 수 있다.
 
 ```bash
@@ -540,7 +595,7 @@ ki2ctl --root /mnt/target install openssh
 
 현재 `ki2ctl`의 범위:
 
-- HTTP repository index 다운로드
+- HTTP 및 local/file repository index 다운로드
 - 패키지 검색과 정보 조회
 - 런타임 의존성 해석
 - `.ki2` 다운로드와 sha256 검증
@@ -550,27 +605,37 @@ ki2ctl --root /mnt/target install openssh
 - 설치 전 파일 충돌 탐지
 - `/var/lib/ki2/transactions/` 트랜잭션 기록과 기본 rollback
 - 설치 기록 기반 파일 제거
+- `repo remove`로 저장소 설정과 캐시된 인덱스 제거
+
+`ki2build rootfs`로 조립한 rootfs도 `/var/lib/ki2/installed.json`과
+`/var/lib/ki2/installed.list`를 남긴다. Stage 2 CI는 이 rootfs 상태 DB를 사용해
+CRI-O와 containerd Kubernetes 프로필이 설치 결과에서도 서로 섞이지 않는지 확인한다.
 
 아직 남은 작업:
 
-- 저장소 서명 검증
+- 운영용 저장소 키 배포 정책
 - 완전한 디렉터리 정리 rollback
 - systemd unit enable/disable hook
 - 패키지 pre/post install script 정책
 
 ## 쿠버네티스 노드 방향
 
-Kubernetes 계열 프로필은 CRI-O 기반으로 나눈다.
+Kubernetes 계열 프로필은 CRI-O를 기본값으로 두고, containerd 변형 프로필도 함께 둔다.
 
 - `distro/profiles/kiki-kube-bootstrap.yaml`: 첫 control-plane 부트스트랩 노드
 - `distro/profiles/kiki-kube-control.yaml`: 추가 control-plane 노드
 - `distro/profiles/kiki-kube-compute.yaml`: compute 노드
+- `distro/profiles/kiki-kube-bootstrap-containerd.yaml`: 첫 control-plane 부트스트랩 노드, containerd 런타임
+- `distro/profiles/kiki-kube-control-containerd.yaml`: 추가 control-plane 노드, containerd 런타임
+- `distro/profiles/kiki-kube-compute-containerd.yaml`: compute 노드, containerd 런타임
 
 핵심 패키지:
 
 - `cri-o`
 - `conmon`
 - `crun`
+- `containerd`
+- `runc`
 - `cni-plugins`
 - `cri-tools`
 - `kubelet`
@@ -579,6 +644,14 @@ Kubernetes 계열 프로필은 CRI-O 기반으로 나눈다.
 - `firewalld`
 - `bridge-utils`
 - `kube-node-config`
+- `kube-node-config-containerd`
+
+`kube-node-config*` 패키지는 `/etc/kubernetes/kiki/` 아래에 kubeadm v1beta4
+템플릿을 설치한다.
+
+- `kubeadm-init.yaml`: 첫 bootstrap/control-plane 노드용 `kubeadm init`
+- `kubeadm-join-control-plane.yaml`: 추가 control-plane 노드용 `kubeadm join`
+- `kubeadm-join-compute.yaml`: compute 노드용 `kubeadm join`
 
 쿠버네티스 노드에서도 기본 네트워크 관리는 `systemd-networkd`로 둔다. CNI는
 pod network 영역을 담당하고, 호스트 기본 링크/DHCP/DNS는 systemd 계열로
@@ -587,10 +660,10 @@ pod network 영역을 담당하고, 호스트 기본 링크/DHCP/DNS는 systemd 
 Kubernetes 노드 프로필의 추가 정책:
 
 - cgroup driver는 `systemd`로 맞춘다.
-- CRI 런타임은 `CRI-O`를 기본 목표로 한다.
+- CRI 런타임은 `CRI-O`를 기본 목표로 하고, `containerd`는 Stage 2 선택 런타임으로 지원한다.
 - 기본 swap은 off이다. kubelet swap 지원은 별도 실험 옵션으로만 켠다.
 - 설치기는 Kubernetes 계열 프로필을 설치하기 직전에 필수 패키지 목록을 다시 확인한다.
-  `kubelet`, `kubeadm`, `kubectl`, `cri-o`, CNI, firewall/bridge 도구가 미디어에 없으면
+  `kubelet`, `kubeadm`, `kubectl`, 선택한 CRI 런타임, CNI, firewall/bridge 도구가 미디어에 없으면
   설치를 중단한다.
 - 커널은 bridge netfilter, nftables, iptables 호환, IPVS, veth, vxlan, overlayfs를 포함한다.
 - userspace 네트워크 도구는 `nftables`, `iptables`, `conntrack-tools`, `socat`,
@@ -638,10 +711,9 @@ publish/
 
 - target sysroot toolchain 구성
 - source hash pin 정리
-- 패키지 충돌 탐지
-- 설치된 시스템의 패키지 DB
-- 온라인 패키지 관리자
-- 저장소 서명
+- 공개키 기반 운영 저장소 서명
+- 패키지 hook과 업그레이드 정책 고도화
 - NetworkManager 선택 패키지
 - 웹 기반 설치기
-- 무인 설치와 disconnected 설치 완성
+- 설치 계획서 기반 무인 설치 실행 경로 완성
+- disconnected ISO 설치 검증 자동화

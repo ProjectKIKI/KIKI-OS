@@ -4,7 +4,7 @@
 
 KIKI OS는 새 VM 또는 베어메탈 머신을 Kubernetes 노드로 바꾸기 위한 자동화
 OS입니다. ISO 또는 디스크 이미지로 부팅하면 네트워크 준비, 노드 프로필 적용,
-CRI-O/kubelet 구성, 클러스터 조인, 상태 보고까지 이어지는 흐름을 목표로 합니다.
+CRI-O 또는 containerd 기반 kubelet 구성, 클러스터 조인, 상태 보고까지 이어지는 흐름을 목표로 합니다.
 
 현재 저장소는 KIKI OS의 빌드 시스템, `.ki2` 패키지 포맷, 패키지 저장소, rootfs
 조립, BIOS/UEFI 부팅 미디어, stage-1 TUI 설치기, 빌드 웹 콘솔을 함께 다룹니다.
@@ -25,17 +25,18 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 - Kubernetes 역할 프로필은 `kiki-kube-bootstrap`, `kiki-kube-control`, `kiki-kube-compute`로 모델링 중입니다.
 - 코어 OS는 `ki2`로 유지하고, 사용자 확장 앱과 운영 도구는 Stage 2 이후
   Podman/OCI 모델로 분리합니다. CRI-O는 Kubernetes 전용 런타임으로 둡니다.
-- 기본 네트워크는 DHCP 기반 `systemd-networkd`와 `systemd-resolved`입니다.
+- 기본 네트워크는 DHCP 기반 `systemd-networkd`와 `systemd-resolved`이며, 설치 시 Static IPv4도 선택할 수 있습니다.
 - 기본 실험 계정은 `kiki / kiki`이며 root 직접 로그인은 잠급니다.
 - `sudo`, `systemctl`, `dbus`, `systemd-logind`를 일반 운영 기본 기능으로 맞추고 있습니다.
+- 콘솔 기본값은 ANSI color, `less -R`, systemd color 활성화, systemd URL hyperlink 비활성화를 적용합니다.
 - Stage 1부터 Go 기반 `kiki-installer-tui` preview를 포함해 설치 계획서 TUI를 테스트합니다.
 
 ## 첫 부팅 흐름
 
 1. **부팅 이미지**: ISO 또는 디스크 이미지로 VM/베어메탈을 부팅합니다.
-2. **네트워크 준비**: DHCP로 기본 네트워크를 확보합니다.
+2. **네트워크 준비**: DHCP 또는 Static IPv4로 기본 네트워크를 확보합니다.
 3. **프로필 적용**: OS 패키지, systemd unit, 런타임 설정을 재현 가능하게 적용합니다.
-4. **런타임 시작**: CRI-O, CNI, systemd, kubelet 구성을 정리하고 서비스를 올립니다.
+4. **런타임 시작**: CRI-O/containerd, CNI, systemd, kubelet 구성을 정리하고 서비스를 올립니다.
 5. **클러스터 조인**: bootstrap 설정과 join token을 사용해 Kubernetes control plane에 등록합니다.
 6. **상태 보고**: `kiki-agent`가 노드 상태와 heartbeat를 보고합니다.
 
@@ -55,9 +56,12 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 | 프로필 | 상태 | 설명 |
 | --- | --- | --- |
 | `minimal-systemd` | 기본 | 최소 systemd 서버 OS를 만들기 위한 기본 프로필입니다. |
-| `kiki-kube-bootstrap` | 모델링 중 | 첫 Kubernetes control-plane을 kubeadm init 대상으로 준비하는 프로필입니다. |
-| `kiki-kube-control` | 모델링 중 | bootstrap 이후 추가 control-plane 노드를 준비하는 프로필입니다. |
-| `kiki-kube-compute` | 모델링 중 | Kubernetes compute 노드 부트스트랩을 위한 프로필입니다. |
+| `kiki-kube-bootstrap` | Stage 2 검증 | 첫 Kubernetes control-plane을 kubeadm init 대상으로 준비하는 프로필입니다. |
+| `kiki-kube-bootstrap-containerd` | Stage 2 검증 | 첫 control-plane을 containerd 런타임으로 준비하는 프로필입니다. |
+| `kiki-kube-control` | Stage 2 검증 | bootstrap 이후 추가 control-plane 노드를 준비하는 프로필입니다. |
+| `kiki-kube-control-containerd` | Stage 2 검증 | 추가 control-plane을 containerd 런타임으로 준비하는 프로필입니다. |
+| `kiki-kube-compute` | Stage 2 검증 | Kubernetes compute 노드 부트스트랩을 위한 프로필입니다. |
+| `kiki-kube-compute-containerd` | Stage 2 검증 | Kubernetes compute 노드를 containerd 런타임으로 준비하는 프로필입니다. |
 | `edge-node` | 예정 | 작은 VM, 원격 지점, edge 환경을 위한 경량 노드 프로필입니다. |
 | `gpu-node` | 예정 | GPU 런타임과 device plugin 구성을 포함하는 계산 노드 프로필입니다. |
 | `storage-node` | 예정 | 스토리지 워크로드와 노드 로컬 데이터 구성을 위한 프로필입니다. |
@@ -78,7 +82,7 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 - [KIKI OS 운영자 가이드](docs/kiki-os-guide.ko.md)
 - [KIKI OS 개발 단계 정의](docs/kiki-os-stages.ko.md)
 - [KIKI OS Stage 1 V1 최종 문서](docs/kiki-stage1-v1-final.ko.md)
-- [KIKI OS Stage 2 V2 진행 문서](docs/kiki-stage2-v2-progress.ko.md)
+- [KIKI OS Stage 2 V2 완료 문서](docs/kiki-stage2-v2-progress.ko.md)
 - [KIKI 패키지 저장소 구성 가이드](docs/kiki-repository-setup.ko.md)
 - [KIKI OS Stage 2 상세 작업 메모](docs/kiki-stage2-plan.ko.md)
 
@@ -87,7 +91,7 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 프로필 검증:
 
 ```bash
-python tools/ki2build.py validate --profile distro/profiles/world.toml --max-packages 64
+python tools/ki2build.py validate --profile distro/profiles/world.toml --max-packages 72
 python tools/ki2build.py validate --profile distro/profiles/minimal-systemd.toml --max-packages 64
 ```
 
@@ -96,6 +100,13 @@ python tools/ki2build.py validate --profile distro/profiles/minimal-systemd.toml
 ```bash
 python tools/ki2build.py plan --profile distro/profiles/minimal-systemd.toml
 python tools/ki2build.py plan --profile distro/profiles/kiki-kube-compute.yaml
+python tools/ki2build.py plan --profile distro/profiles/kiki-kube-compute-containerd.yaml
+```
+
+선택 패키지만 다시 빌드:
+
+```bash
+python tools/ki2build.py build --profile distro/profiles/kiki-kube-compute-containerd.yaml --only runc containerd cni-plugins cri-tools kubelet kubectl kubeadm
 ```
 
 rootfs 조립:
@@ -108,14 +119,28 @@ python tools/ki2build.py rootfs --profile distro/profiles/bootstrap-stage1.toml 
 
 ```bash
 python tools/ki2build.py repo-index
-python tools/ki2repo.py generate --channel stage2-v2
+python tools/ki2repo.py keygen --output build/ki2/keys/stage2-v2-repo.hmac --force
+python tools/ki2repo.py generate --channel stage2-v2 --sign-key build/ki2/keys/stage2-v2-repo.hmac
+python tools/ki2repo.py verify --key build/ki2/keys/stage2-v2-repo.hmac
+python tools/ki2stage2.py verify-kubernetes --require-signed-metadata
+python tools/ki2stage2.py verify-binary-smoke
+python tools/ki2stage2.py verify-package-manager
+python tools/ki2stage2.py verify-installed-rootfs --root /mnt/target --runtime containerd
 ```
 
 빌드 웹 콘솔:
 
 ```bash
+python tools/ki2ci.py run smoke
+python tools/ki2ci.py run stage2
 python tools/ki2ci.py serve --host 127.0.0.1 --port 8090
 ```
+
+`stage2` 파이프라인은 ISO를 만들지 않고 Go/Python 테스트, CRI-O/containerd
+Kubernetes 프로파일 계획, Go TUI 계획서 작성과 계약 검증, kubeadm init/join 계약이 포함된
+Stage 2 Kubernetes readiness, 런타임/Kubernetes 바이너리 smoke, kubeadm 템플릿
+파싱, CRI-O/containerd 설치 rootfs 검증, 서명된 저장소 metadata 생성과 검증을
+묶어 확인한다. 바이너리 smoke와 rootfs 검증은 Linux/WSL 빌더에서 실행해야 한다.
 
 컨테이너 기반 빌드 콘솔:
 
@@ -145,12 +170,23 @@ ki2ctl search curl
 ki2ctl install curl --dry-run
 ```
 
+Disconnected/local mirror 테스트:
+
+```bash
+ki2ctl repo set /run/install-media/kiki
+ki2ctl update
+ki2ctl --repo file:///srv/kiki-mirror info systemd
+ki2ctl repo remove
+```
+
 Go TUI preview:
 
 ```bash
 go test ./cmd/kiki-installer-tui
 go run ./cmd/kiki-installer-tui --render
 go run ./cmd/kiki-installer-tui --profile kiki-kube-compute --render
+go run ./cmd/kiki-installer-tui --write --plan ./install-plan.yaml
+python tools/ki2stage2.py verify-install-plan --plan ./install-plan.yaml --runtime cri-o --role compute
 ```
 
 ## TUI 설치기
@@ -169,7 +205,7 @@ go run ./cmd/kiki-installer-tui --profile kiki-kube-compute --render
 - `cfdisk`는 별도 convenience 패키지로 제공하며, 실제 바이너리는
   `util-linux`, TUI 라이브러리는 `ncurses` 패키지가 담당합니다.
 - fstab 안정화: `LABEL=KIKI_ROOT`, `LABEL=KIKI_EFI`, `LABEL=KIKI_SWAP` 기반 mount/swap
-- 네트워크 기본값: `systemd-networkd` DHCP, interface match `en* eth*`
+- 네트워크 기본값: `systemd-networkd` DHCP, interface match `en* eth*`, 선택 시 Static IPv4
 - 전체 디스크 대신 파티션 경로를 대상으로 입력하는 실수 차단
 - 관리자 사용자 생성, root 직접 로그인 잠금 기본값
 - `sudo` 그룹 정책 생성
@@ -186,7 +222,7 @@ go run ./cmd/kiki-installer-tui --profile kiki-kube-compute --render
 KIKI OS는 stage 1부터 stage 3까지 진행합니다.
 
 - **stage1-v1**: 부팅 가능한 설치 미디어와 최소 systemd OS를 검증한 최종 기준선입니다.
-- **stage2-v2**: 운영 가능한 최소 서버 배포판, 패키지 업데이트, 무인 설치, disconnected 설치를 구현하는 진행형 라인입니다.
+- **stage2-v2**: 운영 가능한 최소 서버 배포판, 패키지 설치/업데이트 기반, 무인 설치, disconnected 설치를 검증한 기준선입니다.
 - **stage 3**: 자기 빌드가 가능하고 Kubernetes/클러스터 운영을 자동화하는 독립 배포판으로 확장합니다.
 
 자세한 기준은 [KIKI OS 개발 단계 정의](docs/kiki-os-stages.ko.md)를 따릅니다.
@@ -205,7 +241,7 @@ Set-VMFirmware -VMName "test-kiki-os" -EnableSecureBoot Off
 - [KIKI OS 운영자 가이드](docs/kiki-os-guide.ko.md)
 - [KIKI OS 개발 단계 정의](docs/kiki-os-stages.ko.md)
 - [KIKI OS Stage 1 V1 최종 문서](docs/kiki-stage1-v1-final.ko.md)
-- [KIKI OS Stage 2 V2 진행 문서](docs/kiki-stage2-v2-progress.ko.md)
+- [KIKI OS Stage 2 V2 완료 문서](docs/kiki-stage2-v2-progress.ko.md)
 - [배포판 빌드 시스템 문서](distro/README.md)
 - [빌드 시스템 검토](distro/BUILD-SYSTEM-REVIEW.md)
 - [컨테이너 빌더 문서](deploy/container/README.md)
