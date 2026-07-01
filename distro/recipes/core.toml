@@ -865,6 +865,23 @@ runtime = ["python", "systemd", "ca-certificates"]
 system = "copy"
 
 [[recipe]]
+name = "kiki-netconfig"
+version = "0.1.0"
+release = 1
+summary = "KIKI systemd-networkd configuration helper"
+license = "GPL-3.0-or-later"
+tier = "kiki"
+architectures = ["all"]
+[recipe.source]
+type = "local"
+path = "distro/sources/kiki-netconfig"
+[recipe.dependencies]
+build = []
+runtime = ["python", "systemd"]
+[recipe.build]
+system = "copy"
+
+[[recipe]]
 name = "kiki-installer-tui"
 version = "0.1.0"
 release = 4

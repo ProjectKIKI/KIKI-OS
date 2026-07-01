@@ -8,6 +8,7 @@ KIKI OS는 stage 1, stage 2, stage 3까지 진행한다. 각 stage는 “무엇�
 
 - `stage1-v1`: Stage 1 부팅/설치 검증 라인. 저장소 metadata가 없는 `bootstrap-stage1` 산출물의 기본 릴리스 이름이다. 최종 기준은 [KIKI OS Stage 1 V1 최종 문서](kiki-stage1-v1-final.ko.md)를 따른다.
 - `stage2-v2`: Stage 2 패키지 저장소/설치 미디어 라인. `ki2repo`의 기본 channel이며 설치 계획서의 기본 저장소 channel이다. 완료 기준은 [KIKI OS Stage 2 V2 완료 문서](kiki-stage2-v2-progress.ko.md)를 따른다.
+- `stage3-v3`: Stage 3 self-hosting, Kubernetes bootstrap/join 자동화, 원격 설치와 운영 자동화 라인이다. 진행 기준은 [KIKI OS Stage 3 V3 전환 계획](kiki-stage3-v3-plan.ko.md)을 따른다.
 
 ## Stage 0: 실험과 빌드 기반
 
@@ -90,6 +91,7 @@ Stage 1은 “실험용 배포판”이다. 아직 온라인 패키지 관리자
 - Kubernetes bootstrap/control/compute 노드 프로파일
 - CRI-O 기본 및 containerd 선택 런타임 패키지
 - `kubelet`, `kubeadm`, `kubectl`, CNI, CRI 도구 패키징과 smoke 검증
+- `kiki-kubeadm` 기반 kubeadm config 렌더링과 guard 조건부 `init`/`join` 실행
 - 빌드 웹 콘솔에서 패키지/프로파일 단위 빌드
 - ISO와 패키지 저장소 정적 배포
 
@@ -105,7 +107,8 @@ Stage 2의 완료 기준:
 Stage 2는 “내부 서버용 최소 배포판”이다. 쿠버네티스 설치 준비, 즉 노드 역할별
 패키지 선택과 kubeadm 기반 bootstrap/control/compute 준비는 Stage 2에서 다룬다.
 Stage 2 설치 계획서는 kubeadm action, 역할별 템플릿, CRI socket, 계획서 보존 경로까지
-기록해야 하며 `verify-install-plan`으로 검증한다.
+기록해야 하며 `verify-install-plan`으로 검증한다. 또한 `kiki-kubeadm`은 계획서를
+읽어 `kubeadm.local.yaml`을 만들고 `init`/`join`을 실행할 수 있어야 한다.
 다중 노드 토큰 배포, control-plane 인증서 운영, CNI 실제 배포, 클러스터 전체
 운영 자동화는 Stage 3의 영역이다.
 
@@ -190,11 +193,12 @@ Stage 3은 “독립 서버/클러스터 배포판”이다.
 
 ## 현재 판단
 
-현재 KIKI OS는 Stage 2 V2 기준선까지 올라와 있다. Stage 1의 부팅/설치/login
+현재 KIKI OS는 Stage 2 V2 기준선을 완료하고 Stage 3 V3로 전환한다. Stage 1의 부팅/설치/login
 기준선 위에 `ki2ctl`, 서명된 저장소 metadata, 설치된 패키지 DB, 커널 파라미터
 기반 무인 설치, disconnected/local mirror 검증, CRI-O/containerd Kubernetes
-bootstrap/control/compute 프로파일을 얹었다. 다음 큰 전환점은 Stage 3의 self-hosting,
-원격 YAML unattended executor, 웹 기반 설치기, 클러스터 운영 자동화다.
+bootstrap/control/compute 프로파일, `kiki-kubeadm` init/join 실행기를 얹었다.
+Stage 3의 첫 전환점은 self-hosting, 원격 YAML unattended executor, 웹 기반 설치기,
+Kubernetes 토큰/인증서/CNI/agent 자동화다.
 
 ## Stage 1 마무리 메모
 

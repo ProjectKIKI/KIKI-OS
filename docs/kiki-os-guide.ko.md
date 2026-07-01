@@ -197,6 +197,16 @@ KIKI OS의 기본 네트워크 관리는 `systemd-networkd`와 `systemd-resolved
 현재 목표가 서버/쿠버네티스 노드이므로 기본 프로파일에서는
 `systemd-networkd`를 유지한다.
 
+설치 후 네트워크 변경은 `kiki-netconfig`로 처리한다.
+
+```bash
+sudo kiki-netconfig dhcp --apply
+sudo kiki-netconfig static --address 192.168.122.50/24 --gateway 192.168.122.1 --dns 1.1.1.1 --apply
+kiki-netconfig status
+```
+
+자세한 사용법은 [KIKI OS 네트워크 설정 도구](kiki-network-config.ko.md)를 따른다.
+
 ## 빌드 자동화와 웹 콘솔
 
 `tools/ki2ci.py`는 CLI 파이프라인과 웹 콘솔을 제공한다.

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import contextlib
 import datetime as dt
 import hashlib
@@ -39,6 +40,7 @@ class Ki2CtlError(RuntimeError):
 class Repo:
     name: str
     url: str
+    verify_key: str = ""
 
 
 def norm_url(url: str) -> str:
@@ -88,6 +90,10 @@ def pending_hooks_path(root: Path) -> Path:
 
 def repo_file(root: Path, name: str) -> Path:
     return repo_config_dir(root) / f"{name}.repo"
+
+
+def trust_dir(root: Path) -> Path:
+    return root_join(root, "etc", "ki2", "trust")
 
 
 def valid_repo_name(name: str) -> bool:
@@ -175,7 +181,8 @@ def load_configured_repos(root: Path) -> list[Repo]:
         data = read_json(path)
         name = str(data.get("name") or path.stem)
         url = norm_url(str(data.get("url") or ""))
-        repos.append(Repo(name=name, url=url))
+        verify_key = str(data.get("verify_key") or "")
+        repos.append(Repo(name=name, url=url, verify_key=verify_key))
     return repos
 
 
@@ -259,6 +266,35 @@ def indexes_for_command(args: argparse.Namespace) -> list[tuple[Repo, dict[str, 
     if not indexes:
         raise Ki2CtlError("no local repository index; run: ki2ctl update")
     return indexes
+
+
+def rooted_verify_key_path(root: Path, value: str) -> Path:
+    if value.startswith(("/", "\\")):
+        return root / value.lstrip("/\\")
+    key = Path(value).expanduser()
+    if key.is_absolute():
+        rooted = root_join(root, str(key).lstrip("/"))
+        if rooted.exists():
+            return rooted
+        return key
+    if len(key.parts) == 1:
+        return trust_dir(root) / key
+    return root_join(root, str(key))
+
+
+def repo_verify_key_path(root: Path, repo: Repo, explicit_key: Path | None) -> Path | None:
+    if explicit_key is not None:
+        return explicit_key
+    if repo.verify_key:
+        return rooted_verify_key_path(root, repo.verify_key)
+    candidates = [
+        trust_dir(root) / f"{repo.name}.hmac",
+        trust_dir(root) / "stage2-v2-repo.hmac",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def natural_key(value: Any) -> tuple[tuple[int, Any], ...]:
@@ -483,25 +519,26 @@ def detect_post_install_hooks(files: list[str]) -> list[str]:
     return sorted(hooks)
 
 
-def record_pending_hooks(root: Path, package_name: str, files: list[str]) -> None:
+def record_pending_hooks(root: Path, package_name: str, files: list[str], *, phase: str = "post-install") -> None:
     actions = detect_post_install_hooks(files)
     if not actions:
         return
     data = load_pending_hooks(root)
     existing = {
-        (item.get("action"), item.get("package"))
+        (item.get("action"), item.get("package"), item.get("phase", "post-install"))
         for item in data.get("hooks", [])
         if isinstance(item, dict)
     }
     hooks = data.setdefault("hooks", [])
     for action in actions:
-        key = (action, package_name)
+        key = (action, package_name, phase)
         if key in existing:
             continue
         hooks.append(
             {
                 "action": action,
                 "package": package_name,
+                "phase": phase,
                 "created_at": dt.datetime.now(UTC).isoformat(),
                 "status": "pending",
             }
@@ -540,20 +577,35 @@ def record_install(root: Path, repo: Repo, pkg: dict[str, Any], files: list[str]
 
 
 def file_owners(db: dict[str, Any]) -> dict[str, str]:
-    owners: dict[str, str] = {}
+    return {path: sorted(owners)[0] for path, owners in file_owner_sets(db).items() if owners}
+
+
+def file_owner_sets(db: dict[str, Any]) -> dict[str, set[str]]:
+    owner_sets: dict[str, set[str]] = {}
     packages = db.get("packages", {})
     if not isinstance(packages, dict):
-        return owners
+        return owner_sets
     for name, record in packages.items():
         if not isinstance(record, dict):
             continue
         for path in record.get("files", []):
-            owners[str(path)] = str(name)
-    return owners
+            owner_sets.setdefault(str(path), set()).add(str(name))
+    return owner_sets
+
+
+def reverse_dependency_blocks(packages: dict[str, Any], removing: set[str]) -> list[str]:
+    blocks: list[str] = []
+    for name, record in sorted(packages.items()):
+        if name in removing or not isinstance(record, dict):
+            continue
+        deps = set(runtime_deps(record))
+        for dep in sorted(deps & removing):
+            blocks.append(f"{dep}: required by installed package {name}")
+    return blocks
 
 
 def detect_file_conflicts(root: Path, db: dict[str, Any], planned: list[tuple[Repo, dict[str, Any], Path]]) -> list[str]:
-    owners = file_owners(db)
+    owners = file_owner_sets(db)
     planned_owners: dict[str, str] = {}
     conflicts: list[str] = []
     for _repo, pkg, package_path in planned:
@@ -564,17 +616,19 @@ def detect_file_conflicts(root: Path, db: dict[str, Any], planned: list[tuple[Re
             target = safe_target(root, path.lstrip("/"))
             planned_owner = planned_owners.get(path)
             if planned_owner and planned_owner != package_name:
-                conflicts.append(f"{path}: planned by both {planned_owner} and {package_name}")
+                # Stage 2 bootstrap packages can share copied runtime libraries.
+                # The transaction is ordered, and remove preserves shared owners.
                 continue
             if kind != "dir":
                 planned_owners[path] = package_name
             exists = target.exists() or target.is_symlink()
             if not exists:
                 continue
-            existing_owner = owners.get(path)
-            if existing_owner and existing_owner != package_name:
-                conflicts.append(f"{path}: owned by installed package {existing_owner}, cannot install {package_name}")
-            elif not existing_owner:
+            existing_owners = owners.get(path, set())
+            conflicting_owners = sorted(owner for owner in existing_owners if owner != package_name)
+            if conflicting_owners:
+                conflicts.append(f"{path}: owned by installed package {', '.join(conflicting_owners)}, cannot install {package_name}")
+            elif not existing_owners:
                 if kind == "dir" and target.is_dir() and not target.is_symlink():
                     continue
                 conflicts.append(f"{path}: existing unowned path would be overwritten by {package_name}")
@@ -655,6 +709,14 @@ def prepare_backups(root: Path, tx: dict[str, Any], planned: list[tuple[Repo, di
     update_transaction(root, tx)
 
 
+def prepare_remove_backups(root: Path, tx: dict[str, Any], records: list[dict[str, Any]]) -> None:
+    for record in records:
+        for path in record.get("files", []):
+            remember_backup(root, tx, str(path))
+    tx.setdefault("events", []).append({"event": "backup-prepared", "count": len(tx.get("backups", []))})
+    update_transaction(root, tx)
+
+
 def remove_path_for_rollback(target: Path) -> None:
     if target.is_dir() and not target.is_symlink():
         with contextlib.suppress(OSError):
@@ -662,6 +724,18 @@ def remove_path_for_rollback(target: Path) -> None:
     else:
         with contextlib.suppress(FileNotFoundError):
             target.unlink()
+
+
+def prune_empty_parent_dirs(root: Path, target: Path) -> None:
+    root_resolved = root.resolve()
+    current = target.resolve(strict=False)
+    while current != root_resolved and root_resolved in current.parents:
+        with contextlib.suppress(OSError):
+            current.rmdir()
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
 
 
 def rollback_transaction(root: Path, tx: dict[str, Any], db_before: dict[str, Any]) -> None:
@@ -742,9 +816,13 @@ def command_repo_set(args: argparse.Namespace) -> None:
         "name": name,
         "url": norm_url(args.url),
     }
+    if args.verify_key:
+        data["verify_key"] = str(args.verify_key)
     path = repo_file(args.root, name)
     write_json(path, data)
     print(f"repo {name}: {data['url']}")
+    if args.verify_key:
+        print(f"repo {name}: verify-key {args.verify_key}")
 
 
 def command_repo_remove(args: argparse.Namespace) -> None:
@@ -778,11 +856,16 @@ def command_repo_list(args: argparse.Namespace) -> None:
 def command_update(args: argparse.Namespace) -> None:
     for repo in selected_repos(args):
         metadata: dict[str, Any] | None = None
-        if args.verify_key:
+        verify_key = None if args.no_verify else repo_verify_key_path(args.root, repo, args.verify_key)
+        if verify_key is not None:
+            if not verify_key.exists():
+                raise Ki2CtlError(f"{repo.name}: repository verify key not found: {verify_key}")
             metadata = fetch_repo_metadata(repo, args.arch)
-            if not verify_metadata_signature(metadata, read_verify_key(args.verify_key)):
+            if not verify_metadata_signature(metadata, read_verify_key(verify_key)):
                 raise Ki2CtlError(f"{repo.name}: repository metadata signature verification failed")
             save_repo_metadata(args.root, repo, args.arch, metadata)
+        elif args.require_signature:
+            raise Ki2CtlError(f"{repo.name}: repository signature verification key is required")
         index, index_payload = fetch_repo_index_payload(repo, args.arch)
         if metadata is not None:
             expected = str(metadata.get("index", {}).get("sha256") or "")
@@ -842,25 +925,53 @@ def command_installed_list(args: argparse.Namespace) -> None:
 def command_remove(args: argparse.Namespace) -> None:
     db = load_installed(args.root)
     packages = db.get("packages", {})
+    removing = set(args.names)
     for name in args.names:
         if name not in packages:
             raise Ki2CtlError(f"package is not installed: {name}")
-        files = sorted(packages[name].get("files", []), reverse=True)
-        for item in files:
-            print(f"remove {item}")
-            if args.dry_run:
-                continue
-            target = safe_target(args.root, item.lstrip("/"))
-            if target.is_dir() and not target.is_symlink():
-                with contextlib.suppress(OSError):
-                    target.rmdir()
-            else:
-                with contextlib.suppress(FileNotFoundError):
-                    target.unlink()
-        if not args.dry_run:
+    blocks = reverse_dependency_blocks(packages, removing)
+    if blocks and not args.force:
+        raise Ki2CtlError("reverse dependencies prevent removal:\n" + "\n".join(f"  {item}" for item in blocks))
+    if args.dry_run:
+        for name in args.names:
+            for item in sorted(packages[name].get("files", []), reverse=True):
+                print(f"remove {item}")
+        return
+
+    db_before = copy.deepcopy(db)
+    records = [copy.deepcopy(packages[name]) for name in args.names]
+    owner_sets = file_owner_sets(db_before)
+    tx_plan = [(Repo(name="installed", url="installed"), record, Path()) for record in records]
+    tx = begin_transaction(args.root, args.command, tx_plan)
+    try:
+        prepare_remove_backups(args.root, tx, records)
+        for name in args.names:
+            files = sorted(packages[name].get("files", []), reverse=True)
+            for item in files:
+                print(f"remove {item}")
+                other_owners = owner_sets.get(str(item), set()) - removing
+                if other_owners:
+                    print(f"preserve {item} (shared by {', '.join(sorted(other_owners))})")
+                    continue
+                target = safe_target(args.root, item.lstrip("/"))
+                if target.is_dir() and not target.is_symlink():
+                    with contextlib.suppress(OSError):
+                        target.rmdir()
+                else:
+                    with contextlib.suppress(FileNotFoundError):
+                        target.unlink()
+                    prune_empty_parent_dirs(args.root, target.parent)
+            record_pending_hooks(args.root, name, files, phase="post-remove")
             del packages[name]
-    if not args.dry_run:
+            tx.setdefault("events", []).append({"event": "removed", "package": name, "files": len(files)})
+            update_transaction(args.root, tx)
         save_installed(args.root, db)
+    except Exception as exc:
+        tx.setdefault("events", []).append({"event": "error", "message": str(exc)})
+        update_transaction(args.root, tx)
+        rollback_transaction(args.root, tx, db_before)
+        raise
+    finish_transaction(args.root, tx, "succeeded")
 
 
 def command_upgrade(args: argparse.Namespace) -> None:
@@ -901,7 +1012,7 @@ def command_hooks_list(args: argparse.Namespace) -> None:
     for item in hooks:
         if not isinstance(item, dict):
             continue
-        print(f"{item.get('status', 'pending')}\t{item.get('action')}\t{item.get('package')}")
+        print(f"{item.get('status', 'pending')}\t{item.get('phase', 'post-install')}\t{item.get('action')}\t{item.get('package')}")
 
 
 def run_hook_action(action: str, root: Path, dry_run: bool) -> None:
@@ -958,6 +1069,7 @@ def build_parser() -> argparse.ArgumentParser:
     repo_set = repo_sub.add_parser("set", help="set a repository URL or local path")
     repo_set.add_argument("url")
     repo_set.add_argument("--name", default=DEFAULT_REPO_NAME)
+    repo_set.add_argument("--verify-key", default="", help="store repository HMAC verify key path in the repo config")
     repo_set.set_defaults(func=command_repo_set)
     repo_remove = repo_sub.add_parser("remove", help="remove a repository config and cached index")
     repo_remove.add_argument("name", nargs="?", default=DEFAULT_REPO_NAME)
@@ -967,6 +1079,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     update = subcommands.add_parser("update", help="download repository indexes")
     update.add_argument("--verify-key", type=Path, default=None, help="verify repository metadata with an HMAC key")
+    update.add_argument("--require-signature", action="store_true", help="fail when no repository verify key is configured")
+    update.add_argument("--no-verify", action="store_true", help="skip configured repository metadata verification")
     update.set_defaults(func=command_update)
 
     search = subcommands.add_parser("search", help="search packages")
@@ -995,6 +1109,7 @@ def build_parser() -> argparse.ArgumentParser:
     remove = subcommands.add_parser("remove", help="remove installed package records and files")
     remove.add_argument("names", nargs="+")
     remove.add_argument("--dry-run", action="store_true")
+    remove.add_argument("--force", action="store_true", help="remove even when installed packages depend on the target")
     remove.set_defaults(func=command_remove)
 
     hooks = subcommands.add_parser("hooks", help="list or apply pending post-install hooks")
@@ -1012,7 +1127,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     args.root = args.root.resolve()
-    if getattr(args, "verify_key", None) is not None:
+    if isinstance(getattr(args, "verify_key", None), Path):
         args.verify_key = args.verify_key.resolve()
     try:
         args.func(args)

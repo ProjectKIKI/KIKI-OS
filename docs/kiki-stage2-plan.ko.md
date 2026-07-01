@@ -50,9 +50,11 @@ Stage 1에서 확인한 부팅/설치 흐름 위에 온라인 패키지 관리�
 
 6. Kubernetes 패키지 준비
    - `kubelet`, `kubeadm`, `kubectl`, `cri-tools`, `cni-plugins`,
-     `kube-node-config`, `kube-node-config-containerd`를 패키지 계획에 포함했다.
+     `kube-node-config`, `kube-node-config-containerd`, `kiki-kubeadm`을 패키지 계획에 포함했다.
    - `kubelet`, `kubeadm`, `kubectl`, `cri-tools`, `cni-plugins`는 pinned upstream
      release binary를 `.ki2`로 재패키징한다.
+   - `kiki-kubeadm`은 설치 계획서를 읽어 `kubeadm.local.yaml`을 렌더링하고,
+     bootstrap 노드의 `init`과 control/compute 노드의 `join`을 guard 조건 아래 실행한다.
    - `kiki-kube-bootstrap`, `kiki-kube-control`, `kiki-kube-compute` 프로파일은
      기본값으로 CRI-O, CNI, kubelet, kubeadm, kubectl, nftables/firewalld 계층을 포함한다.
    - `*-containerd` 프로파일은 CRI-O 대신 containerd, runc, containerd용 kube-node config를 포함한다.
@@ -63,7 +65,7 @@ Stage 1에서 확인한 부팅/설치 흐름 위에 온라인 패키지 관리�
      템플릿을 `/etc/kubernetes/kiki/` 아래 설치한다.
    - 설치 계획서는 role, kubeadm action, config template, local config output,
      command, CRI socket을 명시한다.
-     전체 패키지 선택의 `60`은 중복 release record를 제외한 고유 패키지 이름 수다.
+     전체 패키지 선택의 `61`은 중복 release record를 제외한 고유 패키지 이름 수다.
 
 ## Stage 2 패키지 상태
 
@@ -136,7 +138,8 @@ python tools/ki2ci.py run stage2
 실패로 처리한다.
 
 `ki2stage2.py verify-network-userspace`는 `nftables`, `iptables`,
-`conntrack-tools`, `socat`, `firewalld`, `bridge-utils`, `ethtool`, `chrony`의
+`conntrack-tools`, `socat`, `firewalld`, `bridge-utils`, `ethtool`, `chrony`,
+`kiki-netconfig`의
 명령/서비스 경로와 placeholder metadata 부재를 확인한다. `--strict-production`을
 붙이면 placeholder가 하나라도 남았을 때 실패한다.
 
@@ -195,13 +198,14 @@ Stage 1 설치기가 담당하고, Go TUI는 같은 계획서 계약을 작성/�
 
 ## 현재 산출물 메모
 
-2026-05-31 기준 Stage 2 저장소 메타데이터:
+2026-07-01 기준 Stage 2 저장소 메타데이터:
 
 - repository channel: `stage2-v2`
-- package records: 60
-- unique package names: 60
+- package records: 62
+- unique package names: 61
 - `ki2ctl`: `0.1.0-6`
 - `kiki-installer-tui`: `0.1.0-4`
+- `kiki-kubeadm`: `0.1.0-1`
 - `conmon`: `2.1.13-2`
 - `crun`: `1.23.1-2`
 - `cri-o`: `1.36.0-2`
@@ -222,16 +226,17 @@ Stage 1 설치기가 담당하고, Go TUI는 같은 계획서 계약을 작성/�
 - `socat`: `1.7.4.1-2`
 - `ethtool`: `6.15-2`
 - `chrony`: `4.8-2`
+- `kiki-netconfig`: `0.1.0-1`
 - 저장소 metadata: `stage2` 파이프라인에서는 임시 HMAC 키로 서명/검증한다. 수동 `ki2repo.py generate`는 `--sign-key`를 주지 않으면 unsigned로 생성된다.
-- `ki2stage2.py verify-kubernetes --require-signed-metadata --strict-production` 기준: `ok=228 warnings=0 errors=0`
-- `ki2stage2.py verify-network-userspace --strict-production` 기준: `ok=26 warnings=0 errors=0`
+- `ki2stage2.py verify-kubernetes --require-signed-metadata --strict-production` 기준: `ok=247 warnings=0 errors=0`
+- `ki2stage2.py verify-network-userspace --strict-production` 기준: `ok=41 warnings=0 errors=0`
 - `ki2stage2.py verify-installed-rootfs --runtime cri-o` 기준: `ok=41 warnings=0 errors=0`
 - `ki2stage2.py verify-installed-rootfs --runtime containerd` 기준: `ok=40 warnings=0 errors=0`
-- `ki2stage2.py verify-package-manager` 기준: `ok=27 warnings=0 errors=0`
+- `ki2stage2.py verify-package-manager` 기준: `ok=41 warnings=0 errors=0`
 - Kubernetes/runtime readiness 대상 패키지의 남은 placeholder: 없음
 - network userspace 패키지의 남은 placeholder: 없음
 - `ki2ci.py run stage2` 최종 통과 job: `20260531-021152-7191`
-- Stage 2 repository summary: `Packages: 60`, `Signed: True`
+- Stage 2 repository summary: `Packages: 62`, `Signed: True`
 
 2026-05-26 Stage 2 테스트 ISO:
 
@@ -277,7 +282,10 @@ ISO payload 확인 항목:
 
 ISO는 시간이 오래 걸리므로 이후에도 사용자가 명시적으로 요청할 때만 생성한다.
 
-## 다음 작업
+## Stage 3로 이관한 다음 작업
+
+Stage 2 작업 메모는 2026-07-01 기준으로 닫는다. 아래 항목은 Stage 2 미완료가
+아니라 Stage 3 V3의 시작 작업으로 이관한다.
 
 - CRI-O, conmon, crun의 source-backed build 전환
 - containerd 계열 upstream-binary packaging을 source-backed build로 승격

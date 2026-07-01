@@ -385,6 +385,7 @@ var kubernetesCommonPackages = []string{
 	"kubelet",
 	"kubectl",
 	"kubeadm",
+	"kiki-kubeadm",
 	"ethtool",
 	"chrony",
 }

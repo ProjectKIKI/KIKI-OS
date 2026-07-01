@@ -14,6 +14,7 @@ import http.server
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -39,6 +40,7 @@ KUBE_COMMON = {
     "kubelet",
     "kubeadm",
     "kubectl",
+    "kiki-kubeadm",
     "conntrack-tools",
     "iptables",
     "nftables",
@@ -66,6 +68,7 @@ NETWORK_USERSPACE_PACKAGES = (
     "socat",
     "ethtool",
     "chrony",
+    "kiki-netconfig",
 )
 
 FORBIDDEN_HOST_LDD_CORE_RUNTIME_PATHS = {
@@ -248,6 +251,17 @@ PAYLOAD_REQUIREMENTS: dict[str, PayloadRequirement] = {
             "/etc/kubernetes/kiki/kubeadm-join-compute.yaml": (KUBEADM_CONFIG_API, "kind: JoinConfiguration", "criSocket: unix:///run/containerd/containerd.sock"),
         },
     ),
+    "kiki-kubeadm": PayloadRequirement(
+        paths=("/usr/bin/kiki-kubeadm",),
+        contains={
+            "/usr/bin/kiki-kubeadm": (
+                "kubeadm init",
+                "kubeadm join",
+                "join requires",
+                "/var/lib/kiki/kubernetes/state.json",
+            )
+        },
+    ),
 }
 
 NETWORK_USERSPACE_REQUIREMENTS: dict[str, PayloadRequirement] = {
@@ -265,6 +279,10 @@ NETWORK_USERSPACE_REQUIREMENTS: dict[str, PayloadRequirement] = {
     "socat": PayloadRequirement(paths=("/usr/bin/socat",)),
     "ethtool": PayloadRequirement(paths=("/usr/sbin/ethtool",)),
     "chrony": PayloadRequirement(paths=("/usr/sbin/chronyd", "/usr/bin/chronyc", "/usr/lib/systemd/system/chronyd.service")),
+    "kiki-netconfig": PayloadRequirement(
+        paths=("/usr/bin/kiki-netconfig",),
+        contains={"/usr/bin/kiki-netconfig": ("systemd-networkd", "render_networkd", "command_static")},
+    ),
 }
 
 
@@ -811,6 +829,23 @@ def run_ki2ctl(repo_root: Path, target: Path, verifier: Verifier, *args: str) ->
     return proc
 
 
+def run_ki2ctl_failure(repo_root: Path, target: Path, verifier: Verifier, *args: str) -> subprocess.CompletedProcess[str] | None:
+    script = repo_root / "distro" / "sources" / "ki2ctl" / "usr" / "bin" / "ki2ctl"
+    verifier.check(script.exists(), "ki2ctl script exists for negative repository flow")
+    if not script.exists():
+        return None
+    command = [sys.executable, str(script), "--root", str(target), *args]
+    try:
+        proc = subprocess.run(command, text=True, capture_output=True, timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        verifier.errors.append(f"ki2ctl negative repository flow failed to run {' '.join(args)}: {exc}")
+        return None
+    verifier.check(proc.returncode != 0, f"ki2ctl repository flow rejects: {' '.join(args)}")
+    if proc.returncode == 0:
+        verifier.errors.append(proc.stdout.strip())
+    return proc
+
+
 def verify_package_manager(repo_root: Path, verifier: Verifier) -> None:
     repo_base = repo_root / "dist" / "ki2"
     verifier.check((repo_base / "repo" / "index.x86_64.json").exists(), "ki2ctl repository flow has local index")
@@ -853,10 +888,73 @@ def verify_package_manager(repo_root: Path, verifier: Verifier) -> None:
         if local_remove is not None:
             verifier.check("removed repo default" in local_remove.stdout, "ki2ctl local mirror repo remove clears config")
 
-        deps = run_ki2ctl(repo_root, deps_root, verifier, "--repo", str(repo_base), "install", "kube-node-config-containerd", "--dry-run")
+        kube_roots = ("kubeadm", "kubectl", "kiki-kubeadm", "kube-node-config-containerd")
+        deps = run_ki2ctl(repo_root, deps_root, verifier, "--repo", str(repo_base), "install", *kube_roots, "--dry-run")
         if deps is not None:
-            for name in ("containerd", "kubelet", "kube-node-config-containerd"):
+            for name in ("containerd", "kubelet", "kubeadm", "kubectl", "kiki-kubeadm", "kube-node-config-containerd"):
                 verifier.check(name in deps.stdout, f"ki2ctl dry-run resolves Kubernetes dependency: {name}")
+        kube_install = run_ki2ctl(repo_root, deps_root, verifier, "--repo", str(repo_base), "install", *kube_roots)
+        if kube_install is not None:
+            verifier.check("installed kube-node-config-containerd" in kube_install.stdout, "ki2ctl installs Kubernetes containerd node config")
+            verifier.check("installed kiki-kubeadm" in kube_install.stdout, "ki2ctl installs KIKI kubeadm executor")
+            installed_db = deps_root / "var" / "lib" / "ki2" / "installed.json"
+            verifier.check(installed_db.exists(), "ki2ctl Kubernetes install writes installed DB")
+            if installed_db.exists():
+                installed = json.loads(installed_db.read_text(encoding="utf-8")).get("packages", {})
+                for name in ("containerd", "kubelet", "kubeadm", "kubectl", "kiki-kubeadm", "kube-node-config-containerd"):
+                    verifier.check(name in installed, f"ki2ctl Kubernetes install records package: {name}")
+        blocked_remove = run_ki2ctl_failure(repo_root, deps_root, verifier, "remove", "containerd")
+        if blocked_remove is not None:
+            verifier.check("reverse dependencies prevent removal" in blocked_remove.stderr, "ki2ctl blocks removing runtime with dependents")
+
+
+def verify_kubeadm_renderer(repo_root: Path, verifier: Verifier) -> None:
+    script = repo_root / "tools" / "ki2kubeadm.py"
+    verifier.check(script.exists(), "kubeadm renderer exists")
+    if not script.exists():
+        return
+    plan = repo_root / "distro" / "install-plans" / "kiki-kube-compute-containerd.yaml"
+    template = repo_root / "distro" / "sources" / "kube-node-config-containerd" / "etc" / "kubernetes" / "kiki" / "kubeadm-join-compute.yaml"
+    verifier.check(plan.exists(), "kubeadm renderer has containerd compute install plan")
+    verifier.check(template.exists(), "kubeadm renderer has containerd join template")
+    if not plan.exists() or not template.exists():
+        return
+    with tempfile.TemporaryDirectory(prefix="kiki-stage2-kubeadm-") as tmp:
+        root = Path(tmp)
+        target_template = root / "etc" / "kubernetes" / "kiki" / template.name
+        target_template.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(template, target_template)
+        digest = "2" * 64
+        command = [
+            sys.executable,
+            str(script),
+            "--root",
+            str(root),
+            "--plan",
+            str(plan),
+            "--node-name",
+            "stage2-worker",
+            "--endpoint",
+            "10.0.0.10:6443",
+            "--token",
+            "abcdef.0123456789abcdef",
+            "--ca-cert-hash",
+            digest,
+        ]
+        proc = subprocess.run(command, text=True, capture_output=True, timeout=60, check=False)
+        verifier.check(proc.returncode == 0, "kubeadm renderer creates local compute join config")
+        if proc.returncode != 0:
+            verifier.errors.append((proc.stdout + proc.stderr).strip())
+            return
+        rendered_path = root / "etc" / "kubernetes" / "kiki" / "kubeadm.local.yaml"
+        verifier.check(rendered_path.exists(), "kubeadm renderer writes kubeadm.local.yaml")
+        if rendered_path.exists():
+            rendered = rendered_path.read_text(encoding="utf-8")
+            verifier.check("name: stage2-worker" in rendered, "kubeadm renderer writes node name")
+            verifier.check("apiServerEndpoint: 10.0.0.10:6443" in rendered, "kubeadm renderer writes control-plane endpoint")
+            verifier.check(f"sha256:{digest}" in rendered, "kubeadm renderer writes CA hash")
+            verifier.check("criSocket: unix:///run/containerd/containerd.sock" in rendered, "kubeadm renderer writes containerd CRI socket")
+            verifier.check("kiki-control-plane.local" not in rendered, "kubeadm renderer removes endpoint placeholder")
 
 
 def print_report(verifier: Verifier) -> None:
@@ -879,6 +977,7 @@ def command_verify_kubernetes(args: argparse.Namespace) -> None:
     verify_profile_contracts(repo_root, verifier)
     verify_package_payloads(repo_root, args.arch, verifier, strict_production=args.strict_production)
     verify_repository_metadata(repo_root, args.arch, verifier, require_signed=args.require_signed_metadata)
+    verify_kubeadm_renderer(repo_root, verifier)
     print_report(verifier)
     raise SystemExit(1 if verifier.errors else 0)
 

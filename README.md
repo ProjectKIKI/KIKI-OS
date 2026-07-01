@@ -9,6 +9,22 @@ CRI-O 또는 containerd 기반 kubelet 구성, 클러스터 조인, 상태 보�
 현재 저장소는 KIKI OS의 빌드 시스템, `.ki2` 패키지 포맷, 패키지 저장소, rootfs
 조립, BIOS/UEFI 부팅 미디어, stage-1 TUI 설치기, 빌드 웹 콘솔을 함께 다룹니다.
 
+**제작자**
+최국현<tang@dustbox.kr>
+안현
+장경빈
+
+## 개발환경 및 진행사항
+
+현재 개발환경은 WSL2에서 진행하고 있습니다. 최대한 크로스 컴파일을 배제하고 네이티브 패키지를 지향하면서 패키지 및 운영체제를 구성하고 있습니다.
+개발이 완료가 된 부분은 다음과 같습니다.
+
+[ V ] 기본적인 부팅 부분
+[ V ] systemd에서 simple init를 통한 PID 1번 구현
+[ X ] systemd-init 구현
+[ X ] 원격 패키지 저장소 HTTP/HTTPS로 구현
+
+
 ## 저장소
 
 - Gitea: <https://git.vlab.dustbox.kr/dustbox/kiki-os>
@@ -16,8 +32,7 @@ CRI-O 또는 containerd 기반 kubelet 구성, 클러스터 조인, 상태 보�
 
 ## 현재 상태
 
-KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 미디어가 아니라,
-Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배포판입니다.
+KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 미디어가 아니라, Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배포판입니다.
 
 - stage-1 installer가 있습니다.
 - `.ki2 package -> repo -> rootfs -> boot media` 파이프라인이 있습니다.
@@ -83,6 +98,8 @@ Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배�
 - [KIKI OS 개발 단계 정의](docs/kiki-os-stages.ko.md)
 - [KIKI OS Stage 1 V1 최종 문서](docs/kiki-stage1-v1-final.ko.md)
 - [KIKI OS Stage 2 V2 완료 문서](docs/kiki-stage2-v2-progress.ko.md)
+- [KIKI OS Stage 3 V3 전환 계획](docs/kiki-stage3-v3-plan.ko.md)
+- [KIKI OS 네트워크 설정 도구](docs/kiki-network-config.ko.md)
 - [KIKI 패키지 저장소 구성 가이드](docs/kiki-repository-setup.ko.md)
 - [KIKI OS Stage 2 상세 작업 메모](docs/kiki-stage2-plan.ko.md)
 
@@ -223,7 +240,7 @@ KIKI OS는 stage 1부터 stage 3까지 진행합니다.
 
 - **stage1-v1**: 부팅 가능한 설치 미디어와 최소 systemd OS를 검증한 최종 기준선입니다.
 - **stage2-v2**: 운영 가능한 최소 서버 배포판, 패키지 설치/업데이트 기반, 무인 설치, disconnected 설치를 검증한 기준선입니다.
-- **stage 3**: 자기 빌드가 가능하고 Kubernetes/클러스터 운영을 자동화하는 독립 배포판으로 확장합니다.
+- **stage3-v3**: 자기 빌드가 가능하고 Kubernetes/클러스터 운영을 자동화하는 독립 배포판으로 확장합니다.
 
 자세한 기준은 [KIKI OS 개발 단계 정의](docs/kiki-os-stages.ko.md)를 따릅니다.
 
@@ -242,6 +259,8 @@ Set-VMFirmware -VMName "test-kiki-os" -EnableSecureBoot Off
 - [KIKI OS 개발 단계 정의](docs/kiki-os-stages.ko.md)
 - [KIKI OS Stage 1 V1 최종 문서](docs/kiki-stage1-v1-final.ko.md)
 - [KIKI OS Stage 2 V2 완료 문서](docs/kiki-stage2-v2-progress.ko.md)
+- [KIKI OS Stage 3 V3 전환 계획](docs/kiki-stage3-v3-plan.ko.md)
+- [KIKI OS 네트워크 설정 도구](docs/kiki-network-config.ko.md)
 - [배포판 빌드 시스템 문서](distro/README.md)
 - [빌드 시스템 검토](distro/BUILD-SYSTEM-REVIEW.md)
 - [컨테이너 빌더 문서](deploy/container/README.md)

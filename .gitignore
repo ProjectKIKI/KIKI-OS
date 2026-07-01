@@ -5,3 +5,4 @@ __pycache__/
 *.exe
 *.test
 .codex-*
+.ki2osbuild/

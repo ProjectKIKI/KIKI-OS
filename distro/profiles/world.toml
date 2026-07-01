@@ -46,6 +46,7 @@ packages = [
   "curl",
   "ki2ctl",
   "kiki-agent",
+  "kiki-netconfig",
   "kiki-installer-tui",
   "conmon",
   "crun",

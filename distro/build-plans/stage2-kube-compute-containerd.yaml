@@ -1,0 +1,40 @@
+schema: kiki-os-build-plan-v1
+name: stage2-kube-compute-containerd
+description: Stage 2 containerd Kubernetes compute node OS build plan.
+
+release:
+  channel: stage2-v2
+  arch: x86_64
+
+build:
+  profile: distro/profiles/kiki-kube-compute-containerd.yaml
+  max_packages: 72
+  allow_unpinned: true
+
+repository:
+  sign: true
+  signing_key: build/ki2/keys/stage2-v2-repo.hmac
+  base_url: ""
+
+rootfs:
+  enabled: true
+  profile: distro/profiles/kiki-kube-compute-containerd.yaml
+  output: dist/rootfs/kiki-kube-compute-containerd
+  runtime: containerd
+  clean: true
+
+verify:
+  stage2_kubernetes: true
+  network_userspace: true
+  binary_smoke: true
+  package_manager: true
+  installed_rootfs: true
+  strict_production: true
+  require_signed_metadata: true
+
+iso:
+  enabled: false
+  profile: bootstrap-stage1
+  mode: installer
+  release_name: stage2-v2
+  no_hyperv_vhdx: true

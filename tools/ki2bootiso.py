@@ -1840,7 +1840,7 @@ static void select_minimal_systemd_packages(const char *index_path) {
         "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
         "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
         "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
-        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-installer-tui",
+        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-netconfig", "kiki-installer-tui",
         NULL,
     };
     select_package_set(index_path, "minimal-systemd", "minimal-systemd package set", defaults);
@@ -1855,10 +1855,10 @@ static void select_kube_profile_packages(const char *index_path, const char *pro
         "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
         "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
         "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
-        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-installer-tui",
+        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-netconfig", "kiki-installer-tui",
         "bridge-utils", "ethtool", "nftables", "iptables", "conntrack-tools", "firewalld",
         "cni-plugins", "cri-tools", "socat", "chrony",
-        "kubelet", "kubeadm", "kubectl",
+        "kubelet", "kubeadm", "kubectl", "kiki-kubeadm",
         NULL,
     };
     const char *const crio_runtime[] = {
@@ -1973,10 +1973,10 @@ static int ensure_selected_profile_packages(const char *index_path) {
         "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
         "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
         "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
-        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-installer-tui",
+        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-netconfig", "kiki-installer-tui",
         "bridge-utils", "ethtool", "nftables", "iptables", "conntrack-tools", "firewalld",
         "cni-plugins", "cri-tools", "socat", "chrony",
-        "kubelet", "kubeadm", "kubectl",
+        "kubelet", "kubeadm", "kubectl", "kiki-kubeadm",
         NULL,
     };
     const char *const crio_runtime[] = {

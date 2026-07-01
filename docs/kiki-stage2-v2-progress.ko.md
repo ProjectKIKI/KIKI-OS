@@ -7,7 +7,7 @@
 ## 상태
 
 - 릴리스 라인: `stage2-v2`
-- 상태: Stage 2 V2 기준선 완료
+- 상태: Stage 2 V2 기준선 완료, 2026-07-01 기준 동결
 - 저장소 기본 channel: `stage2-v2`
 - 설치 계획서 기본 channel: `stage2-v2`
 - 저장소 서명 키 예시: `stage2-v2-repo.hmac`
@@ -45,6 +45,7 @@ Stage 2 V2의 목표는 Stage 1 V1에서 검증한 부팅/설치 흐름 위에 �
 - Go TUI의 `source local`, `source mirror`, `source remote` 계획서 작성 흐름
 - 설치 계획서 source/repo/channel/verify-key 필드
 - Stage 2 설치 계획서 스펙의 `runtime`, `kubernetes`, `firewall`, `artifacts` 필수화
+- `kiki-kubeadm` 패키지로 kubeadm config 렌더링과 guard 기반 `init`/`join` 실행 지원
 - Kubernetes 역할 프로파일:
   - `kiki-kube-bootstrap`: 최초 bootstrap/control-plane 노드
   - `kiki-kube-bootstrap-containerd`: 최초 bootstrap/control-plane 노드, containerd 런타임
@@ -97,6 +98,10 @@ CNI/방화벽/네트워크 기본값, 설치 계획서를 갖추는 것이다.
   `config_template`, `config_output`, `command`, `cri_socket`을 반드시 기록한다.
 - stage-1 설치기와 Go TUI는 같은 `/run/kiki/install-plan.yaml` 계약을 사용하고,
   설치 후 `/var/lib/ki2/install-plan.yaml`에 보존한다.
+- `kiki-kubeadm render|init|join`은 보존된 설치 계획서를 읽어
+  `/etc/kubernetes/kiki/kubeadm.local.yaml`을 만들고, 실행 기록을
+  `/var/lib/kiki/kubernetes/state.json`과 `/var/log/kiki/kubeadm.log`에 남긴다.
+- join 계열은 endpoint/token/CA hash가 없으면 실행하지 않는다.
 
 다중 노드 토큰 발급, control-plane 인증서 배포, CNI 실제 배포, 클러스터 전체 운영
 자동화는 Stage 3 자동화 대상으로 넘긴다.
@@ -131,7 +136,8 @@ Stage 2 V2는 다음 조건을 만족해 완료로 본다.
 6. disconnected ISO 또는 로컬 mirror로 같은 설치를 재현할 수 있다.
 7. Go TUI가 설치 계획서를 작성하고 Stage 1 설치기와 같은 계획서 계약을 검증한다.
 8. Kubernetes bootstrap/control/compute 프로파일이 실제 패키지 payload로 설치된다.
-9. `crictl info`, `kubelet --version`, `kubeadm init --dry-run` 수준의 smoke test가 가능하다.
+9. `crictl info`, `kubelet --version`, `kiki-kubeadm init --dry-run`,
+   `kiki-kubeadm join --dry-run` 수준의 smoke test가 가능하다.
 10. 운영자가 문서만 보고 Stage 2 노드를 다시 만들 수 있다.
 
 ## 명령 예시
@@ -159,7 +165,8 @@ init/join 계약, 패키지 payload, repository metadata를 확인한다. `--str
 판정할 수 있다.
 
 `ki2stage2.py verify-network-userspace`는 `nftables`, `iptables`,
-`conntrack-tools`, `socat`, `firewalld`, `bridge-utils`, `ethtool`, `chrony`
+`conntrack-tools`, `socat`, `firewalld`, `bridge-utils`, `ethtool`, `chrony`,
+`kiki-netconfig`
 패키지의 명령/서비스 경로와 placeholder metadata 부재를 따로 보여준다. 기본 모드는
 상태를 점검하고, `--strict-production`은 placeholder가 남아 있으면 실패하도록 쓴다.
 
@@ -245,19 +252,25 @@ ISO는 사용자가 명시적으로 요청했을 때만 생성한다.
 
 ## 완료 증거
 
-2026-05-31 기준 Stage 2 전체 검증 파이프라인:
+2026-07-01 전환 기준 Stage 2 검증 파이프라인:
 
-- command: `python3 tools/ki2ci.py run stage2 --artifact-root .codex-ki2ci-stage2-final-audit-wsl`
-- job: `20260531-021152-7191`
-- log: `.codex-ki2ci-stage2-final-audit-wsl/jobs/20260531-021152-7191/log.txt`
-- Kubernetes readiness: `ok=228 warnings=0 errors=0`
-- network userspace strict: `ok=26 warnings=0 errors=0`
+- command: `python tools/test_ki2stage2.py`
+- command: `python3 tools/ki2stage2.py verify-kubernetes --repo-root /mnt/f/GitHub/KIKI-OS --require-signed-metadata --strict-production`
+- command: `python3 tools/ki2stage2.py verify-network-userspace --repo-root /mnt/f/GitHub/KIKI-OS --strict-production`
+- command: `python3 tools/ki2stage2.py verify-package-manager --repo-root /mnt/f/GitHub/KIKI-OS`
+- Kubernetes readiness: `ok=247 warnings=0 errors=0`
+- network userspace strict: `ok=41 warnings=0 errors=0`
 - runtime/Kubernetes binary smoke: `ok=54 warnings=0 errors=0`
 - Go TUI install plan contract: `ok=27 warnings=0 errors=0`
 - CRI-O Kubernetes rootfs: `ok=41 warnings=0 errors=0`
 - containerd Kubernetes rootfs: `ok=40 warnings=0 errors=0`
-- package manager repository flows: `ok=27 warnings=0 errors=0`
-- repository summary: `stage2-v2`, `Packages: 60`, `Signed: True`
+- package manager repository flows: `ok=44 warnings=0 errors=0`
+- repository summary: `stage2-v2`, `Packages: 62`, `Signed: True`
+- latest installer ISO: `dist/iso/kiki-stage2-v2-installer-x86_64-20260612-rev8.iso`
+- latest installer ISO sha256: `2213F1ED10D559AB26BF040D062BD87F3E109B04085ADA4CE31CF893037C0E4A`
+
+Stage 2 V2는 이 상태에서 기능 동결한다. 이후 기능 추가는 Stage 3 V3 문서와
+별도 브랜치/커밋 범위로 관리한다.
 
 ## Stage 1과의 경계
 

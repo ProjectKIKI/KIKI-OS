@@ -33,6 +33,7 @@ install_plan:
       - kubelet
       - kubeadm
       - kubectl
+      - kiki-kubeadm
       - kube-node-config
     network:
       - iproute2
@@ -42,6 +43,7 @@ install_plan:
       - socat
       - ethtool
       - chrony
+      - kiki-netconfig
       - kiki-installer-tui
     optional_firewall:
       - firewalld

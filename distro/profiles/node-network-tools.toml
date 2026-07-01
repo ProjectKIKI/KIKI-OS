@@ -21,6 +21,7 @@ packages = [
   "systemd",
   "python",
   "iproute2",
+  "kiki-netconfig",
   "conntrack-tools",
   "nftables",
   "iptables",

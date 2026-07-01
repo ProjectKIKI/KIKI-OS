@@ -71,6 +71,10 @@ class Ki2CtlTests(unittest.TestCase):
             self.assertEqual((target / "usr/bin/hello").read_text(encoding="utf-8"), "#!/bin/sh\necho hello\n")
             self.assertEqual((target / "usr/lib/libhello.txt").read_text(encoding="utf-8"), "library\n")
 
+            blocked = self.run_ki2ctl_failure(target, "remove", "libhello")
+            self.assertIn("reverse dependencies prevent removal", blocked.stderr)
+            self.assertIn("required by installed package hello", blocked.stderr)
+
             installed = self.run_ki2ctl(target, "list").stdout
             self.assertIn("hello\t1-1", installed)
             self.assertIn("libhello\t1-1", installed)
@@ -84,6 +88,10 @@ class Ki2CtlTests(unittest.TestCase):
             self.assertIn("remove /usr/bin/hello", remove)
             self.assertFalse((target / "usr/bin/hello").exists())
             self.assertTrue((target / "usr/lib/libhello.txt").exists())
+            transactions = list((target / "var/lib/ki2/transactions").glob("*.json"))
+            last_tx = json.loads(sorted(transactions)[-1].read_text(encoding="utf-8"))
+            self.assertEqual(last_tx["action"], "remove")
+            self.assertEqual(last_tx["status"], "succeeded")
 
     def test_upgrade_installed_package(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -257,6 +265,32 @@ class Ki2CtlTests(unittest.TestCase):
             (repo / "repo/metadata.x86_64.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             failure = self.run_ki2ctl_failure(target, "update", "--verify-key", str(key))
             self.assertIn("signature verification failed", failure.stderr)
+
+    def test_repo_config_verify_key_enables_default_metadata_verification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            target = base / "target"
+            key = target / "etc/ki2/trust/stage2-v2-repo.hmac"
+            repo_url = serve_directory(repo)
+            (repo / "packages/x86_64").mkdir(parents=True)
+            (repo / "repo").mkdir(parents=True)
+            package = repo / "packages/x86_64/tool-1-1.x86_64.ki2"
+            write_ki2_package(package, name="tool", dependencies=[], files={"rootfs/usr/bin/tool": b"tool\n"})
+            index_path = repo / "repo/index.x86_64.json"
+            write_index(index_path, [package])
+            key.parent.mkdir(parents=True)
+            key.write_text("22" * 32 + "\n", encoding="utf-8")
+            write_signed_metadata(repo / "repo/metadata.x86_64.json", index_path, key)
+
+            self.run_ki2ctl(target, "repo", "set", repo_url, "--verify-key", "/etc/ki2/trust/stage2-v2-repo.hmac")
+            update = self.run_ki2ctl(target, "update").stdout
+            self.assertIn("metadata verified", update)
+
+            unsigned = base / "unsigned"
+            self.run_ki2ctl(unsigned, "repo", "set", repo_url)
+            failure = self.run_ki2ctl_failure(unsigned, "update", "--require-signature")
+            self.assertIn("signature verification key is required", failure.stderr)
 
     def test_install_records_pending_hooks(self):
         with tempfile.TemporaryDirectory() as tmp:
