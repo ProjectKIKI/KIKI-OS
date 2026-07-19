@@ -26,6 +26,38 @@ func TestDefaultPlanUsesStageOneDefaults(t *testing.T) {
 	if !contains(plan.Packages.Selected, "kiki-installer-tui") {
 		t.Fatal("minimal-systemd should include kiki-installer-tui preview package")
 	}
+	if checkInit(plan).State != "OK" {
+		t.Fatalf("default plan should be ready for systemd handoff init: %#v", checkInit(plan))
+	}
+}
+
+func TestServerCoreProfileAddsGeneralServerPackages(t *testing.T) {
+	plan := NewDefaultPlan("server-core")
+
+	if plan.Packages.Profile != "server-core" {
+		t.Fatalf("profile = %q, want server-core", plan.Packages.Profile)
+	}
+	if !plan.Target.Filesystems.Swap.Enabled {
+		t.Fatal("server-core should keep normal system swap enabled")
+	}
+	if plan.Runtime.ContainerRuntime != "none" || plan.Kubernetes.Role != "none" {
+		t.Fatalf("server-core should not enable container runtime or Kubernetes: runtime=%q role=%q", plan.Runtime.ContainerRuntime, plan.Kubernetes.Role)
+	}
+	for _, name := range []string{"nftables", "iptables", "conntrack-tools", "firewalld", "bridge-utils", "ethtool", "chrony", "kiki-netconfig"} {
+		if !contains(plan.Packages.Selected, name) {
+			t.Fatalf("server-core missing package %q", name)
+		}
+	}
+	for _, name := range []string{"kubelet", "kubeadm", "kubectl", "cri-o", "containerd"} {
+		if contains(plan.Packages.Selected, name) {
+			t.Fatalf("server-core should not include Kubernetes/runtime package %q", name)
+		}
+	}
+	for _, unit := range []string{"nftables.service", "firewalld.service", "chronyd.service"} {
+		if !contains(plan.Services.Enable, unit) {
+			t.Fatalf("server-core missing service %q", unit)
+		}
+	}
 }
 
 func TestKubeComputeProfileDisablesSwapAndEnablesCRIO(t *testing.T) {
@@ -182,12 +214,14 @@ func TestRenderDashboardShowsPlanStatus(t *testing.T) {
 	text := out.String()
 	for _, want := range []string{
 		"KIKI OS Installer",
+		"Stage 3 plan authoring",
 		"Install Plan: /run/kiki/install-plan.yaml",
 		"[!] Disk",
 		"[OK] Network",
 		"[OK] Account",
 		"[ ] Profile",
 		"[ ] Runtime",
+		"[OK] Init",
 		"[ ] Review",
 		"7) Start install",
 		"s) Shell",
@@ -272,7 +306,7 @@ func TestStartInstallWritesReadyPlan(t *testing.T) {
 		t.Fatal("start should mark the plan as written")
 	}
 	text := out.String()
-	if !strings.Contains(text, "Stage-1 installer can consume this install plan") {
+	if !strings.Contains(text, "Stage-1 installer and Stage-3 executor can consume this install plan") {
 		t.Fatalf("start output missing handoff message:\n%s", text)
 	}
 	data, err := os.ReadFile(planPath)

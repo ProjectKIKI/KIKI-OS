@@ -10,6 +10,7 @@ document:
     - /usr/share/kiki/defaults/network.yaml
     - /usr/share/kiki/defaults/kubernetes.yaml
   profile_paths:
+    - /usr/share/kiki/profiles/server-core.yaml
     - /usr/share/kiki/profiles/bootstrap.yaml
     - /usr/share/kiki/profiles/control.yaml
     - /usr/share/kiki/profiles/compute.yaml
@@ -122,6 +123,18 @@ safety:
   require_repository_signature: true
 
 roles:
+  server-core:
+    kubernetes_role: none
+    kubeadm_action: none
+    required_inputs: []
+    default_services:
+      - dbus.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+      - nftables.service
+      - firewalld.service
+      - chronyd.service
   bootstrap:
     kubernetes_role: bootstrap-control-plane
     kubeadm_action: init

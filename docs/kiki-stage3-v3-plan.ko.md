@@ -37,6 +37,12 @@
 
 3단계 초입의 작업 순서는 다음을 권장한다.
 
+0. TUI와 init 경계 전환
+   - Go 기반 `kiki-installer-tui`를 단순 미리보기에서 3단계 설치 계획서 작성기로 승격한다.
+   - 화면에는 설치 계획서 상태, initramfs handoff, systemd PID 1 경계를 명확히 표시한다.
+   - 설치된 OS의 initramfs `/init`은 루트 파일시스템을 마운트하고 `/usr/lib/systemd/systemd`를 PID 1로 실행하는 최소 handoff 역할로 축소한다.
+   - 완전한 `systemd-initramfs` 전환은 별도 단계에서 다루되, 3단계 초입에서는 현재 C `/init`을 `systemd handoff` 계약으로 정리한다.
+
 1. `kiki-kubeadm` 운영 연결
    - 2단계의 `kiki-kubeadm render|init|join` 실행기를 첫 부팅 자동화 경로에 연결한다.
    - 부트스트랩 노드는 `kubeadm init --config /etc/kubernetes/kiki/kubeadm.local.yaml`을 안전하게 1회 실행한다.

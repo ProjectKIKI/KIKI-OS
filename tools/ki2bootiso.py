@@ -567,7 +567,7 @@ static void logo(void) {
 #ifdef KIKI_ENABLE_INSTALLER
     say("KIKI OS stage-1 installer\n");
 #elif defined(KIKI_INSTALLED_STAGE1)
-    say("KIKI OS installed stage-1\n");
+    say("KIKI OS installed systemd handoff\n");
 #else
     say("KIKI OS boot smoke media\n");
 #endif
@@ -1846,6 +1846,20 @@ static void select_minimal_systemd_packages(const char *index_path) {
     select_package_set(index_path, "minimal-systemd", "minimal-systemd package set", defaults);
 }
 
+static void select_server_core_packages(const char *index_path) {
+    selected_set_runtime("none");
+    const char *const defaults[] = {
+        "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
+        "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
+        "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
+        "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
+        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-netconfig", "kiki-installer-tui",
+        "bridge-utils", "ethtool", "nftables", "iptables", "conntrack-tools", "firewalld", "chrony",
+        NULL,
+    };
+    select_package_set(index_path, "server-core", "server-core general server package set", defaults);
+}
+
 static void select_kube_profile_packages(const char *index_path, const char *profile, const char *label) {
     if (kstrcmp(selected_container_runtime, "none") == 0) {
         selected_set_runtime("cri-o");
@@ -1917,6 +1931,13 @@ static int select_named_package_profile(const char *index_path, const char *prof
         select_minimal_systemd_packages(index_path);
         return 1;
     }
+    if (kstrcmp(effective_profile, "server-core") == 0) {
+        if (want_containerd || want_crio) {
+            say("Runtime override ignored for server-core; use server-container for container runtime profiles.\n");
+        }
+        select_server_core_packages(index_path);
+        return 1;
+    }
 
     if (kstrcmp(effective_profile, "kiki-kube-controller") == 0) {
         copy_string(effective_profile, sizeof(effective_profile), "kiki-kube-control");
@@ -1925,7 +1946,7 @@ static int select_named_package_profile(const char *index_path, const char *prof
     }
 
     if (!starts_with(effective_profile, "kiki-kube-")) {
-        say("Unknown kiki.profile value. Use minimal-systemd or a kiki-kube-* profile.\n");
+        say("Unknown kiki.profile value. Use minimal-systemd, server-core, or a kiki-kube-* profile.\n");
         return 0;
     }
 
@@ -2101,14 +2122,15 @@ static void package_selection_menu(void) {
         say(line);
         say("1) Show package repository\n");
         say("2) Select minimal-systemd default package set\n");
-        say("3) Select kiki-kube-bootstrap package set\n");
-        say("4) Select kiki-kube-control package set\n");
-        say("5) Select kiki-kube-compute package set\n");
-        say("6) Select every package on media\n");
-        say("7) Add one package by name\n");
-        say("8) Clear selected packages\n");
-        say("9) Show selected packages\n");
-        say("10) Save package selection and return\n");
+        say("3) Select server-core general OS package set\n");
+        say("4) Select kiki-kube-bootstrap package set\n");
+        say("5) Select kiki-kube-control package set\n");
+        say("6) Select kiki-kube-compute package set\n");
+        say("7) Select every package on media\n");
+        say("8) Add one package by name\n");
+        say("9) Clear selected packages\n");
+        say("10) Show selected packages\n");
+        say("11) Save package selection and return\n");
         say("\nSelect: ");
         if (read_line(choice, sizeof(choice)) != 0) {
             continue;
@@ -2120,14 +2142,17 @@ static void package_selection_menu(void) {
             select_minimal_systemd_packages(index_path);
         } else if (kstrcmp(choice, "3") == 0) {
             selected_clear();
-            select_kube_bootstrap_packages(index_path);
+            select_server_core_packages(index_path);
         } else if (kstrcmp(choice, "4") == 0) {
             selected_clear();
-            select_kube_control_packages(index_path);
+            select_kube_bootstrap_packages(index_path);
         } else if (kstrcmp(choice, "5") == 0) {
             selected_clear();
-            select_kube_compute_packages(index_path);
+            select_kube_control_packages(index_path);
         } else if (kstrcmp(choice, "6") == 0) {
+            selected_clear();
+            select_kube_compute_packages(index_path);
+        } else if (kstrcmp(choice, "7") == 0) {
             selected_clear();
             selected_set_profile("world");
             selected_set_runtime("none");
@@ -2137,7 +2162,7 @@ static void package_selection_menu(void) {
             out = append_u64(line, sizeof(line), out, (u64)added);
             append_string(line, sizeof(line), out, "\n");
             say(line);
-        } else if (kstrcmp(choice, "7") == 0) {
+        } else if (kstrcmp(choice, "8") == 0) {
             say("Package name: ");
             if (read_line(name, sizeof(name)) != 0 || !name[0]) {
                 say("No package name entered.\n");
@@ -2150,14 +2175,14 @@ static void package_selection_menu(void) {
             } else {
                 say("Package is already selected or selection is full.\n");
             }
-        } else if (kstrcmp(choice, "8") == 0) {
+        } else if (kstrcmp(choice, "9") == 0) {
             selected_clear();
             selected_set_profile("custom");
             selected_set_runtime("none");
             say("Package selection cleared.\n");
-        } else if (kstrcmp(choice, "9") == 0) {
-            show_selected_packages();
         } else if (kstrcmp(choice, "10") == 0) {
+            show_selected_packages();
+        } else if (kstrcmp(choice, "11") == 0) {
             say("Package selection saved for this installer session.\n");
             return;
         } else {
@@ -2365,7 +2390,7 @@ static int write_installed_boot_config(const char *esp_root, const char *root_pa
     out = append_string(cfg, sizeof(cfg), out, "set gfxpayload=keep\n");
     out = append_string(cfg, sizeof(cfg), out, "set timeout=3\n");
     out = append_string(cfg, sizeof(cfg), out, "set default=0\n");
-    out = append_string(cfg, sizeof(cfg), out, "menuentry 'KIKI OS installed (auto console)' {\n");
+    out = append_string(cfg, sizeof(cfg), out, "menuentry 'KIKI OS installed (systemd handoff)' {\n");
     out = append_string(cfg, sizeof(cfg), out, "    set gfxpayload=keep\n");
     out = append_string(cfg, sizeof(cfg), out, "    linux /boot/vmlinuz-kiki console=tty0 keep_bootcon loglevel=4 root=");
     out = append_string(cfg, sizeof(cfg), out, root_part);
@@ -4065,7 +4090,7 @@ static int handoff_to_installed_system(void) {
     mount_one("sysfs", "/sysroot/sys", "sysfs", 0, "");
     mount_one("tmpfs", "/sysroot/run", "tmpfs", 0, "mode=0755");
 
-    say("Switching to installed systemd...\n");
+    say("Switching to installed systemd PID 1...\n");
     ksys(SYS_chroot, (long)"/sysroot", 0, 0, 0, 0, 0);
     ksys(SYS_chdir, (long)"/", 0, 0, 0, 0, 0);
     char *argv_systemd[] = {"/usr/lib/systemd/systemd", NULL};
@@ -4080,7 +4105,7 @@ static int handoff_to_installed_system(void) {
         ksys(SYS_execve, (long)"/usr/lib/systemd/systemd", (long)argv_systemd, (long)envp, 0, 0, 0);
     }
     ksys(SYS_execve, (long)"/usr/sbin/init", (long)argv_init, (long)envp, 0, 0, 0);
-    say("Could not exec installed init. PID 1 fallback prompt will continue.\n");
+    say("Could not exec installed systemd/init. PID 1 fallback prompt will continue.\n");
     return 0;
 }
 
@@ -4811,12 +4836,12 @@ def build_initramfs(
     (root / "etc" / "os-release").write_text(
         "\n".join(
             [
-                f'NAME="KIKI OS {"Installer" if installer else "Installed Stage-1" if installed else "Boot Smoke"}"',
+                f'NAME="KIKI OS {"Installer" if installer else "Installed Systemd Handoff" if installed else "Boot Smoke"}"',
                 "ID=kiki",
                 f'VERSION="{profile}"',
                 f'KIKI_ARCH="{arch}"',
                 f'KIKI_INSTALLER="{"1" if installer else "0"}"',
-                f'KIKI_INSTALLED_STAGE1="{"1" if installed else "0"}"',
+                f'KIKI_SYSTEMD_HANDOFF="{"1" if installed else "0"}"',
                 "",
             ]
         ),
@@ -4830,7 +4855,7 @@ def build_initramfs(
 
 
 def grub_cfg(profile: str, arch: str, *, installer: bool = False, installed: bool = False) -> str:
-    title = "installer" if installer else "installed stage-1" if installed else "boot smoke"
+    title = "installer" if installer else "installed systemd handoff" if installed else "boot smoke"
     boot_flag = "installer" if installer else "installed" if installed else "smoke"
     auto_args = f"keep_bootcon loglevel=4 panic=-1 init=/init kiki.boot={boot_flag}"
     uefi_args = f"{auto_args} video=efifb:1024x768"
@@ -4996,7 +5021,7 @@ def prepare_boot_iso_tree(
             "sha256": sha256_file(install_image),
         }
 
-    boot_mode = "installer-stage1" if installer else "installed-stage1" if installed else "vm-smoke"
+    boot_mode = "installer-stage1" if installer else "installed-systemd-handoff" if installed else "vm-smoke"
     manifest = {
         "schema": "ki2-bootiso-v1",
         "arch": arch,
@@ -5032,7 +5057,7 @@ def prepare_boot_iso_tree(
             (
                 "This image includes a stage-1 TUI installer with guided disk partitioning, package extraction, and a bundled ki2 package payload."
                 if installer
-                else "This image is an installed stage-1 boot target."
+                else "This image is an installed systemd handoff boot target."
                 if installed
                 else "This image is bootable in a VM and stops at a generated smoke-test /init."
             ),
@@ -5046,7 +5071,7 @@ def prepare_boot_iso_tree(
     (tree_dir / "README.txt").write_text(
         "\n".join(
             [
-                "KIKI OS installer media" if installer else "KIKI OS installed stage-1 media" if installed else "KIKI OS boot smoke media",
+                "KIKI OS installer media" if installer else "KIKI OS installed systemd handoff media" if installed else "KIKI OS boot smoke media",
                 "",
                 f"Profile: {profile}",
                 f"Architecture: {arch}",
@@ -5060,7 +5085,7 @@ def prepare_boot_iso_tree(
                 (
                     "The TUI installer can select packages, partition a disk, format ESP/root filesystems, extract selected packages, and install UEFI fallback boot files."
                     if installer
-                    else "This is the installed stage-1 boot target."
+                    else "This is the installed systemd handoff boot target."
                     if installed
                     else "This proves boot media generation. Disk installation is a later milestone."
                 ),

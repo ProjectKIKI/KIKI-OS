@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	appVersion       = "0.1.0"
+	appVersion       = "0.2.0"
 	defaultPlanPath  = "/run/kiki/install-plan.yaml"
 	defaultMediaRoot = "/run/install-media"
 )
@@ -214,10 +214,10 @@ func main() {
 }
 
 func usage() {
-	fmt.Println("kiki-installer-tui - KIKI install plan TUI preview (v" + appVersion + ")")
+	fmt.Println("kiki-installer-tui - KIKI Stage 3 install plan TUI (v" + appVersion + ")")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  kiki-installer-tui [--plan /run/kiki/install-plan.yaml] [--profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute]")
+	fmt.Println("  kiki-installer-tui [--plan /run/kiki/install-plan.yaml] [--profile minimal-systemd|server-core|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute]")
 	fmt.Println("  kiki-installer-tui --render")
 	fmt.Println("  kiki-installer-tui --write --plan ./install-plan.yaml")
 }
@@ -370,7 +370,24 @@ var minimalSystemdPackages = []string{
 	"curl",
 	"ki2ctl",
 	"kiki-agent",
+	"kiki-netconfig",
 	"kiki-installer-tui",
+}
+
+var serverCorePackages = []string{
+	"bridge-utils",
+	"chrony",
+	"conntrack-tools",
+	"firewalld",
+	"nftables",
+	"iptables",
+	"ethtool",
+}
+
+var serverCoreServices = []string{
+	"nftables.service",
+	"firewalld.service",
+	"chronyd.service",
 }
 
 var kubernetesCommonPackages = []string{
@@ -504,6 +521,13 @@ func ApplyProfile(plan *InstallPlan, profile string) {
 	plan.Target.Filesystems.Swap.Path = "/dev/sda2"
 	plan.Target.Filesystems.Swap.Policy = "system"
 	plan.Firewall.Firewalld = false
+
+	if normalized == "server-core" {
+		plan.Packages.Selected = appendUnique(plan.Packages.Selected, serverCorePackages...)
+		plan.Services.Enable = appendUnique(plan.Services.Enable, serverCoreServices...)
+		plan.Firewall.Firewalld = true
+		return
+	}
 
 	if isKubernetesProfile(normalized) {
 		plan.Runtime.SwapPolicy = "kubernetes-off"
@@ -680,7 +704,7 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		fmt.Fprintln(t.Out, "Use: user kiki and hostname localhost.localdomain")
 	case "4":
 		fmt.Fprintln(t.Out, "Profile:", t.Plan.Packages.Profile)
-		fmt.Fprintln(t.Out, "Use: profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
+		fmt.Fprintln(t.Out, "Use: profile minimal-systemd|server-core|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
 		fmt.Fprintln(t.Out, "     add -containerd to a Kubernetes profile to use containerd by default")
 	case "5":
 		fmt.Fprintln(t.Out, "Runtime:", t.Plan.Runtime.ContainerRuntime)
@@ -708,10 +732,10 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		}
 		t.PlanWritten = true
 		fmt.Fprintln(t.Out, "wrote", t.PlanPath)
-		fmt.Fprintln(t.Out, "Stage-1 installer can consume this install plan.")
+		fmt.Fprintln(t.Out, "Stage-1 installer and Stage-3 executor can consume this install plan.")
 	case "profile":
 		if len(fields) != 2 {
-			return false, fmt.Errorf("usage: profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute[-containerd]")
+			return false, fmt.Errorf("usage: profile minimal-systemd|server-core|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute[-containerd]")
 		}
 		ApplyProfile(&t.Plan, fields[1])
 		t.Render()
@@ -922,6 +946,7 @@ func (t *TUI) Render() {
 		t.Out = io.Discard
 	}
 	fmt.Fprintln(t.Out, "KIKI OS Installer")
+	fmt.Fprintln(t.Out, "Stage 3 plan authoring: TUI first, installed boot hands off to systemd")
 	fmt.Fprintln(t.Out)
 	fmt.Fprintln(t.Out, "Install Plan:", t.PlanPath)
 	fmt.Fprintln(t.Out)
@@ -972,7 +997,8 @@ func (t *TUI) dashboardRows() []Check {
 			review.Summary = "blocked"
 		}
 	}
-	return []Check{disk, network, account, profile, runtime, review}
+	init := Check{Name: "Init", State: "OK", Summary: "initramfs /init mounts root and execs /usr/lib/systemd/systemd"}
+	return []Check{disk, network, account, profile, runtime, init, review}
 }
 
 func dashboardToken(state string) string {
@@ -1027,7 +1053,7 @@ func dashboardAccountSummary(plan InstallPlan) string {
 
 func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Commands:")
-	fmt.Fprintln(w, "  profile minimal-systemd|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
+	fmt.Fprintln(w, "  profile minimal-systemd|server-core|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
 	fmt.Fprintln(w, "  profile kiki-kube-bootstrap-containerd|kiki-kube-control-containerd|kiki-kube-compute-containerd")
 	fmt.Fprintln(w, "    legacy aliases: kiki-kube-controller -> kiki-kube-control, kiki-kube-node -> kiki-kube-compute")
 	fmt.Fprintln(w, "  disk /dev/sda")
@@ -1054,6 +1080,7 @@ func PlanChecks(plan InstallPlan) []Check {
 		checkAccount(plan),
 		checkProfile(plan),
 		checkRuntime(plan),
+		checkInit(plan),
 	}
 	state := "OK"
 	summary := "all required sections are valid"
@@ -1070,6 +1097,16 @@ func PlanChecks(plan InstallPlan) []Check {
 	}
 	checks = append(checks, Check{Name: "Review", State: state, Summary: summary})
 	return checks
+}
+
+func checkInit(plan InstallPlan) Check {
+	if plan.Boot.Kernel == "" || plan.Boot.Initramfs == "" {
+		return Check{Name: "Init", State: "BLOCK", Summary: "kernel and initramfs paths are required"}
+	}
+	if plan.Boot.Root == "" {
+		return Check{Name: "Init", State: "BLOCK", Summary: "installed root device is required for systemd handoff"}
+	}
+	return Check{Name: "Init", State: "OK", Summary: "installed boot uses initramfs handoff to systemd PID 1"}
 }
 
 func checkDisk(plan InstallPlan) Check {
