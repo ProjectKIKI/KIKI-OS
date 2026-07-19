@@ -4,13 +4,13 @@
 오케스트레이터다. 기존 도구를 새로 대체하지 않고 다음 흐름을 하나로 묶는다.
 
 ```text
-build plan YAML
+빌드 계획 YAML
   -> ki2build validate/plan/build
   -> ki2build repo-index
   -> ki2repo keygen/generate/verify
   -> ki2build rootfs
   -> ki2stage2 verify
-  -> optional ki2bootiso
+  -> 선택적 ki2bootiso
   -> build/ki2osbuild/<run-id>/manifest.json
 ```
 
@@ -22,7 +22,7 @@ build plan YAML
 distro/build-plans/stage2-kube-compute-containerd.yaml
 ```
 
-이 계획서는 Stage 2 containerd Kubernetes compute 노드용 rootfs를 만든다. ISO 생성은
+이 계획서는 2단계 containerd Kubernetes 컴퓨트 노드용 루트 파일시스템을 만든다. ISO 생성은
 기본값으로 꺼져 있다.
 
 ## 계획서 목록
@@ -106,15 +106,15 @@ build/ki2/keys/stage2-v2-repo.hmac
 python tools/ki2osbuild.py run --force-key
 ```
 
-## Stage 2 기본 검증
+## 2단계 기본 검증
 
 기본 계획서는 다음 검증을 포함한다.
 
-- Stage 2 Kubernetes readiness
-- network userspace strict 검증
-- runtime/Kubernetes binary smoke
-- `ki2ctl` package manager repository flow
-- installed rootfs 검증
+- 2단계 Kubernetes 준비도
+- 네트워크 사용자 공간 엄격 검증
+- 런타임/Kubernetes 바이너리 스모크
+- `ki2ctl` 패키지 관리자 저장소 흐름
+- 설치된 루트 파일시스템 검증
 
 개발 중 빠른 빌드만 필요하면:
 
@@ -126,6 +126,6 @@ python tools/ki2osbuild.py run --skip-verify
 
 - ISO 생성은 시간이 오래 걸리므로 기본값은 비활성화한다.
 - 실제 릴리스 전에는 `--skip-verify`를 사용하지 않는다.
-- 저장소 서명키는 HTTP publish 대상에 넣지 않는다.
-- Stage 3에서는 이 계획서에 source-backed build, 원격 publish, 클러스터 bootstrap
+- 저장소 서명키는 HTTP 배포 대상에 넣지 않는다.
+- 3단계에서는 이 계획서에 소스 기반 빌드, 원격 배포, 클러스터 부트스트랩
   자동화를 추가한다.

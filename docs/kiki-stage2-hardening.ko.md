@@ -58,8 +58,8 @@ ki2ctl remove containerd --force
 
 설치 훅과 제거 훅을 구분하기 위해 대기 중인 훅 항목에 `phase` 필드를 추가했다.
 
-- `post-install`: 공유 라이브러리, systemd unit, tmpfiles 설치 후 처리
-- `post-remove`: 공유 라이브러리, systemd unit, tmpfiles 제거 후 처리
+- `post-install`: 공유 라이브러리, systemd 유닛, tmpfiles 설치 후 처리
+- `post-remove`: 공유 라이브러리, systemd 유닛, tmpfiles 제거 후 처리
 
 확인은 다음 명령으로 한다.
 

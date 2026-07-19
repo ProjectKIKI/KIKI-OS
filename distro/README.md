@@ -1,36 +1,36 @@
 # KIKI OS 배포판 빌드 시스템
 
 `distro/`는 KIKI OS를 독립 배포판으로 만들기 위한 패키지, 프로파일, 설치
-계획, 커널 설정, 템플릿을 담는 디렉터리다. 현재 목표는 완전한 self-hosting이
+계획, 커널 설정, 템플릿을 담는 디렉터리다. 현재 목표는 완전한 자체 빌드가
 아니라, 재현 가능한 초기 배포판 파이프라인을 만드는 것이다.
 
-개발 단계는 `stage1-v1`, `stage2-v2`, stage 3으로 관리한다. `stage1-v1`은
+개발 단계는 `stage1-v1`, `stage2-v2`, 3단계로 관리한다. `stage1-v1`은
 부팅과 설치 가능성 증명을 마친 최종 기준선이고, `stage2-v2`는 운영 가능한
 최소 서버 배포판 기준선이다. 상세 기준은
 `docs/kiki-os-stages.ko.md`, `docs/kiki-stage1-v1-final.ko.md`,
 `docs/kiki-stage2-v2-progress.ko.md`에 둔다.
 
 ```text
-레시피 -> 의존성 계획 -> 빌드 캐시 키 -> .ki2 패키지 -> 저장소 인덱스 -> rootfs
-레시피 -> ki2ci 파이프라인 -> 웹 작업 로그 -> payload ISO -> 부팅 ISO -> 설치 ISO
+레시피 -> 의존성 계획 -> 빌드 캐시 키 -> .ki2 패키지 -> 저장소 인덱스 -> 루트 파일시스템
+레시피 -> ki2ci 파이프라인 -> 웹 작업 로그 -> 페이로드 ISO -> 부팅 ISO -> 설치 ISO
 ```
 
 ## 디렉터리 구조
 
 ```text
 distro/
-  recipes/core.toml              Stage 1 기본 seed 패키지 목록
+  recipes/core.toml              1단계 기본 seed 패키지 목록
   recipes/kubernetes.yaml        쿠버네티스 노드용 선택 패키지 계층
   specs/*.yaml                   패키지, 레시피, 프로파일, 설치 계획 스펙
   templates/*.yaml               새 패키지 레시피 작성용 템플릿
-  profiles/bootstrap-stage1.toml pre-systemd 검증용 rootfs 프로파일
-  profiles/installer-tui.toml    Go TUI preview 단독 빌드 프로파일
-  profiles/container-runtimes.toml CRI-O/containerd Stage 2 런타임 검증 프로파일
+  profiles/bootstrap-stage1.toml pre-systemd 검증용 루트 파일시스템 프로파일
+  profiles/installer-tui.toml    Go TUI 미리보기 단독 빌드 프로파일
+  profiles/container-runtimes.toml CRI-O/containerd 2단계 런타임 검증 프로파일
   profiles/ki2ctl-runtime.toml   HTTP 패키지 관리자 단독 빌드 프로파일
   profiles/minimal-systemd.toml  기본 systemd 서버 노드 프로파일
-  profiles/kiki-kube-bootstrap.yaml 첫 쿠버네티스 control-plane 부트스트랩 프로파일
-  profiles/kiki-kube-control.yaml 추가 쿠버네티스 control-plane 프로파일
-  profiles/kiki-kube-compute.yaml 쿠버네티스 compute 노드 지향 프로파일
+  profiles/kiki-kube-bootstrap.yaml 첫 쿠버네티스 컨트롤 플레인 부트스트랩 프로파일
+  profiles/kiki-kube-control.yaml 추가 쿠버네티스 컨트롤 플레인 프로파일
+  profiles/kiki-kube-compute.yaml 쿠버네티스 컴퓨트 노드 지향 프로파일
   profiles/node-network-tools.toml nftables/firewalld/bridge 도구 검증 프로파일
   install-plans/*.yaml           설치기용 선언형 계획서 예제
   builders/rocky9-wsl-deps.sh    Rocky 9/WSL 빌더 의존성 설치 스크립트
@@ -40,24 +40,24 @@ distro/
 관련 도구:
 
 ```text
-tools/ki2build.py     패키지 빌드, 저장소 인덱스, rootfs 조립
+tools/ki2build.py     패키지 빌드, 저장소 인덱스, 루트 파일시스템 조립
 tools/ki2repo.py      저장소 인덱스, 운영 메타데이터, 채널 파일 생성
 tools/ki2ci.py        CLI/웹 빌드 자동화 콘솔
-tools/ki2iso.py       payload ISO 생성
-tools/ki2bootiso.py   VM 부팅 ISO와 stage-1 설치 ISO 생성
+tools/ki2iso.py       페이로드 ISO 생성
+tools/ki2bootiso.py   VM 부팅 ISO와 1단계 설치 ISO 생성
 tools/ki2publish.py   빌드 산출물 배포 트리 생성
-cmd/kiki-installer-tui Go 기반 설치 계획서 TUI preview
+cmd/kiki-installer-tui Go 기반 설치 계획서 TUI 미리보기
 ```
 
-## Stage 2 bootstrap 패키지
+## 2단계 부트스트랩 패키지
 
-`tools/ki2build.py`는 Stage 2 전용 `stage2-stub`와 `host-files` 빌드 타입을 지원한다.
-`stage2-stub`는 아직 실제 payload가 없는 패키지 경로를 예약할 때만 쓰고,
+`tools/ki2build.py`는 2단계 전용 `stage2-stub`와 `host-files` 빌드 타입을 지원한다.
+`stage2-stub`는 아직 실제 페이로드가 없는 패키지 경로를 예약할 때만 쓰고,
 `host-files`는 빌더 호스트에 설치된 검증용 실행 파일과 공유 라이브러리를 `.ki2`
-payload로 묶는다. Stage 2의 Kubernetes 경로는 실제 upstream release binary 패키지와
-host-files bootstrap 패키지가 섞여 있다.
+페이로드로 묶는다. 2단계의 Kubernetes 경로는 실제 upstream 릴리스 바이너리 패키지와
+host-files 부트스트랩 패키지가 섞여 있다.
 
-현재 실제 upstream release binary를 `.ki2` payload에 넣는 항목:
+현재 실제 upstream 릴리스 바이너리를 `.ki2` 페이로드에 넣는 항목:
 
 - `runc`
 - `containerd`
@@ -70,7 +70,7 @@ host-files bootstrap 패키지가 섞여 있다.
 - `kubeadm`
 - `kubectl`
 
-현재 `host-files` payload로 실제 명령을 넣는 항목:
+현재 `host-files` 페이로드로 실제 명령을 넣는 항목:
 
 - `conntrack-tools`
 - `nftables`
@@ -81,8 +81,8 @@ host-files bootstrap 패키지가 섞여 있다.
 - `ethtool`
 - `chrony`
 
-이 계층은 Stage 2 VM 검증용 bootstrap packaging이다. 장기적으로는 Stage 3에서
-source-backed build 또는 공식 release artifact 기반 패키지로 승격한다.
+이 계층은 2단계 VM 검증용 부트스트랩 패키징이다. 장기적으로는 3단계에서
+소스 기반 빌드 또는 공식 릴리스 산출물 기반 패키지로 승격한다.
 
 ## YAML 운영 방침
 
@@ -91,19 +91,19 @@ KIKI OS의 운영자용 설정 포맷은 YAML로 둔다. 기존 seed 파일에�
 
 내장 YAML 파서는 의도적으로 작은 부분집합만 받는다.
 
-- mapping
-- list
-- string
-- integer
+- 매핑
+- 목록
+- 문자열
+- 정수
 - `true` / `false`
 - `null`
 
-버전, CIDR, 모호할 수 있는 값은 따옴표로 감싼다. anchor, alias, tab,
+버전, CIDR, 모호할 수 있는 값은 따옴표로 감싼다. 앵커, 별칭, 탭,
 `yes/no/on/off` 같은 YAML 특수 해석값은 피한다.
 
 ## 기본 패키지 범위
 
-기본 seed는 Stage 1 설치와 systemd 부팅 검증에 필요한 범위로 작게 유지한다.
+기본 seed는 1단계 설치와 systemd 부팅 검증에 필요한 범위로 작게 유지한다.
 
 - 커널과 ABI: `linux`, `linux-headers`, `glibc`
 - systemd 런타임: `systemd`, `dbus`, `kmod`, `util-linux`, `cfdisk`,
@@ -113,15 +113,15 @@ KIKI OS의 운영자용 설정 포맷은 YAML로 둔다. 기존 seed 파일에�
   `sed`, `gawk`, `tar`, `gzip`, `xz`, `zstd`
 - 네트워크와 원격 접속: `iproute2`, `openssl`, `ca-certificates`,
   `openssh`, `curl`
-- 향후 self-hosting 준비용 빌드 도구: `make`, `pkgconf`, `meson`,
+- 향후 자체 빌드 준비용 빌드 도구: `make`, `pkgconf`, `meson`,
   `ninja`, `python`, `perl`
 - KIKI 통합: `base-files`, `ki2ctl`, `kiki-agent`, `kiki-installer-tui`
 
 쿠버네티스 관련 패키지는 선택 YAML 계층으로 분리한다. 이렇게 해야
-`minimal-systemd`는 작게 유지하고, `kiki-kube-compute`는 kubeadm-ready compute 노드로
+`minimal-systemd`는 작게 유지하고, `kiki-kube-compute`는 kubeadm 준비가 된 컴퓨트 노드로
 확장할 수 있다. CRI 런타임은 CRI-O를 기본으로 두되,
 `kiki-kube-compute-containerd`처럼 `*-containerd` 프로필로 containerd도 검증한다.
-Stage 1부터 `kiki-installer-tui` preview 패키지를 포함해 같은
+1단계부터 `kiki-installer-tui` 미리보기 패키지를 포함해 같은
 설치 계획서를 Go 기반 TUI에서도 렌더링하고 테스트한다.
 
 ## 네트워크 정책
@@ -193,7 +193,7 @@ python tools/ki2build.py build \
 python tools/ki2build.py repo-index
 ```
 
-rootfs 조립:
+루트 파일시스템 조립:
 
 ```bash
 python tools/ki2build.py rootfs \
@@ -201,7 +201,7 @@ python tools/ki2build.py rootfs \
   --rootfs-dir dist/rootfs/minimal-systemd
 ```
 
-stage-1 rootfs 조립:
+1단계 루트 파일시스템 조립:
 
 ```bash
 python tools/ki2build.py rootfs \
@@ -215,13 +215,13 @@ python tools/ki2build.py rootfs \
 
 - 정규화된 레시피 내용
 - 아키텍처
-- toolchain ID
+- 도구체인 ID
 - 의존 패키지의 빌드 키
 
 저장된 빌드 상태와 패키지 산출물이 일치하면 해당 패키지는 다시 컴파일하지
 않는다. 이것이 매번 모든 패키지를 다시 빌드하지 않기 위한 첫 번째 장치다.
 
-`.ki2` 패키지 manifest와 저장소 인덱스에는 build/runtime 의존성 정보가 함께
+`.ki2` 패키지 매니페스트와 저장소 인덱스에는 빌드/런타임 의존성 정보가 함께
 들어간다. `ki2ctl install`은 이 정보를 사용해 런타임 의존성을 풀고 HTTP
 저장소에서 필요한 `.ki2` 패키지를 내려받는다.
 
@@ -292,15 +292,15 @@ python tools/ki2build.py repo-index
 파이프라인:
 
 - `smoke`: 빠른 Go/Python/레시피 검증
-- `bootstrap`: pre-systemd 패키지, 저장소, rootfs 빌드
+- `bootstrap`: pre-systemd 패키지, 저장소, 루트 파일시스템 빌드
 - `minimal-systemd`: systemd 기반 기본 프로파일 빌드
-- `stage2`: ISO 없이 Stage 2 저장소 metadata, CRI-O/containerd Kubernetes 계획, Go TUI 렌더링 검증
-- `security`: 소스 pin, shell 문법, 선택 스캐너 확인
-- `iso`: bootstrap rootfs와 저장소를 payload ISO로 패키징
+- `stage2`: ISO 없이 2단계 저장소 메타데이터, CRI-O/containerd Kubernetes 계획, Go TUI 렌더링 검증
+- `security`: 소스 고정, 셸 문법, 선택 스캐너 확인
+- `iso`: 부트스트랩 루트 파일시스템과 저장소를 페이로드 ISO로 패키징
 - `bootiso`: KIKI 커널과 initramfs를 포함한 GRUB 부팅 ISO 생성
-- `installer-iso`: KIKI 로고와 stage-1 TUI 설치기 ISO 생성
+- `installer-iso`: KIKI 로고와 1단계 TUI 설치기 ISO 생성
 - `publish`: 저장소, 패키지, ISO 산출물을 정적 배포 트리로 복사
-- `release`: smoke부터 publish까지 묶음 실행
+- `release`: smoke부터 배포까지 묶음 실행
 
 CLI 실행:
 
@@ -312,9 +312,9 @@ python tools/ki2ci.py run bootstrap --jobs "$(nproc)" --toolchain-id rocky9-stag
 python tools/ki2ci.py run publish --publish-dir /srv/www/kiki
 ```
 
-운영용 Stage 2 완료 여부는 `python tools/ki2ci.py run stage2` 통과 여부로 확인한다.
+운영용 2단계 완료 여부는 `python tools/ki2ci.py run stage2` 통과 여부로 확인한다.
 이 파이프라인은 `verify-kubernetes --strict-production`, `verify-network-userspace
---strict-production`, CRI-O/containerd rootfs 검증, Go TUI 설치 계획서 계약 검증,
+--strict-production`, CRI-O/containerd 루트 파일시스템 검증, Go TUI 설치 계획서 계약 검증,
 저장소 서명 검증을 함께 수행한다.
 
 ## HTTP 패키지 저장소
@@ -333,7 +333,7 @@ python tools/ki2build.py repo-index
 python -m http.server 8080 --directory dist/ki2
 ```
 
-또는 publish 트리를 만든 뒤 nginx 같은 웹 서버로 제공한다.
+또는 배포 트리를 만든 뒤 nginx 같은 웹 서버로 제공한다.
 
 ```bash
 python tools/ki2publish.py --target /srv/www/kiki
@@ -359,7 +359,7 @@ packages/<package>.ki2
 packages/x86_64/<package>.ki2
 ```
 
-설치 대상 rootfs를 따로 지정해서 테스트할 수도 있다.
+설치 대상 루트 파일시스템을 따로 지정해서 테스트할 수도 있다.
 
 ```bash
 ki2ctl --root /mnt/target repo set http://SERVER:8080
@@ -390,7 +390,7 @@ podman run --rm -it -p 8090:8090 -v "$PWD:/work" kiki-buildd:rocky9
 
 ## ISO와 설치기
 
-payload ISO:
+페이로드 ISO:
 
 ```bash
 python tools/ki2iso.py --profile bootstrap-stage1
@@ -409,19 +409,19 @@ python tools/ki2bootiso.py --profile bootstrap-stage1 --mode installer
 ```
 
 설치 ISO는 KIKI 로고와 콘솔 TUI를 제공한다. 설치기는 패키지 선택, 자동/수동
-파티셔닝, 사용자 생성, systemd 유닛 활성화, UEFI fallback 부트 파일 설치를
+파티셔닝, 사용자 생성, systemd 유닛 활성화, UEFI 대체 부트 파일 설치를
 수행한다.
 
 네트워크 기본값은 `systemd-networkd` DHCP다. 설치기는 기본적으로 `en* eth*`
 인터페이스에 DHCPv4, IPv6 RA, `systemd-resolved`를 설정한다. Guided 설치에서는
-네트워크 autoconfiguration을 끄거나 interface match 값을 바꿀 수 있다.
+네트워크 자동 구성을 끄거나 인터페이스 일치 조건 값을 바꿀 수 있다.
 
 설치 전에는 선언형 YAML 설치 계획서를 `/run/kiki/install-plan.yaml`에 쓰고
 화면에 보여준다. 설치 후에는 같은 파일을 `/var/lib/ki2/install-plan.yaml`로
 복사한다. 이 계획서는 추후 웹 기반 설치기와 무인 설치의 공통 계약으로 사용할
 수 있다.
 
-Stage 1 fstab은 systemd 장치 이름 변경에 덜 민감하도록 label 기반으로 작성한다.
+1단계 fstab은 systemd 장치 이름 변경에 덜 민감하도록 label 기반으로 작성한다.
 
 ```fstab
 LABEL=KIKI_ROOT / ext4 defaults 0 1
@@ -429,7 +429,7 @@ LABEL=KIKI_EFI /boot/efi vfat noauto,nofail,x-systemd.device-timeout=3s,umask=00
 LABEL=KIKI_SWAP none swap defaults,nofail,x-systemd.device-timeout=10s 0 0
 ```
 
-Go TUI preview는 같은 설치 계획서를 상태판으로 렌더링한다.
+Go TUI 미리보기는 같은 설치 계획서를 상태판으로 렌더링한다.
 
 ```bash
 go run ./cmd/kiki-installer-tui --render
@@ -450,16 +450,16 @@ kiki-agent.service
 
 ## 현재 빌드 상태
 
-Rocky 9 WSL 빌더에서 pre-systemd stage 패키지 저장소와 `bootstrap-stage1`
-rootfs가 검증되어 있다.
+Rocky 9 WSL 빌더에서 pre-systemd 단계 패키지 저장소와 `bootstrap-stage1`
+루트 파일시스템이 검증되어 있다.
 
 - 패키지 산출물: `dist/ki2/packages/x86_64`
 - 저장소 인덱스: `dist/ki2/repo/index.x86_64.json`
-- 검증된 rootfs 프로파일: `distro/profiles/bootstrap-stage1.toml`
+- 검증된 루트 파일시스템 프로파일: `distro/profiles/bootstrap-stage1.toml`
 
 `systemd`는 configure와 컴파일 단계까지 진행되지만, 현재는 KIKI sysroot
-헤더와 호스트 libc를 섞어 쓰는 bootstrap 경계가 있다. 다음 단계는 실제 target
-sysroot toolchain을 구성해 헤더와 libc를 같은 세계로 맞추는 것이다.
+헤더와 호스트 libc를 섞어 쓰는 부트스트랩 경계가 있다. 다음 단계는 실제 대상
+sysroot 도구체인을 구성해 헤더와 libc를 같은 세계로 맞추는 것이다.
 
 Rocky 9 WSL 의존성 설치:
 

@@ -329,7 +329,7 @@ kiki.autoinstall=erase kiki.profile=kiki-kube-compute-containerd kiki.runtime=co
 - `kiki.autoinstall=erase` 또는 `quick-vm`이 있을 때만 콘솔 확인 없이 설치를 진행한다.
 - `kiki.target`이 없으면 가장 큰 VM 디스크를 자동 선택한다.
 - Kubernetes 프로파일은 swap을 끄고 `runtime`, `kubernetes`, `firewall`, `artifacts` 섹션을 포함한 설치 계획서를 생성한다.
-- 설치 중 `/run/kiki/install-plan.yaml`을 만들고, 설치 후 대상 rootfs의 `/var/lib/ki2/install-plan.yaml`로 보존한다.
+- 설치 중 `/run/kiki/install-plan.yaml`을 만들고, 설치 후 대상 루트 파일시스템의 `/var/lib/ki2/install-plan.yaml`로 보존한다.
 
 3단계 후보:
 

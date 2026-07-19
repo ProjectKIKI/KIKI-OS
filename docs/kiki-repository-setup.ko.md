@@ -1,6 +1,6 @@
 # KIKI 패키지 저장소 구성 가이드
 
-이 문서는 Stage 2에서 사용할 `.ki2` HTTP 패키지 저장소를 구성하는 방법을
+이 문서는 2단계에서 사용할 `.ki2` HTTP 패키지 저장소를 구성하는 방법을
 정리한다. 여기서 말하는 저장소는 소스 코드를 보관하는 Gitea/Git 저장소가 아니라,
 KIKI OS가 `ki2ctl`로 패키지를 내려받는 정적 HTTP 저장소다.
 
@@ -24,11 +24,11 @@ publish/
 
 `repo/index.x86_64.json`은 패키지 이름, 버전, 릴리스, 파일명, 크기, sha256,
 런타임 의존성을 담는다. `ki2ctl`은 이 인덱스를 내려받은 뒤 필요한 `.ki2`
-파일을 HTTP로 가져와 대상 rootfs에 추출한다.
+파일을 HTTP로 가져와 대상 루트 파일시스템에 추출한다.
 
-현재 Stage 2 V2 기준으로 저장소 메타데이터는 개발용 HMAC-SHA256 방식으로
+현재 2단계 V2 기준으로 저장소 메타데이터는 개발용 HMAC-SHA256 방식으로
 서명하고 검증할 수 있다. 인덱스의 sha256으로 패키지 파일 무결성을 확인하고,
-`metadata.x86_64.json`의 서명으로 저장소 메타데이터와 index 해시를 함께
+`metadata.x86_64.json`의 서명으로 저장소 메타데이터와 인덱스 해시를 함께
 검증한다. 운영 배포에서는 HMAC 대신 공개키 기반 서명으로 교체하는 것이 맞다.
 
 ## 빌드 서버 준비
@@ -59,7 +59,7 @@ python3 tools/ki2build.py repo-index
 dist/ki2/repo/index.x86_64.json
 ```
 
-Stage 2부터는 저장소 운영 메타데이터도 함께 생성할 수 있다.
+2단계부터는 저장소 운영 메타데이터도 함께 생성할 수 있다.
 
 ```bash
 python3 tools/ki2repo.py keygen --output build/ki2/keys/stage2-v2-repo.hmac --force
@@ -80,7 +80,7 @@ dist/ki2/repo/metadata.x86_64.json
 dist/ki2/repo/channels.json
 ```
 
-`metadata.x86_64.json`은 패키지 개수, 전체 크기, tier별 개수, 최신 패키지 목록,
+`metadata.x86_64.json`은 패키지 개수, 전체 크기, 티어별 개수, 최신 패키지 목록,
 ISO 산출물 목록, 저장소 보안 상태를 기록한다. `channels.json`은 `stage2-v2`,
 `testing`, `stable` 같은 릴리스 채널이 어떤 인덱스와 메타데이터를 가리키는지
 기록한다.
@@ -109,7 +109,7 @@ http://SERVER:8080/packages/x86_64/<package>.ki2
 `ki2ctl`은 `packages/x86_64/` 경로를 지원하므로 개발 테스트에 바로 사용할 수
 있다.
 
-## 운영용 publish 트리
+## 운영용 배포 트리
 
 운영 또는 장기 테스트용으로는 `tools/ki2publish.py`로 배포 트리를 만든다.
 
@@ -171,7 +171,7 @@ server {
 ```
 
 운영 환경에서는 저장소 서버를 사설망, VPN, 방화벽 또는 인증 리버스 프록시 뒤에
-둔다. Stage 2 V2의 HMAC 서명은 개발/랩 검증용이므로, 신뢰할 수 없는 네트워크에
+둔다. 2단계 V2의 HMAC 서명은 개발/랩 검증용이므로, 신뢰할 수 없는 네트워크에
 직접 노출하지 않는다.
 
 ## KIKI OS에서 저장소 등록
@@ -183,7 +183,7 @@ sudo ki2ctl repo set http://repo.example.internal:8080
 sudo ki2ctl repo list
 ```
 
-Disconnected 설치나 ISO 내부 저장소를 사용할 때는 로컬 경로나 `file://` URL을
+오프라인 설치나 ISO 내부 저장소를 사용할 때는 로컬 경로나 `file://` URL을
 그대로 등록할 수 있다.
 
 ```bash
@@ -193,7 +193,7 @@ sudo ki2ctl update
 ki2ctl --repo file:///srv/kiki-mirror info systemd
 ```
 
-저장소를 교체하거나 mirror 테스트를 끝낸 뒤에는 설정과 캐시된 인덱스를 함께
+저장소를 교체하거나 미러 테스트를 끝낸 뒤에는 설정과 캐시된 인덱스를 함께
 정리할 수 있다.
 
 ```bash
@@ -263,7 +263,7 @@ cat /var/lib/ki2/installed.json
 /var/lib/ki2/transactions/<transaction-id>.json
 ```
 
-트랜잭션 파일에는 작업 종류, 대상 패키지, 상태, 이벤트, rollback을 위한 백업
+트랜잭션 파일에는 작업 종류, 대상 패키지, 상태, 이벤트, 롤백을 위한 백업
 목록이 기록된다. 설치 중 오류가 나면 `ki2ctl`은 변경된 파일과 설치 DB를 가능한
 범위에서 되돌리고 트랜잭션 상태를 `rolled-back`으로 남긴다.
 
@@ -273,7 +273,7 @@ cat /var/lib/ki2/installed.json
 /var/cache/ki2/packages/x86_64/
 ```
 
-`ki2ctl`은 설치 전에 payload 경로를 검사한다.
+`ki2ctl`은 설치 전에 페이로드 경로를 검사한다.
 
 - 다른 설치 패키지가 소유한 파일은 덮어쓰지 않는다.
 - 기존에 존재하지만 어떤 패키지에도 기록되지 않은 파일은 덮어쓰지 않는다.
@@ -302,11 +302,11 @@ sudo ki2ctl upgrade ki2ctl
 ```
 
 현재 `upgrade`는 설치된 패키지 DB와 저장소 인덱스의 최신 버전을 비교해서 더 높은
-버전/릴리스가 있을 때 다시 설치한다. Stage 2 V2 기준으로 파일 충돌 탐지와
-기본 트랜잭션 rollback은 들어갔지만, systemd hook, pre/post script, 완전한
-스냅샷 rollback은 아직 남은 작업이다.
+버전/릴리스가 있을 때 다시 설치한다. 2단계 V2 기준으로 파일 충돌 탐지와
+기본 트랜잭션 롤백은 들어갔지만, systemd 훅, 설치 전/후 스크립트, 완전한
+스냅샷 롤백은 아직 남은 작업이다.
 
-## 설치 중 대상 rootfs에 적용
+## 설치 중 대상 루트 파일시스템에 적용
 
 설치기 또는 복구 환경에서 `/mnt/target`에 패키지를 설치할 수 있다.
 
@@ -316,13 +316,13 @@ ki2ctl --root /mnt/target update
 ki2ctl --root /mnt/target install openssh
 ```
 
-이 방식은 네트워크 설치, disconnected mirror 설치, 복구용 패키지 재설치의 기반이
+이 방식은 네트워크 설치, 오프라인 미러 설치, 복구용 패키지 재설치의 기반이
 된다.
 
-## disconnected 저장소
+## 오프라인 저장소
 
-인터넷이나 중앙 저장소가 없는 환경에서는 publish 트리를 내부 파일 서버, ISO,
-USB, 폐쇄망 mirror로 옮긴다.
+인터넷이나 중앙 저장소가 없는 환경에서는 배포 트리를 내부 파일 서버, ISO,
+USB, 폐쇄망 미러로 옮긴다.
 
 권장 절차:
 
@@ -352,17 +352,17 @@ python3 -m http.server 8080 --directory /srv/www/kiki
 8. `sudo ki2ctl upgrade --dry-run`
 9. 문제가 없으면 `sudo ki2ctl upgrade`
 
-## Stage 2 남은 저장소 작업
+## 2단계 남은 저장소 작업
 
 - HMAC 개발용 서명을 공개키 기반 저장소 서명으로 교체
-- 패키지 파일 서명 또는 manifest 서명
-- 디렉터리 정리까지 포함하는 완전한 rollback
-- pre/post install/remove hook 정책
-- release channel: `stage1-v1`, `stage2-v2`, `testing`, `stable`
+- 패키지 파일 서명 또는 매니페스트 서명
+- 디렉터리 정리까지 포함하는 완전한 롤백
+- 설치/삭제 전후 훅 정책
+- 릴리스 채널: `stage1-v1`, `stage2-v2`, `testing`, `stable`
 
-## Stage 2 저장소 서명 메모
+## 2단계 저장소 서명 메모
 
-Stage 2부터는 `tools/ki2repo.py`가 저장소 운영 메타데이터와 서명 검증 흐름을 함께
+2단계부터는 `tools/ki2repo.py`가 저장소 운영 메타데이터와 서명 검증 흐름을 함께
 관리한다. 현재 구현은 개발용 `hmac-sha256` 방식이다. 운영 배포에서는 개인키를
 서버 밖에 보관하고 공개키 기반 서명으로 바꾸는 것이 맞다.
 

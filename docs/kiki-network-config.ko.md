@@ -1,6 +1,6 @@
 # KIKI OS 네트워크 설정 도구
 
-KIKI OS Stage 2의 기본 네트워크 관리는 `systemd-networkd`와
+KIKI OS 2단계의 기본 네트워크 관리는 `systemd-networkd`와
 `systemd-resolved`가 담당한다. 설치기는 기본값으로 DHCP를 기록하지만, 설치 후
 운영 중에도 같은 규칙으로 네트워크를 바꿀 수 있도록 `kiki-netconfig` 패키지를
 추가한다.
@@ -37,7 +37,7 @@ sudo kiki-netconfig dhcp --apply
 - `IPv6AcceptRA=yes`
 - `RequiredForOnline=routable`
 
-설치 대상 rootfs에 미리 기록할 때는 다음처럼 쓴다.
+설치 대상 루트 파일시스템에 미리 기록할 때는 다음처럼 쓴다.
 
 ```bash
 sudo kiki-netconfig --root /mnt/target dhcp
@@ -45,7 +45,7 @@ sudo kiki-netconfig --root /mnt/target dhcp
 
 `--root`가 `/`가 아니면 `--apply`를 붙여도 실제 서비스 재시작은 하지 않는다.
 
-## Static IPv4
+## 고정 IPv4
 
 정적 주소는 주소/프리픽스만 필수이고, 게이트웨이/DNS/NTP는 선택이다.
 
@@ -75,7 +75,7 @@ sudo kiki-netconfig static \
 
 ## 자동 설정 끄기
 
-무인 설치, disconnected 실험, 혹은 수동 `ip` 설정 테스트가 필요하면 networkd
+무인 설치, 오프라인 실험, 혹은 수동 `ip` 설정 테스트가 필요하면 networkd
 자동 구성을 끌 수 있다.
 
 ```bash
@@ -108,9 +108,9 @@ kiki-netconfig static \
   --dry-run
 ```
 
-## Stage 2 검증
+## 2단계 검증
 
-`kiki-netconfig`는 Stage 2 network userspace 검증 대상에 포함된다.
+`kiki-netconfig`는 2단계 네트워크 사용자 공간 검증 대상에 포함된다.
 
 ```bash
 python tools/ki2stage2.py verify-network-userspace --strict-production
@@ -121,4 +121,4 @@ ISO를 만들기 전에 위 검증을 통과하면 다음을 확인한 것이다
 
 - 패키지 레시피가 존재한다.
 - `.ki2` 패키지 안에 `/usr/bin/kiki-netconfig`가 포함된다.
-- DHCP/Static/Off 렌더링 규칙이 깨지지 않는다.
+- DHCP/고정/비활성 렌더링 규칙이 깨지지 않는다.

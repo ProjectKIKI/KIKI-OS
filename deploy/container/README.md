@@ -84,13 +84,13 @@ SELinux가 켜진 호스트에서는 `compose.yaml`의 `/work` volume 또는 `po
 ## 운영 참고
 
 - 빌드는 컨테이너 내부에서 실행된다.
-- source, cache, package, rootfs, ISO, publish 산출물은 마운트된 `/work`를 통해
+- 소스, 캐시, 패키지, 루트 파일시스템, ISO, 배포 산출물은 마운트된 `/work`를 통해
   호스트에 기록된다.
 - `bootiso`는 GRUB, KIKI 커널, 생성된 initramfs를 포함한 VM 부팅 테스트 ISO를
   만든다.
-- `installer-iso`는 부팅 로고, stage-1 TUI 설치기, `/install/kiki-stage1.img`,
+- `installer-iso`는 부팅 로고, 1단계 TUI 설치기, `/install/kiki-stage1.img`,
   파괴적 작업 확인 절차를 포함한 설치 ISO를 만든다.
-- 기본 toolchain ID는 `container-rocky9-stage0-gcc11-v1`이다. 이 값은 패키지
+- 기본 도구체인 ID는 `container-rocky9-stage0-gcc11-v1`이다. 이 값은 패키지
   빌드 캐시 키에 들어가므로 의도적으로 바꿔야 한다.
 - KIKI 기본 네트워크 정책은 `systemd-networkd`다. `NetworkManager`는 추후
   데스크톱/무선/VPN 프로파일용 선택 패키지로 추가한다.
