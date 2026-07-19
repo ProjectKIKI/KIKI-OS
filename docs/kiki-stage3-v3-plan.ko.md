@@ -3,6 +3,9 @@
 `stage3-v3`는 KIKI OS를 “Kubernetes 노드 준비가 가능한 최소 서버 OS”에서
 “자기 빌드와 클러스터 운영 자동화가 가능한 독립 배포판”으로 끌어올리는 단계다.
 
+초기 설계 초안과 설정 계약은 [KIKI OS Stage 3 V3 초안](kiki-stage3-v3-draft.ko.md)과
+[`kiki-stage3-config-v1`](../distro/specs/kiki-stage3-config-v1.yaml)을 기준으로 시작한다.
+
 ## 전환 기준
 
 Stage 2 V2는 다음 상태로 닫는다.
@@ -13,7 +16,7 @@ Stage 2 V2는 다음 상태로 닫는다.
 - CRI-O 기본, containerd 선택 Kubernetes 노드 프로파일 검증
 - `kiki-kubeadm` 기반 kubeadm init/join 렌더링과 guard 실행기 검증
 - `kiki-netconfig` 기반 DHCP/Static/Off 네트워크 설정 도구 포함
-- 최신 Stage 2 ISO: `dist/iso/kiki-stage2-v2-installer-x86_64-20260612-rev8.iso`
+- 최신 Stage 2 ISO: `dist/iso/kiki-stage2-v2-installer-x86_64-20260711-rev9.iso`
 
 Stage 3부터는 Stage 2 기능을 깨지 않는 범위에서 self-hosting, 클러스터 자동화,
 원격 설치, 보안 업데이트 운영을 추가한다.

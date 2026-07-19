@@ -266,8 +266,8 @@ ISO는 사용자가 명시적으로 요청했을 때만 생성한다.
 - containerd Kubernetes rootfs: `ok=40 warnings=0 errors=0`
 - package manager repository flows: `ok=44 warnings=0 errors=0`
 - repository summary: `stage2-v2`, `Packages: 62`, `Signed: True`
-- latest installer ISO: `dist/iso/kiki-stage2-v2-installer-x86_64-20260612-rev8.iso`
-- latest installer ISO sha256: `2213F1ED10D559AB26BF040D062BD87F3E109B04085ADA4CE31CF893037C0E4A`
+- latest installer ISO: `dist/iso/kiki-stage2-v2-installer-x86_64-20260711-rev9.iso`
+- latest installer ISO sha256: `F4732724182765A1DC47B270255D9473078636A17957548BA281EBE89A902B06`
 
 Stage 2 V2는 이 상태에서 기능 동결한다. 이후 기능 추가는 Stage 3 V3 문서와
 별도 브랜치/커밋 범위로 관리한다.
