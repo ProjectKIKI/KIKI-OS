@@ -1,8 +1,8 @@
 # KIKI OS
 
-**첫 부팅부터 Kubernetes 노드까지.**
+**첫 부팅부터 쿠버네티스 노드까지.**
 
-KIKI OS는 새 VM 또는 베어메탈 머신을 Kubernetes 노드로 바꾸기 위한 자동화
+KIKI OS는 새 VM 또는 베어메탈 머신을 쿠버네티스 노드로 바꾸기 위한 자동화
 OS입니다. ISO 또는 디스크 이미지로 부팅하면 네트워크 준비, 노드 프로필 적용,
 CRI-O 또는 containerd 기반 kubelet 구성, 클러스터 조인, 상태 보고까지 이어지는 흐름을 목표로 합니다.
 
@@ -14,15 +14,15 @@ CRI-O 또는 containerd 기반 kubelet 구성, 클러스터 조인, 상태 보�
 안현
 장경빈
 
-## 개발환경 및 진행사항
+## 개발 환경 및 진행 상황
 
-현재 개발환경은 WSL2에서 진행하고 있습니다. 최대한 크로스 컴파일을 배제하고 네이티브 패키지를 지향하면서 패키지 및 운영체제를 구성하고 있습니다.
-개발이 완료가 된 부분은 다음과 같습니다.
+현재 개발 환경은 WSL2입니다. 최대한 크로스 컴파일을 배제하고 네이티브 패키지를
+지향하면서 패키지와 운영체제를 구성하고 있습니다. 현재 진행 상황은 다음과 같습니다.
 
-[ V ] 기본적인 부팅 부분
-[ V ] systemd에서 simple init를 통한 PID 1번 구현
-[ X ] systemd-init 구현
-[ X ] 원격 패키지 저장소 HTTP/HTTPS로 구현
+- [x] 기본 부팅 경로
+- [x] systemd로 PID 1을 넘기는 단순 init 경로
+- [ ] systemd-initramfs 구현
+- [ ] 원격 패키지 저장소 HTTP/HTTPS 구현
 
 
 ## 저장소
@@ -32,14 +32,15 @@ CRI-O 또는 containerd 기반 kubelet 구성, 클러스터 조인, 상태 보�
 
 ## 현재 상태
 
-KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 미디어가 아니라, Kubernetes 노드 수명주기 자동화를 위한 재현 가능한 독립 배포판입니다.
+KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 미디어가 아니라,
+쿠버네티스 노드 수명주기 자동화를 위한 재현 가능한 독립 배포판입니다.
 
 - 1단계 설치기가 있습니다.
 - `.ki2 패키지 -> 저장소 -> 루트 파일시스템 -> 부팅 미디어` 파이프라인이 있습니다.
 - `minimal-systemd` 프로필로 systemd 기반 최소 서버 이미지를 구성합니다.
-- Kubernetes 역할 프로필은 `kiki-kube-bootstrap`, `kiki-kube-control`, `kiki-kube-compute`로 모델링 중입니다.
+- 쿠버네티스 역할 프로필은 `kiki-kube-bootstrap`, `kiki-kube-control`, `kiki-kube-compute`로 모델링 중입니다.
 - 코어 OS는 `ki2`로 유지하고, 사용자 확장 앱과 운영 도구는 2단계 이후
-  Podman/OCI 모델로 분리합니다. CRI-O는 Kubernetes 전용 런타임으로 둡니다.
+  Podman/OCI 모델로 분리합니다. CRI-O는 쿠버네티스 전용 런타임으로 둡니다.
 - 기본 네트워크는 DHCP 기반 `systemd-networkd`와 `systemd-resolved`이며, 설치 시 고정 IPv4도 선택할 수 있습니다.
 - 기본 실험 계정은 `kiki / kiki`이며 root 직접 로그인은 잠급니다.
 - `sudo`, `systemctl`, `dbus`, `systemd-logind`를 일반 운영 기본 기능으로 맞추고 있습니다.
@@ -52,7 +53,7 @@ KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 
 2. **네트워크 준비**: DHCP 또는 고정 IPv4로 기본 네트워크를 확보합니다.
 3. **프로필 적용**: OS 패키지, systemd 유닛, 런타임 설정을 재현 가능하게 적용합니다.
 4. **런타임 시작**: CRI-O/containerd, CNI, systemd, kubelet 구성을 정리하고 서비스를 올립니다.
-5. **클러스터 조인**: 부트스트랩 설정과 조인 토큰을 사용해 Kubernetes 컨트롤 플레인에 등록합니다.
+5. **클러스터 조인**: 부트스트랩 설정과 조인 토큰을 사용해 쿠버네티스 컨트롤 플레인에 등록합니다.
 6. **상태 보고**: `kiki-agent`가 노드 상태와 하트비트를 보고합니다.
 
 ## 구조
@@ -64,33 +65,33 @@ KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 
 | TUI 설치기 | 디스크 파티셔닝, 패키지 선택, 사용자 생성, 네트워크 기본값을 적용합니다. |
 | systemd 기반 런타임 | `dbus`, `logind`, `networkd`, `resolved`, `sshd`, `sudo`를 운영 기본값으로 구성합니다. |
 | Go TUI 미리보기 | 선언형 설치 계획서를 상태판 형태로 렌더링하고 2단계 설치기 전환을 검증합니다. |
-| KIKI Agent | 첫 부팅 자동화, 노드 프로필 적용, 클러스터 조인, 상태 보고를 담당할 예정입니다. |
+| KIKI 에이전트 | 첫 부팅 자동화, 노드 프로필 적용, 클러스터 조인, 상태 보고를 담당할 예정입니다. |
 
 ## 노드 프로필
 
 | 프로필 | 상태 | 설명 |
 | --- | --- | --- |
 | `minimal-systemd` | 기본 | 최소 systemd 서버 OS를 만들기 위한 기본 프로필입니다. |
-| `server-core` | 3단계 초안 | Kubernetes 없이 일반 서버 OS 기능, 방화벽, 시간 동기화, 네트워크 도구를 제공하는 프로필입니다. |
-| `kiki-kube-bootstrap` | 2단계 검증 | 첫 Kubernetes 컨트롤 플레인을 kubeadm init 대상으로 준비하는 프로필입니다. |
+| `server-core` | 3단계 초안 | 쿠버네티스 없이 일반 서버 OS 기능, 방화벽, 시간 동기화, 네트워크 도구를 제공하는 프로필입니다. |
+| `kiki-kube-bootstrap` | 2단계 검증 | 첫 쿠버네티스 컨트롤 플레인을 kubeadm init 대상으로 준비하는 프로필입니다. |
 | `kiki-kube-bootstrap-containerd` | 2단계 검증 | 첫 컨트롤 플레인을 containerd 런타임으로 준비하는 프로필입니다. |
 | `kiki-kube-control` | 2단계 검증 | 부트스트랩 이후 추가 컨트롤 플레인 노드를 준비하는 프로필입니다. |
 | `kiki-kube-control-containerd` | 2단계 검증 | 추가 컨트롤 플레인을 containerd 런타임으로 준비하는 프로필입니다. |
-| `kiki-kube-compute` | 2단계 검증 | Kubernetes 컴퓨트 노드 부트스트랩을 위한 프로필입니다. |
-| `kiki-kube-compute-containerd` | 2단계 검증 | Kubernetes 컴퓨트 노드를 containerd 런타임으로 준비하는 프로필입니다. |
-| `edge-node` | 예정 | 작은 VM, 원격 지점, edge 환경을 위한 경량 노드 프로필입니다. |
-| `gpu-node` | 예정 | GPU 런타임과 device plugin 구성을 포함하는 계산 노드 프로필입니다. |
+| `kiki-kube-compute` | 2단계 검증 | 쿠버네티스 컴퓨트 노드 부트스트랩을 위한 프로필입니다. |
+| `kiki-kube-compute-containerd` | 2단계 검증 | 쿠버네티스 컴퓨트 노드를 containerd 런타임으로 준비하는 프로필입니다. |
+| `edge-node` | 예정 | 작은 VM과 원격 지점을 위한 경량 노드 프로필입니다. |
+| `gpu-node` | 예정 | GPU 런타임과 장치 플러그인 구성을 포함하는 계산 노드 프로필입니다. |
 | `storage-node` | 예정 | 스토리지 워크로드와 노드 로컬 데이터 구성을 위한 프로필입니다. |
 
 ## 주요 도구
 
 - `tools/ki2build.py`: `.ki2` 패키지 빌드, 의존성 계획, 루트 파일시스템 조립
 - `tools/ki2repo.py`: HTTP 패키지 저장소 인덱스, 메타데이터, 채널 파일 생성
-- `tools/ki2ci.py`: CLI 파이프라인과 빌드 웹 콘솔
+- `tools/ki2ci.py`: 명령줄 파이프라인과 빌드 웹 콘솔
 - `tools/ki2iso.py`: 루트 파일시스템과 패키지 저장소를 담는 페이로드 ISO 생성
 - `tools/ki2bootiso.py`: BIOS/UEFI 부팅 ISO, 1단계 TUI 설치 ISO 생성
 - `tools/ki2publish.py`: 패키지, 저장소, ISO, 디스크 이미지를 정적 배포 트리로 복사
-- `cmd/kiki-installer-tui`: Go 기반 선언형 설치 계획서 TUI 미리보기
+- `cmd/kiki-installer-tui`: Go 기반 선언형 설치 계획서 TUI
 - `bosctl`, `cpmctl`, `bosbuild`: 초기 BOS/CPM 실험용 Go 도구
 
 ## 주요 문서
@@ -157,8 +158,8 @@ python tools/ki2ci.py serve --host 127.0.0.1 --port 8090
 ```
 
 `stage2` 파이프라인은 ISO를 만들지 않고 Go/Python 테스트, CRI-O/containerd
-Kubernetes 프로필 계획, Go TUI 계획서 작성과 계약 검증, kubeadm init/join 계약이 포함된
-2단계 Kubernetes 준비도, 런타임/Kubernetes 바이너리 스모크, kubeadm 템플릿
+쿠버네티스 프로필 계획, Go TUI 계획서 작성과 계약 검증, kubeadm init/join 계약이 포함된
+2단계 쿠버네티스 준비도, 런타임/쿠버네티스 바이너리 스모크, kubeadm 템플릿
 파싱, CRI-O/containerd 설치 루트 파일시스템 검증, 서명된 저장소 메타데이터 생성과 검증을
 묶어 확인한다. 바이너리 스모크와 루트 파일시스템 검증은 Linux/WSL 빌더에서 실행해야 한다.
 
@@ -199,7 +200,7 @@ ki2ctl --repo file:///srv/kiki-mirror info systemd
 ki2ctl repo remove
 ```
 
-Go TUI 미리보기:
+Go TUI:
 
 ```bash
 go test ./cmd/kiki-installer-tui
@@ -241,16 +242,16 @@ python tools/ki2stage2.py verify-install-plan --plan ./install-plan.yaml --runti
 
 KIKI OS는 1단계부터 3단계까지 진행합니다.
 
-- **stage1-v1**: 부팅 가능한 설치 미디어와 최소 systemd OS를 검증한 최종 기준선입니다.
-- **stage2-v2**: 운영 가능한 최소 서버 배포판, 패키지 설치/업데이트 기반, 무인 설치, 오프라인 설치를 검증한 기준선입니다.
-- **stage3-v3**: 자체 빌드가 가능하고 Kubernetes/클러스터 운영을 자동화하는 독립 배포판으로 확장합니다.
+- **1단계 V1**: 부팅 가능한 설치 미디어와 최소 systemd OS를 검증한 최종 기준선입니다.
+- **2단계 V2**: 운영 가능한 최소 서버 배포판, 패키지 설치/업데이트 기반, 무인 설치, 오프라인 설치를 검증한 기준선입니다.
+- **3단계 V3**: 자체 빌드가 가능하고 쿠버네티스/클러스터 운영을 자동화하는 독립 배포판으로 확장합니다.
 
 자세한 기준은 [KIKI OS 개발 단계 정의](docs/kiki-os-stages.ko.md)를 따릅니다.
 
 ## Hyper-V 참고
 
-생성된 미디어는 BIOS/MBR과 UEFI 부팅을 지원하지만 Secure Boot 서명은 아직 없습니다.
-Hyper-V Generation 2에서 테스트할 때는 Secure Boot를 끕니다.
+생성된 미디어는 BIOS/MBR과 UEFI 부팅을 지원하지만 보안 부팅 서명은 아직 없습니다.
+Hyper-V 2세대 가상 머신에서 테스트할 때는 보안 부팅을 끕니다.
 
 ```powershell
 Set-VMFirmware -VMName "test-kiki-os" -EnableSecureBoot Off
