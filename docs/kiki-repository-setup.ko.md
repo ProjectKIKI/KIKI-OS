@@ -393,10 +393,10 @@ python3 tools/ki2repo.py verify --key build/ki2/keys/stage2-v2-repo.hmac
 sudo ki2ctl update --verify-key /etc/ki2/trust/stage2-v2-repo.hmac
 ```
 
-중요: `build/ki2/keys/stage2-v2-repo.hmac`는 publish 대상이 아니다. HTTP 저장소에
+중요: `build/ki2/keys/stage2-v2-repo.hmac`는 배포 대상이 아니다. HTTP 저장소에
 함께 올리면 서명의 의미가 사라진다.
 
-## Stage 2 테스트 ISO
+## 2단계 테스트 ISO
 
 2026-05-26 기준 테스트용 설치 ISO:
 
@@ -415,15 +415,15 @@ python3 tools/ki2bootiso.py \
   --no-hyperv-vhdx
 ```
 
-이후 새 ISO는 기본적으로 `YYYYMMDD-revN` suffix를 사용한다. 예:
+이후 새 ISO는 기본적으로 `YYYYMMDD-revN` 접미사를 사용한다. 예:
 
 ```text
 dist/iso/kiki-stage2-v2-installer-x86_64-20260526-rev42.iso
 ```
 
-기본 release 이름은 저장소 metadata의 `channel` 값이다. 부팅 프로필은
-`bootstrap-stage1`이어도 Stage 2 저장소를 담는 설치 ISO는 `stage2-v2` 이름을 쓴다. 저장소 metadata가 없으면 Stage 1 부팅 검증 산출물은 `stage1-v1` 이름을 쓴다.
+기본 릴리스 이름은 저장소 메타데이터의 `channel` 값이다. 부팅 프로필은
+`bootstrap-stage1`이어도 2단계 저장소를 담는 설치 ISO는 `stage2-v2` 이름을 쓴다. 저장소 메타데이터가 없으면 1단계 부팅 검증 산출물은 `stage1-v1` 이름을 쓴다.
 
-이 ISO는 stage-1 installer ISO이며 `/kiki/repo`, `/kiki/packages/x86_64` 아래에
-현재 Stage 2 저장소 payload를 포함한다.
-- mirror 동기화와 보존 정책
+이 ISO는 1단계 설치기 ISO이며 `/kiki/repo`, `/kiki/packages/x86_64` 아래에
+현재 2단계 저장소 페이로드를 포함한다.
+- 미러 동기화와 보존 정책
