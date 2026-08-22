@@ -1,0 +1,38 @@
+FROM rockylinux:9
+
+ARG UID=1000
+ARG GID=1000
+
+ENV KIKI_WORKDIR=/work \
+    KIKI_PORT=8090 \
+    KIKI_TOOLCHAIN_ID=container-rocky9-stage0-gcc11-v1 \
+    KIKI_ARTIFACT_ROOT=/work/build/ki2ci \
+    KIKI_PUBLISH_DIR=/work/dist/publish
+
+RUN dnf install -y dnf-plugins-core \
+    && dnf config-manager --set-enabled crb \
+    && dnf install -y \
+      gcc gcc-c++ make cmake meson ninja-build pkgconf-pkg-config \
+      golang perl python3 python3-devel python3-pip python3-tomli python3-jinja2 \
+      curl-minimal tar gzip xz bzip2 patch diffutils findutils file git \
+      xorriso grub2-tools grub2-tools-extra grub2-pc-modules \
+      grub2-efi-x64-modules grub2-efi-x64-cdboot mtools \
+      cpio qemu-img qemu-kvm-core \
+      openssl-devel zlib-devel expat-devel libcap-devel libseccomp-devel \
+      libacl-devel libattr-devel bison flex gawk gettext gperf \
+      bc elfutils-libelf-devel ncurses-devel rsync \
+    && dnf clean all \
+    && groupadd --gid "${GID}" kiki \
+    && useradd --uid "${UID}" --gid "${GID}" --create-home --shell /bin/bash kiki \
+    && mkdir -p /work/build /work/dist \
+    && chown -R kiki:kiki /work
+
+COPY deploy/container/entrypoint.sh /usr/local/bin/kiki-container-entrypoint
+RUN chmod 0755 /usr/local/bin/kiki-container-entrypoint
+
+WORKDIR /work
+USER kiki
+EXPOSE 8090
+
+ENTRYPOINT ["/usr/local/bin/kiki-container-entrypoint"]
+CMD ["serve"]

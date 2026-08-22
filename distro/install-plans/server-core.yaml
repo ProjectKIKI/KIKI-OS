@@ -1,0 +1,96 @@
+install_plan:
+  name: server-core
+  description: General-purpose KIKI OS server profile without Kubernetes node components.
+  profile: server-core
+  target:
+    partition_table: gpt
+    efi_system_partition:
+      size: 512MiB
+      filesystem: vfat
+      mountpoint: /boot/efi
+    root:
+      filesystem: ext4
+      mountpoint: /
+      min_size: 16GiB
+    swap:
+      enabled: true
+      policy: system
+  package_sets:
+    base:
+      - base-files
+      - linux
+      - ncurses
+      - cfdisk
+      - systemd
+      - openssh
+      - ca-certificates
+    server_core:
+      - dbus
+      - bash
+      - coreutils
+      - findutils
+      - grep
+      - sed
+      - gawk
+      - tar
+      - gzip
+      - xz
+      - zstd
+      - python
+      - e2fsprogs
+      - shadow
+      - sudo
+      - iproute2
+      - curl
+      - ki2ctl
+      - kiki-agent
+      - kiki-netconfig
+      - kiki-installer-tui
+    network_security:
+      - nftables
+      - iptables
+      - conntrack-tools
+      - firewalld
+      - bridge-utils
+      - ethtool
+      - chrony
+  prompts:
+    role:
+      default: general-server
+      choices:
+        - general-server
+    node_name:
+      default: kiki-server
+  post_install:
+    enable_services:
+      - dbus.service
+      - getty@tty1.service
+      - systemd-logind.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+      - kiki-agent.service
+      - nftables.service
+      - firewalld.service
+      - chronyd.service
+    write_files:
+      - path: /etc/kiki/install-role
+        content: general-server
+  runtime:
+    container_runtime: none
+    cgroup_driver: systemd
+    swap_policy: system
+  kubernetes:
+    role: none
+    kubeadm:
+      config_api: kubeadm.k8s.io/v1beta4
+      action: none
+      config_template: ""
+      config_output: /etc/kubernetes/kiki/kubeadm.local.yaml
+      command: ""
+      control_plane: false
+      cri_socket: ""
+  firewall:
+    backend: nftables
+    firewalld: true
+    bridge_tool: iproute2 bridge

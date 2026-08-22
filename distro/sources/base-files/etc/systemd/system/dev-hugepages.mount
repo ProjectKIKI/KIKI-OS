@@ -1,0 +1,12 @@
+[Unit]
+Description=Huge Pages File System
+DefaultDependencies=no
+Before=sysinit.target
+ConditionPathExists=/etc/kiki/enable-api-mounts
+ConditionPathExists=/sys/kernel/mm/hugepages
+
+[Mount]
+What=hugetlbfs
+Where=/dev/hugepages
+Type=hugetlbfs
+Options=nosuid,nodev

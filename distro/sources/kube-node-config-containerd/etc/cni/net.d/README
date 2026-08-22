@@ -1,0 +1,1 @@
+Drop the cluster CNI configuration in this directory after kubeadm init or join.

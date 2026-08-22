@@ -1,0 +1,7 @@
+[profile]
+name = "installer-tui"
+description = "Build-only profile for the Go-based KIKI installer TUI preview."
+arch = "x86_64"
+packages = [
+  "kiki-installer-tui",
+]

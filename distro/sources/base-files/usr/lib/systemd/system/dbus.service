@@ -1,0 +1,20 @@
+[Unit]
+Description=D-Bus System Message Bus
+Documentation=man:dbus-daemon(1)
+DefaultDependencies=no
+After=sysinit.target local-fs.target
+Before=basic.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=simple
+User=messagebus
+Group=messagebus
+RuntimeDirectory=dbus
+RuntimeDirectoryMode=0755
+ExecStart=/usr/bin/dbus-daemon --system --nofork --nopidfile
+ExecReload=/usr/bin/dbus-send --print-reply --system --type=method_call --dest=org.freedesktop.DBus / org.freedesktop.DBus.ReloadConfig
+Restart=on-failure
+
+[Install]
+WantedBy=basic.target

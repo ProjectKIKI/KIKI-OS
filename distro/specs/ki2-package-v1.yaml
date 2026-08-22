@@ -1,0 +1,93 @@
+schema: ki2-package-spec-v1
+name: ki2-package-v1
+status: draft
+description: KIKI OS .ki2 패키지 아카이브 계약.
+
+archive:
+  extension: .ki2
+  format: tar.gz
+  top_level:
+    - manifest.json
+    - rootfs/
+
+manifest:
+  encoding: utf-8-json
+  required:
+    - schema
+    - name
+    - version
+    - release
+    - arch
+    - summary
+    - license
+    - tier
+    - dependencies
+    - payload
+    - files
+    - build_key
+    - recipe_digest
+    - built_at
+  schema_value: ki2-package-v1
+
+payload:
+  rootfs_prefix: rootfs/
+  contains_os_tree: true
+  file_count: 디렉터리가 아닌 payload 항목 수.
+  entry_count: 디렉터리를 포함한 전체 payload 항목 수.
+  meaning: rootfs/ 아래 경로는 앞의 슬래시를 뺀 OS 절대 경로다.
+  examples:
+    - rootfs/etc/os-release
+    - rootfs/usr/bin/kubelet
+    - rootfs/usr/lib/systemd/system/crio.service
+    - rootfs/boot/vmlinuz-kiki
+    - rootfs/lib/modules/
+
+os_tree_contract:
+  allowed_roots:
+    - boot
+    - bin
+    - sbin
+    - etc
+    - lib
+    - lib64
+    - opt
+    - usr
+    - var
+    - srv
+  disallowed_roots:
+    - dev
+    - proc
+    - sys
+    - run
+    - tmp
+  notes:
+    - 패키지는 OS 설정, 유닛, 바이너리, 라이브러리, 커널 이미지, 모듈을 소유할 수 있다.
+    - 런타임 pseudo filesystem은 init/systemd가 만들며 패키지에 포함하지 않는다.
+    - 패키지 추출은 rootfs overlay 방식이며 충돌 정책은 설치기와 패키지 관리자 단계에서 처리한다.
+
+dependencies:
+  build: []
+  runtime: []
+
+files:
+  description: rootfs payload에서 생성된 파일 manifest.
+  item_fields:
+    - path
+    - type
+    - mode
+    - size
+    - sha256
+    - target
+  item_types:
+    - file
+    - dir
+    - symlink
+
+future_hooks:
+  status: reserved
+  package_paths:
+    - scripts/pre-install
+    - scripts/post-install
+    - scripts/pre-remove
+    - scripts/post-remove
+  rule: hook 실행은 향후 패키지 관리자와 설치기 단계에서 사용한다.

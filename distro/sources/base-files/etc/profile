@@ -1,0 +1,32 @@
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export HISTFILESIZE=2000
+export HISTSIZE=2000
+export EDITOR=vi
+
+if [ -z "${TERM:-}" ] || [ "${TERM:-}" = "dumb" ]; then
+    export TERM=linux
+fi
+
+export LESS=-R
+export LESSCHARSET=utf-8
+export SYSTEMD_COLORS=1
+export SYSTEMD_URLIFY=0
+export SYSTEMD_LESS=FRSXMK
+
+if command -v less >/dev/null 2>&1; then
+    export SYSTEMD_PAGER=less
+fi
+
+alias ls='ls --color=auto'
+alias ll='ls -alF --color=auto'
+alias la='ls -A --color=auto'
+alias l='ls -CF --color=auto'
+alias grep='grep --color=auto'
+alias egrep='grep -E --color=auto'
+alias fgrep='grep -F --color=auto'
+
+if [ "$(id -u 2>/dev/null)" = "0" ]; then
+    export PS1='kiki:\w # '
+else
+    export PS1='kiki:\w $ '
+fi

@@ -1,0 +1,33 @@
+[profile]
+name = "node-network-tools"
+description = "Optional firewall and bridge userspace tools for KIKI server and Kubernetes node testing."
+arch = "x86_64"
+packages = [
+  "base-files",
+  "glibc",
+  "libxcrypt",
+  "zlib",
+  "expat",
+  "openssl",
+  "attr",
+  "libcap",
+  "libseccomp",
+  "acl",
+  "util-linux",
+  "ncurses",
+  "cfdisk",
+  "kmod",
+  "dbus",
+  "systemd",
+  "python",
+  "iproute2",
+  "kiki-netconfig",
+  "conntrack-tools",
+  "nftables",
+  "iptables",
+  "firewalld",
+  "bridge-utils",
+  "socat",
+  "ethtool",
+  "chrony",
+]

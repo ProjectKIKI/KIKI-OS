@@ -1,0 +1,90 @@
+install_plan:
+  name: kiki-kube-compute-containerd
+  description: Kubernetes compute 노드를 containerd 런타임으로 설치하는 계획서.
+  profile: kiki-kube-compute-containerd
+  target:
+    partition_table: gpt
+    efi_system_partition:
+      size: 512MiB
+      filesystem: vfat
+      mountpoint: /boot/efi
+    root:
+      filesystem: ext4
+      mountpoint: /
+      min_size: 16GiB
+    swap:
+      enabled: false
+      policy: kubernetes-off
+  package_sets:
+    base:
+      - base-files
+      - linux
+      - ncurses
+      - cfdisk
+      - systemd
+      - openssh
+      - ca-certificates
+    kubernetes:
+      - runc
+      - containerd
+      - cni-plugins
+      - cri-tools
+      - kubelet
+      - kubeadm
+      - kubectl
+      - kiki-kubeadm
+      - kube-node-config-containerd
+    network:
+      - iproute2
+      - iptables
+      - nftables
+      - conntrack-tools
+      - socat
+      - ethtool
+      - chrony
+      - kiki-netconfig
+      - kiki-installer-tui
+    optional_firewall:
+      - firewalld
+      - bridge-utils
+  prompts:
+    role:
+      default: compute
+      choices:
+        - compute
+    node_name:
+      default: kiki-compute
+    join_command:
+      default: ""
+  post_install:
+    enable_services:
+      - dbus.service
+      - getty@tty1.service
+      - systemd-logind.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+      - containerd.service
+      - kubelet.service
+      - chronyd.service
+    write_files:
+      - path: /etc/kiki/install-role
+        content: compute
+  runtime:
+    container_runtime: containerd
+    cgroup_driver: systemd
+    swap_policy: kubernetes-off
+  kubernetes:
+    role: compute
+    kubeadm:
+      config_api: kubeadm.k8s.io/v1beta4
+      action: join
+      config_template: /etc/kubernetes/kiki/kubeadm-join-compute.yaml
+      config_output: /etc/kubernetes/kiki/kubeadm.local.yaml
+      command: kubeadm join --config /etc/kubernetes/kiki/kubeadm.local.yaml
+      control_plane: false
+      cri_socket: unix:///run/containerd/containerd.sock
+  firewall:
+    backend: nftables
+    firewalld: false
+    bridge_tool: iproute2 bridge

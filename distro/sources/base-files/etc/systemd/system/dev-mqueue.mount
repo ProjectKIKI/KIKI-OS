@@ -1,0 +1,12 @@
+[Unit]
+Description=POSIX Message Queue File System
+DefaultDependencies=no
+Before=sysinit.target
+ConditionPathExists=/etc/kiki/enable-api-mounts
+ConditionPathExists=/proc/sys/fs/mqueue
+
+[Mount]
+What=mqueue
+Where=/dev/mqueue
+Type=mqueue
+Options=nosuid,nodev,noexec

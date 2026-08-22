@@ -1,0 +1,21 @@
+recipes:
+  - name: my-package
+    version: "1.0.0"
+    release: 1
+    summary: 짧은 패키지 설명
+    license: Apache-2.0
+    tier: runtime
+    architectures:
+      - x86_64
+    source:
+      type: url
+      url: https://example.invalid/my-package-1.0.0.tar.gz
+      sha256: REPLACE_ME
+    depends:
+      build: []
+      runtime:
+        - glibc
+    build:
+      system: gnu
+      configure_options:
+        - --disable-static

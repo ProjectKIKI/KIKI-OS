@@ -1,0 +1,16 @@
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: JoinConfiguration
+discovery:
+  bootstrapToken:
+    apiServerEndpoint: kiki-control-plane.local:6443
+    token: abcdef.0123456789abcdef
+    caCertHashes:
+      - sha256:0000000000000000000000000000000000000000000000000000000000000000
+nodeRegistration:
+  name: kiki-compute
+  criSocket: unix:///var/run/crio/crio.sock
+  kubeletExtraArgs:
+    - name: cgroup-driver
+      value: systemd
+    - name: container-runtime-endpoint
+      value: unix:///var/run/crio/crio.sock

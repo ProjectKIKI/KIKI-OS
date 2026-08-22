@@ -1,0 +1,28 @@
+schema: ki2-profile-spec-v1
+name: ki2-profile-v1
+status: draft
+description: rootfs 또는 OS 이미지 패키지 선택 계약.
+
+profile:
+  required:
+    - name
+    - packages
+  optional:
+    - description
+    - arch
+    - boot
+    - services
+
+fields:
+  name: rootfs와 ISO 출력 경로에 사용하는 프로파일 이름.
+  description: 사람이 읽는 프로파일 목적 설명.
+  arch: 대상 아키텍처.
+  packages: 프로파일이 직접 요청하는 루트 패키지. 런타임 의존성은 자동으로 추가된다.
+
+boot:
+  init: 설치된 시스템에서 사용할 PID 1 경로.
+  kernel: 설치된 OS 트리 내부 커널 이미지 경로.
+  kernel_args: 추가 커널 명령행 인자.
+
+services:
+  enable: 패키지 추출 후 설치기가 활성화할 systemd 유닛 목록.

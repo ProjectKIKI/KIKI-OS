@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+"""KIKI kubeadm renderer and guarded init/join executor."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+PLACEHOLDER_CA_HASH = "sha256:" + ("0" * 64)
+DEFAULT_POD_CIDR = "10.244.0.0/16"
+DEFAULT_SERVICE_CIDR = "10.96.0.0/12"
+DEFAULT_PLAN_PATHS = ("/var/lib/ki2/install-plan.yaml", "/run/kiki/install-plan.yaml")
+STATE_PATH = "/var/lib/kiki/kubernetes/state.json"
+LOG_PATH = "/var/log/kiki/kubeadm.log"
+
+
+class KikiKubeadmError(RuntimeError):
+    pass
+
+
+def parse_scalar(value: str) -> str:
+    text = value.strip()
+    if not text:
+        return ""
+    if text[0:1] in {"'", '"'} and text[-1:] == text[0]:
+        return text[1:-1]
+    return text
+
+
+def read_plan_values(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    stack: list[str] = []
+    indents: list[int] = []
+    key_re = re.compile(r"^(\s*)([A-Za-z0-9_-]+):(?:\s*(.*))?$")
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith("- "):
+            continue
+        match = key_re.match(line)
+        if not match:
+            continue
+        indent = len(match.group(1))
+        key = match.group(2)
+        value = match.group(3) or ""
+        while indents and indent <= indents[-1]:
+            indents.pop()
+            stack.pop()
+        current = stack + [key]
+        if value.strip():
+            values[".".join(current)] = parse_scalar(value)
+        else:
+            stack.append(key)
+            indents.append(indent)
+    return values
+
+
+def plan_get(values: dict[str, str], path: str) -> str:
+    return values.get(path, values.get("install_plan." + path, "")).strip()
+
+
+def first_text(*values: Any) -> str:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text and text.lower() != "null":
+            return text
+    return ""
+
+
+def default_node_name(role: str) -> str:
+    if role == "bootstrap-control-plane":
+        return "kiki-bootstrap"
+    if role == "control-plane":
+        return "kiki-control"
+    if role == "compute":
+        return "kiki-compute"
+    return "localhost.localdomain"
+
+
+def rooted_path(root: Path, value: str) -> Path:
+    path = Path(value)
+    if value.startswith("/"):
+        if root == Path("/"):
+            return path
+        return root / value.lstrip("/")
+    return root / path
+
+
+def resolve_plan_path(root: Path, plan: Path | None) -> Path:
+    candidates: list[Path] = []
+    if plan is not None:
+        candidates.append(plan)
+        if str(plan).startswith("/"):
+            candidates.append(rooted_path(root, str(plan)))
+    else:
+        for value in DEFAULT_PLAN_PATHS:
+            candidates.append(rooted_path(root, value))
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise KikiKubeadmError("install plan not found; pass --plan or install a Kubernetes profile first")
+
+
+def normalize_ca_hash(value: str) -> str:
+    text = value.strip()
+    if not text:
+        return ""
+    if re.fullmatch(r"[A-Fa-f0-9]{64}", text):
+        return "sha256:" + text.lower()
+    if re.fullmatch(r"sha256:[A-Fa-f0-9]{64}", text):
+        return "sha256:" + text.split(":", 1)[1].lower()
+    raise KikiKubeadmError("CA certificate hash must be sha256:<64 hex> or a 64 hex digest")
+
+
+def render_config(values: dict[str, str], template_text: str, args: argparse.Namespace) -> tuple[str, dict[str, str]]:
+    role = first_text(args.role, plan_get(values, "kubernetes.role"), "none")
+    action = first_text(args.action, plan_get(values, "kubernetes.kubeadm.action"), "none")
+    runtime = first_text(plan_get(values, "runtime.container_runtime"), "cri-o")
+    cri_socket = first_text(args.cri_socket, plan_get(values, "kubernetes.kubeadm.cri_socket"))
+    if not cri_socket:
+        cri_socket = "unix:///run/containerd/containerd.sock" if runtime == "containerd" else "unix:///var/run/crio/crio.sock"
+
+    node_name = first_text(
+        args.node_name,
+        plan_get(values, "prompts.node_name.default"),
+        plan_get(values, "identity.hostname"),
+        default_node_name(role),
+    )
+    endpoint = first_text(
+        args.endpoint,
+        plan_get(values, "kubernetes.cluster.control_plane_endpoint"),
+        plan_get(values, "prompts.control_plane_endpoint.default"),
+        plan_get(values, "prompts.bootstrap_endpoint.default"),
+    )
+    if action == "init" and not endpoint:
+        endpoint = f"{node_name}:6443"
+
+    token = first_text(args.token, plan_get(values, "kubernetes.join.token"))
+    ca_hash = first_text(args.ca_cert_hash, plan_get(values, "kubernetes.join.ca_cert_hash"))
+    if ca_hash:
+        ca_hash = normalize_ca_hash(ca_hash)
+
+    if action == "join" and not args.allow_placeholders:
+        missing = []
+        if not endpoint:
+            missing.append("--endpoint")
+        if not token:
+            missing.append("--token")
+        if not ca_hash:
+            missing.append("--ca-cert-hash")
+        if missing:
+            raise KikiKubeadmError("join requires " + ", ".join(missing))
+
+    pod_cidr = first_text(args.pod_cidr, plan_get(values, "prompts.pod_cidr.default"), DEFAULT_POD_CIDR)
+    service_cidr = first_text(args.service_cidr, plan_get(values, "prompts.service_cidr.default"), DEFAULT_SERVICE_CIDR)
+    advertise_address = first_text(args.advertise_address, plan_get(values, "kubernetes.local_api.advertise_address"), "0.0.0.0")
+
+    output = template_text
+    output = output.replace("kiki-control-plane.local:6443", endpoint or "kiki-control-plane.local:6443")
+    for old in ("kiki-bootstrap", "kiki-control", "kiki-compute"):
+        output = output.replace(old, node_name)
+    output = output.replace("abcdef.0123456789abcdef", token or "abcdef.0123456789abcdef")
+    output = output.replace(PLACEHOLDER_CA_HASH, ca_hash or PLACEHOLDER_CA_HASH)
+    output = output.replace("unix:///var/run/crio/crio.sock", cri_socket)
+    output = output.replace("unix:///run/containerd/containerd.sock", cri_socket)
+    output = output.replace("10.244.0.0/16", pod_cidr)
+    output = output.replace("10.96.0.0/12", service_cidr)
+    output = output.replace("advertiseAddress: 0.0.0.0", f"advertiseAddress: {advertise_address}")
+    return output, {
+        "role": role,
+        "action": action,
+        "runtime": runtime,
+        "cri_socket": cri_socket,
+        "node_name": node_name,
+        "endpoint": endpoint,
+    }
+
+
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+
+
+def load_and_render(args: argparse.Namespace) -> tuple[Path, dict[str, str], dict[str, str]]:
+    root = args.root.resolve()
+    plan_path = resolve_plan_path(root, args.plan)
+    values = read_plan_values(plan_path)
+    template_value = first_text(args.template, plan_get(values, "kubernetes.kubeadm.config_template"))
+    output_value = first_text(args.output, plan_get(values, "kubernetes.kubeadm.config_output"))
+    if not template_value:
+        raise KikiKubeadmError("kubernetes.kubeadm.config_template is missing")
+    if not output_value:
+        raise KikiKubeadmError("kubernetes.kubeadm.config_output is missing")
+    template_path = rooted_path(root, template_value)
+    output_path = rooted_path(root, output_value)
+    rendered, context = render_config(values, template_path.read_text(encoding="utf-8"), args)
+    write_text(output_path, rendered)
+    print(f"rendered kubeadm {context['action']} config -> {output_path}")
+    return output_path, values, context
+
+
+def command_for(action: str, config_path: Path) -> list[str]:
+    if action == "init":
+        return ["kubeadm", "init", "--config", str(config_path)]
+    if action == "join":
+        return ["kubeadm", "join", "--config", str(config_path)]
+    raise KikiKubeadmError(f"unsupported kubeadm action: {action}")
+
+
+def state_path(root: Path) -> Path:
+    return rooted_path(root, STATE_PATH)
+
+
+def log_path(root: Path) -> Path:
+    return rooted_path(root, LOG_PATH)
+
+
+def write_state(root: Path, state: dict[str, Any]) -> None:
+    state["timestamp"] = datetime.now(timezone.utc).isoformat()
+    write_text(state_path(root), json.dumps(state, indent=2, sort_keys=True) + "\n")
+
+
+def append_log(root: Path, text: str) -> None:
+    path = log_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+
+
+def execute_kubeadm(args: argparse.Namespace, expected_action: str) -> int:
+    output_path, _values, context = load_and_render(args)
+    action = context["action"]
+    if action != expected_action:
+        raise KikiKubeadmError(f"install plan action is {action!r}, not {expected_action!r}")
+    command = command_for(action, output_path)
+    root = args.root.resolve()
+    state = {
+        "action": action,
+        "role": context["role"],
+        "runtime": context["runtime"],
+        "cri_socket": context["cri_socket"],
+        "node_name": context["node_name"],
+        "endpoint": context["endpoint"],
+        "config": str(output_path),
+        "command": command,
+        "dry_run": bool(args.dry_run),
+    }
+    if args.dry_run:
+        print("dry-run: " + " ".join(command))
+        state["status"] = "dry-run"
+        write_state(root, state)
+        return 0
+    if root != Path("/"):
+        raise KikiKubeadmError("kubeadm execution requires --root /; use --dry-run for target rootfs validation")
+
+    append_log(root, f"\n[{datetime.now(timezone.utc).isoformat()}] {' '.join(command)}\n")
+    with log_path(root).open("a", encoding="utf-8", newline="\n") as handle:
+        proc = subprocess.run(command, stdout=handle, stderr=subprocess.STDOUT, text=True)
+    state["returncode"] = proc.returncode
+    state["status"] = "succeeded" if proc.returncode == 0 else "failed"
+    write_state(root, state)
+    return proc.returncode
+
+
+def command_render(args: argparse.Namespace) -> int:
+    output_path, _values, context = load_and_render(args)
+    write_state(args.root.resolve(), {"status": "rendered", "action": context["action"], "role": context["role"], "config": str(output_path)})
+    return 0
+
+
+def command_status(args: argparse.Namespace) -> int:
+    path = state_path(args.root.resolve())
+    if not path.exists():
+        print(f"no kiki-kubeadm state found: {path}")
+        return 1
+    print(path.read_text(encoding="utf-8"), end="")
+    return 0
+
+
+def add_render_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--template", default="", help="override kubeadm template path")
+    parser.add_argument("--output", default="", help="override kubeadm output path")
+    parser.add_argument("--role", default="", help="override Kubernetes role")
+    parser.add_argument("--action", choices=["", "init", "join", "none"], default="", help="override kubeadm action")
+    parser.add_argument("--node-name", default="", help="nodeRegistration.name")
+    parser.add_argument("--endpoint", default="", help="control-plane endpoint host:port")
+    parser.add_argument("--token", default="", help="kubeadm bootstrap token for join")
+    parser.add_argument("--ca-cert-hash", default="", help="discovery token CA cert hash")
+    parser.add_argument("--cri-socket", default="", help="CRI socket endpoint")
+    parser.add_argument("--pod-cidr", default="", help="pod subnet for kubeadm init")
+    parser.add_argument("--service-cidr", default="", help="service subnet for kubeadm init")
+    parser.add_argument("--advertise-address", default="", help="control-plane local advertise address")
+    parser.add_argument("--allow-placeholders", action="store_true", help="allow join template placeholders to remain")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Render and run kubeadm for KIKI Kubernetes profiles")
+    parser.add_argument("--root", type=Path, default=Path("/"), help="target root filesystem")
+    parser.add_argument("--plan", type=Path, default=None, help="install plan path")
+    subcommands = parser.add_subparsers(dest="command", required=True)
+
+    render = subcommands.add_parser("render", help="render kubeadm.local.yaml only")
+    add_render_options(render)
+    render.set_defaults(func=command_render)
+
+    init = subcommands.add_parser("init", help="render config and run kubeadm init")
+    add_render_options(init)
+    init.add_argument("--dry-run", action="store_true", help="render and record command without executing kubeadm")
+    init.set_defaults(func=lambda args: execute_kubeadm(args, "init"))
+
+    join = subcommands.add_parser("join", help="render config and run kubeadm join")
+    add_render_options(join)
+    join.add_argument("--dry-run", action="store_true", help="render and record command without executing kubeadm")
+    join.set_defaults(func=lambda args: execute_kubeadm(args, "join"))
+
+    status = subcommands.add_parser("status", help="show last kiki-kubeadm state")
+    status.set_defaults(func=command_status)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        return int(args.func(args))
+    except (KikiKubeadmError, OSError, subprocess.SubprocessError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
