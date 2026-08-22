@@ -1,0 +1,10 @@
+apiVersion: kiki.io/v1alpha1
+kind: KikiMachine
+metadata:
+  name: kiki-node-001
+  namespace: kiki-system
+spec:
+  role: controller
+  installConfigRef:
+    name: kiki-node-001
+  providerID: baremetal://kiki-node-001

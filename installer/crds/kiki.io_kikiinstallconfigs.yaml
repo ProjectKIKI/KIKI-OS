@@ -1,0 +1,201 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kikiinstallconfigs.kiki.io
+spec:
+  group: kiki.io
+  scope: Namespaced
+  names:
+    plural: kikiinstallconfigs
+    singular: kikiinstallconfig
+    kind: KikiInstallConfig
+    shortNames:
+      - kic
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - hostname
+                - role
+                - clusterRef
+                - os
+                - storage
+                - network
+                - agent
+              properties:
+                hostname:
+                  type: string
+                role:
+                  type: string
+                  enum:
+                    - controller
+                    - compute
+                clusterRef:
+                  type: object
+                  required:
+                    - name
+                  properties:
+                    name:
+                      type: string
+                os:
+                  type: object
+                  required:
+                    - distribution
+                    - release
+                    - mirror
+                    - securityMirror
+                    - architecture
+                    - kernelPackage
+                    - kernelVersion
+                  properties:
+                    distribution:
+                      type: string
+                      enum:
+                        - debian
+                    release:
+                      type: string
+                    mirror:
+                      type: string
+                    securityMirror:
+                      type: string
+                      pattern: '^https://[^[:space:]]+$'
+                    architecture:
+                      type: string
+                    kernelPackage:
+                      type: string
+                      enum:
+                        - linux-image-6.1.0-51-amd64
+                    kernelVersion:
+                      type: string
+                      enum:
+                        - 6.1.177-1
+                    packages:
+                      type: array
+                      items:
+                        type: string
+                storage:
+                  type: object
+                  required:
+                    - disk
+                    - wipe
+                    - bootMode
+                    - rootFs
+                  properties:
+                    disk:
+                      type: string
+                    wipe:
+                      type: boolean
+                    bootMode:
+                      type: string
+                      enum:
+                        - bios
+                        - uefi
+                    rootFs:
+                      type: string
+                      enum:
+                        - ext4
+                network:
+                  type: object
+                  properties:
+                    dhcp:
+                      type: boolean
+                images:
+                  type: object
+                  properties:
+                    mirrors:
+                      type: array
+                      items:
+                        type: object
+                        required:
+                          - registry
+                          - endpoint
+                        properties:
+                          registry:
+                            type: string
+                          endpoint:
+                            type: string
+                          plainHttp:
+                            type: boolean
+                          skipVerify:
+                            type: boolean
+                    prePull:
+                      type: array
+                      items:
+                        type: string
+                agent:
+                  type: object
+                  required:
+                    - managementUrl
+                  properties:
+                    managementUrl:
+                      type: string
+                    callbackPath:
+                      type: string
+                    heartbeatPath:
+                      type: string
+                    registrationToken:
+                      type: string
+                    registrationTokenFile:
+                      type: string
+                    heartbeatIntervalSeconds:
+                      type: integer
+                      minimum: 0
+                accelerators:
+                  type: object
+                  properties:
+                    nvidia:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: false
+                        repository:
+                          type: string
+                          pattern: '^https://[^@]+$'
+                        keyURL:
+                          type: string
+                          pattern: '^https://[^@]+$'
+                        keySHA256:
+                          type: string
+                          pattern: '^[a-f0-9]{64}$'
+                        driverPackage:
+                          type: string
+                          pattern: '^[a-z0-9][a-z0-9+.-]*$'
+                        driverVersion:
+                          type: string
+                        toolkitPackage:
+                          type: string
+                          pattern: '^[a-z0-9][a-z0-9+.-]*$'
+                        toolkitVersion:
+                          type: string
+                        devicePluginImage:
+                          type: string
+                          pattern: '^[^[:space:]@]+@sha256:[a-f0-9]{64}$'
+                bootstrap:
+                  type: object
+                  properties:
+                    installKubernetesTools:
+                      type: boolean
+                    kubernetesVersion:
+                      type: string
+                    joinCommand:
+                      type: string
+      additionalPrinterColumns:
+        - name: Hostname
+          type: string
+          jsonPath: .spec.hostname
+        - name: Role
+          type: string
+          jsonPath: .spec.role
+        - name: Boot
+          type: string
+          jsonPath: .spec.storage.bootMode

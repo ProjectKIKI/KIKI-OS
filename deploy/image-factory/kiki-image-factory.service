@@ -1,0 +1,32 @@
+[Unit]
+Description=KIKI dedicated Image Factory worker
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/dev/kvm
+
+[Service]
+Type=simple
+User=kiki-factory
+Group=kiki-factory
+SupplementaryGroups=kvm
+EnvironmentFile=/etc/kiki/image-factory.env
+ExecStart=/usr/local/bin/kiki-image-factory -root=/var/lib/kiki/image-factory/staging -evidence-dir=/var/lib/kiki/image-factory/evidence -infraops-url=${KIKI_INFRAOPS_URL} -token-file=/etc/kiki/secrets/factory-token -actor=image-factory -signing-key=/etc/kiki/secrets/cosign.key
+Restart=always
+RestartSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=false
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/var/lib/kiki/image-factory
+DevicePolicy=closed
+DeviceAllow=/dev/kvm rw
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

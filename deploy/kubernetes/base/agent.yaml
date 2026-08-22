@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kiki-agent
+  namespace: kiki-system
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: kiki-agent}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: kiki-agent}
+    spec:
+      serviceAccountName: kiki-agent
+      automountServiceAccountToken: false
+      hostPID: true
+      tolerations:
+        - {operator: Exists}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: agent
+          image: registry.invalid/kiki/agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          args:
+            - serve
+            - -infraops-url=http://kiki-infraops.kiki-system.svc.cluster.local:8090
+            - -token-file=/run/secrets/infraops/agent-token
+            - -node-name=$(NODE_NAME)
+            - -interval=60s
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: auth, mountPath: /run/secrets/infraops, readOnly: true}
+            - {name: machine-id, mountPath: /etc/machine-id, readOnly: true}
+      volumes:
+        - name: auth
+          secret: {secretName: kiki-infraops-auth, items: [{key: agent-token, path: agent-token}], defaultMode: 0400}
+        - name: machine-id
+          hostPath: {path: /etc/machine-id, type: File}

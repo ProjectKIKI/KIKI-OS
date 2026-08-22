@@ -1,0 +1,62 @@
+apiVersion: kiki.io/v1alpha1
+kind: KikiInstallConfig
+metadata:
+  name: kiki-node-001
+spec:
+  hostname: kiki-node-001
+  role: controller
+  clusterRef:
+    name: lab-cluster
+  os:
+    distribution: debian
+    release: bookworm
+    mirror: http://deb.debian.org/debian
+    securityMirror: https://deb.debian.org/debian-security
+    architecture: amd64
+    kernelPackage: linux-image-6.1.0-51-amd64
+    kernelVersion: 6.1.177-1
+    packages:
+      - systemd
+      - grub-pc
+      - openssh-server
+      - ca-certificates
+      - curl
+      - gnupg
+      - containerd
+  storage:
+    disk: /dev/sda
+    wipe: true
+    bootMode: bios
+    rootFs: ext4
+  network:
+    dhcp: true
+  images:
+    mirrors:
+      - registry: registry.k8s.io
+        endpoint: https://registry-mirror.local/registry.k8s.io
+      - registry: docker.io
+        endpoint: https://registry-mirror.local/docker.io
+    prePull:
+      - registry.k8s.io/pause:3.9
+  agent:
+    managementUrl: http://bootstrap.local:8088
+    callbackPath: /api/v1/nodes/register
+    registrationToken: CHANGE_ME
+    # Prefer registrationTokenFile for real deployments.
+    # registrationTokenFile: /run/kiki/registration-token
+    heartbeatIntervalSeconds: 60
+  accelerators:
+    nvidia:
+      enabled: false
+      repository: https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64
+      keyURL: https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/3bf863cc.pub
+      keySHA256: REPLACE_WITH_64_CHARACTER_LOWERCASE_SHA256
+      driverPackage: cuda-drivers
+      driverVersion: REPLACE_WITH_PINNED_VERSION
+      toolkitPackage: nvidia-container-toolkit
+      toolkitVersion: REPLACE_WITH_PINNED_VERSION
+      devicePluginImage: registry.local/kiki/nvidia-device-plugin@sha256:REPLACE_WITH_64_CHARACTER_LOWERCASE_SHA256
+  bootstrap:
+    installKubernetesTools: false
+    kubernetesVersion: "1.30"
+    joinCommand: ""

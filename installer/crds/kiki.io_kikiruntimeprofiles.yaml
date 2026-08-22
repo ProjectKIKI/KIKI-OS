@@ -1,0 +1,87 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kikiruntimeprofiles.kiki.io
+spec:
+  group: kiki.io
+  scope: Cluster
+  names:
+    plural: kikiruntimeprofiles
+    singular: kikiruntimeprofile
+    kind: KikiRuntimeProfile
+    shortNames: [krp]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [engine, image, modelFormats, backends]
+              properties:
+                engine:
+                  type: string
+                  enum: [llama.cpp, vllm]
+                image:
+                  type: string
+                  pattern: '^[^[:space:]@]+@sha256:[a-f0-9]{64}$'
+                modelFormats:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items:
+                    type: string
+                    enum: [gguf, safetensors]
+                backends:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items:
+                    type: string
+                    enum: [cpu, cuda, rocm, xpu]
+                defaultPort:
+                  type: integer
+                  minimum: 1024
+                  maximum: 65535
+                  default: 8000
+                defaultContextLength:
+                  type: integer
+                  minimum: 512
+                  default: 8192
+                nodeSelector:
+                  type: object
+                  additionalProperties:
+                    type: string
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: [Ready, Invalid]
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    required: [type, status]
+                    properties:
+                      type: {type: string}
+                      status: {type: string, enum: ['True', 'False', Unknown]}
+                      reason: {type: string}
+                      message: {type: string}
+                      lastTransitionTime: {type: string, format: date-time}
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Engine
+          type: string
+          jsonPath: .spec.engine
+        - name: Backends
+          type: string
+          jsonPath: .spec.backends
+        - name: Phase
+          type: string
+          jsonPath: .status.phase

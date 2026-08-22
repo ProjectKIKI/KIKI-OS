@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>KIKI Build Studio</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/recipe.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">K</span><div><strong>KIKI Build Studio</strong><small>OS Image &amp; BOS Package Factory</small></div></div>
+  <div class="connection"><span id="connection-dot"></span><span id="connection-label">연결 대기</span><button id="settings-toggle" class="secondary">접속 설정</button></div>
+</header>
+
+<main>
+  <section id="settings" class="settings">
+    <div><label for="token">InfraOps API Token</label><input id="token" type="password" autocomplete="off" placeholder="API token 입력"></div>
+    <div><label for="actor">Legacy Actor <span>(선택)</span></label><input id="actor" autocomplete="off" placeholder="고정 principal 사용 시 비워두기"></div>
+    <button id="connect">연결 및 새로고침</button>
+  </section>
+
+  <section class="hero">
+    <p class="eyebrow">KIKI-OS RELEASE PIPELINE</p>
+    <h1>무엇을 빌드할까요?</h1>
+    <p>재현 가능한 KIKI-OS 부팅 이미지와 서명된 BOS 패키지를 생성합니다.</p>
+  </section>
+
+  <nav class="build-tabs" aria-label="빌드 유형">
+    <button class="tab active" data-panel="image-panel"><span class="tab-icon">OS</span><span><strong>KIKI-OS 이미지</strong><small>ISO · PXE · QCOW2</small></span></button>
+    <button class="tab" data-panel="bos-panel"><span class="tab-icon">BOS</span><span><strong>BOS 패키지</strong><small>소스 패키징 · 서명</small></span></button>
+  </nav>
+
+  <section id="image-panel" class="build-panel active">
+    <div class="panel-title"><div><p class="eyebrow">IMAGE FACTORY</p><h2>KIKI-OS 이미지 빌드</h2><p>고정된 소스 커밋에서 설치·부팅 가능한 이미지를 생성합니다.</p></div><span class="pipeline">검증 → 빌드 → 부팅 시험 → 서명</span></div>
+    <form id="image-form">
+      <div class="form-grid">
+        <div class="wide"><label for="image-source">소스 저장소</label><input id="image-source" type="url" required value="https://git.example.com/kiki/os.git"></div>
+        <div><label for="image-revision">Commit SHA</label><input id="image-revision" required minlength="40" maxlength="40" placeholder="40자리 commit SHA"></div>
+        <div><label for="image-type">출력 형식</label><select id="image-type"><option value="iso">ISO 설치 이미지</option><option value="pxe">PXE 부팅 번들</option><option value="disk">QCOW2 디스크 이미지</option></select></div>
+        <div><label for="image-release">기반 릴리스</label><select id="image-release"><option value="v3.20">Alpine Linux v3.20</option></select></div>
+        <div><label for="image-arch">아키텍처</label><select id="image-arch"><option value="x86_64">x86_64</option></select></div>
+        <div><label>부팅 모드</label><div class="checks"><label><input id="boot-bios" type="checkbox" checked> BIOS</label><label><input id="boot-uefi" type="checkbox" checked> UEFI</label></div></div>
+        <div><label for="image-output">출력 파일명</label><input id="image-output" required value="kiki-os.iso"></div>
+      </div>
+      <div class="security-row"><span>공급망 보호</span><label><input id="image-sbom" type="checkbox" checked> SBOM</label><label><input id="image-provenance" type="checkbox" checked> Provenance</label><label><input id="image-sign" type="checkbox" checked> Cosign 서명</label></div>
+      <button class="primary build-button" type="submit">KIKI-OS 이미지 빌드 시작</button>
+    </form>
+  </section>
+
+  <section id="bos-panel" class="build-panel">
+    <div class="panel-title"><div><p class="eyebrow">BOS PACKAGE BUILDER</p><h2>개별 BOS 패키지 빌드</h2><p>SRPM spec처럼 패키지 정보를 입력해 하나의 BOS 패키지를 생성합니다.</p></div><span class="pipeline">Recipe → 소스 검증 → 빌드 → 검사 → 서명</span></div>
+    <form id="bos-form">
+      <div class="mode-row"><label for="bos-mode">빌드 방식</label><select id="bos-mode"><option value="recipe">Recipe 입력 (권장)</option><option value="source">기존 Git 패키지 디렉터리</option></select><span>요청 한 건당 패키지 한 개를 빌드합니다.</span></div>
+      <div id="bos-recipe-fields">
+        <h3>패키지 정보</h3>
+        <div class="form-grid">
+          <div><label for="bos-name">패키지명</label><input id="bos-name" required value="hello-kiki"></div>
+          <div><label for="bos-version">버전</label><input id="bos-version" required value="1.0.0"></div>
+          <div><label for="bos-release">릴리스</label><input id="bos-release" required value="1"></div>
+          <div class="wide"><label for="bos-summary">요약</label><input id="bos-summary" required value="KIKI-OS example package"></div>
+          <div><label for="bos-license">라이선스</label><input id="bos-license" required value="MIT"></div>
+          <div class="wide"><label for="bos-description">설명</label><textarea id="bos-description" rows="3" placeholder="패키지에 대한 상세 설명"></textarea></div>
+        </div>
+        <h3>원본 소스</h3>
+        <div class="form-grid">
+          <div class="wide"><label for="bos-archive-url">소스 tar.gz URL</label><input id="bos-archive-url" type="url" required placeholder="https://sources.example.com/hello-1.0.0.tar.gz"></div>
+          <div><label for="bos-archive-sha">소스 SHA-256</label><input id="bos-archive-sha" required minlength="64" maxlength="64" placeholder="64자리 SHA-256"></div>
+          <div><label for="bos-build-requires">빌드 의존성</label><input id="bos-build-requires" placeholder="gcc, make, musl-dev"></div>
+          <div><label for="bos-requires">실행 의존성</label><input id="bos-requires" placeholder="musl, libstdc++"></div>
+        </div>
+        <h3>빌드 Recipe <span class="hint">한 줄당 하나의 명령 · $SOURCE_DIR, $BUILD_DIR, $DESTDIR 사용 가능</span></h3>
+        <div class="script-grid">
+          <div><label for="bos-prepare">Prepare</label><textarea id="bos-prepare" rows="4" placeholder="./configure --prefix=/usr"></textarea></div>
+          <div><label for="bos-build">Build</label><textarea id="bos-build" rows="4" placeholder="make -j2"></textarea></div>
+          <div><label for="bos-install">Install <span>(필수)</span></label><textarea id="bos-install" rows="4" required placeholder="make DESTDIR=$DESTDIR install"></textarea></div>
+          <div><label for="bos-check">Check</label><textarea id="bos-check" rows="4" placeholder="make test"></textarea></div>
+        </div>
+        <div class="form-grid"><div class="wide"><label for="bos-files">패키지 파일 목록 <span>(한 줄당 절대 경로)</span></label><textarea id="bos-files" rows="4" required placeholder="/usr/bin/hello-kiki&#10;/usr/share/licenses/hello-kiki/LICENSE"></textarea></div></div>
+      </div>
+      <div id="bos-source-fields" class="hidden">
+        <h3>기존 패키지 소스</h3>
+        <div class="form-grid">
+          <div class="wide"><label for="bos-source">Git 저장소</label><input id="bos-source" type="url" value="https://git.example.com/kiki/packages.git" disabled></div>
+          <div><label for="bos-revision">Commit SHA</label><input id="bos-revision" minlength="40" maxlength="40" placeholder="40자리 commit SHA" disabled></div>
+          <div><label for="bos-context">패키지 경로</label><input id="bos-context" value="packages/agent" disabled></div>
+        </div>
+      </div>
+      <div class="form-grid common-fields">
+        <div><label for="bos-output">출력 패키지명</label><input id="bos-output" required value="hello-kiki-1.0.0-1.bos"></div>
+        <div><label for="bos-platform">대상 플랫폼</label><select id="bos-platform"><option value="linux/amd64">Linux AMD64</option><option value="linux/arm64">Linux ARM64</option></select></div>
+        <div><label for="bos-pvc">아티팩트 저장소 PVC</label><input id="bos-pvc" required value="build-artifacts"></div>
+      </div>
+      <div class="security-row"><span>공급망 보호</span><label><input id="bos-sbom" type="checkbox" checked> SBOM</label><label><input id="bos-provenance" type="checkbox" checked> Provenance</label><label><input id="bos-sign" type="checkbox" checked> Cosign 서명</label></div>
+      <button class="primary build-button" type="submit">개별 BOS 패키지 빌드 시작</button>
+    </form>
+  </section>
+
+  <section class="activity">
+    <div class="section-heading"><div><p class="eyebrow">BUILD ACTIVITY</p><h2>빌드 현황</h2></div><button id="refresh" class="secondary">새로고침</button></div>
+    <div id="status" role="status" class="status-message">API Token을 입력하고 연결하세요.</div>
+    <div id="builds" class="build-list"><div class="empty">등록된 빌드가 없습니다.</div></div>
+  </section>
+
+  <section class="activity">
+    <div class="section-heading"><div><p class="eyebrow">RELEASE ARTIFACTS</p><h2>완료된 아티팩트</h2></div></div>
+    <div id="artifacts" class="artifact-list"><div class="empty">게시된 아티팩트가 없습니다.</div></div>
+  </section>
+</main>
+<script src="/static/app.js" defer></script>
+</body>
+</html>

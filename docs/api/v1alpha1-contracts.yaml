@@ -1,0 +1,59 @@
+apiVersion: infraops.kiki.io/v1alpha1
+kind: ContractBundle
+metadata:
+  name: core
+spec:
+  resources:
+    Machine:
+      required: [role, installConfigRef]
+      identity: desired-machine
+      status: [phase, nodeRef, conditions]
+    Node:
+      required: [name, machineID, inventory, lastHeartbeatTime]
+      identity: observed-os-instance
+      status: [phase, conditions]
+    Task:
+      required: [id, idempotencyKey, action, targetRef, parameters, expiresAt]
+      actions:
+        - diagnostic.collect
+        - model.pull
+        - model.verify
+        - model.deploy
+        - model.stop
+        - model.cache.prune
+        - runtime.restart
+      terminalStates: [Succeeded, Failed, Cancelled, Expired]
+    Model:
+      required: [digest, format, source, license]
+      formats: [gguf, safetensors]
+    ModelDeployment:
+      required: [modelRef, placement, runtime, endpoint]
+      runtimes: [auto, llama.cpp, vllm]
+      accelerators: [auto, cpu, nvidia, amd, intel]
+      status: [phase, runtimeProfile, nodeRef, endpoint, conditions]
+    Build:
+      required: [type, source, output, security]
+      types: [bos, oci, iso, pxe, disk, model]
+      sourceRequirements:
+        gitRevision: immutable-commit
+      phases:
+        - Queued
+        - Fetching
+        - Validating
+        - Building
+        - Testing
+        - Scanning
+        - Signing
+        - Publishing
+        - Succeeded
+        - Failed
+        - Cancelled
+    Artifact:
+      required: [digest, mediaType, size, createdAt, provenance]
+      channels: [development, validation, release]
+  invariants:
+    - agents-never-accept-arbitrary-shell
+    - artifacts-are-immutable-and-digest-addressed
+    - release-promotion-is-audited
+    - ordinary-nodes-do-not-run-privileged-image-factory-builds
+    - model-runtime-selection-never-changes-model-identity

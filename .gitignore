@@ -1,0 +1,16 @@
+.cache/
+__pycache__/
+*.py[cod]
+*.go.[0-9]*
+
+/bosbuild
+/bosctl
+/cpmctl
+/kiki-agent
+/kiki-bootstrapd
+/kiki-bos-deps
+/kiki-bos-recipe
+/kiki-image-factory
+/kiki-infraopsd
+/kiki-model-builder
+/kiki-supplychain

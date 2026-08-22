@@ -22,7 +22,7 @@ go build -o cpmctl ./cmd/cpmctl
 ```bash
 ./bosctl init
 ./bosctl add baseos 0.0.1 x86_64 "Base OS core" 1
-./bosctl add kernel 5.15.130 x86_64 "Linux kernel" 1
+./bosctl add kernel 6.1.177 x86_64 "Linux kernel example (not the image pin)" 1
 
 ./bosctl list
 ./bosctl info baseos

@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kiki-infraops-state
+  namespace: kiki-system
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kiki-infraops
+  namespace: kiki-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kiki-infraops
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kiki-infraops
+    spec:
+      serviceAccountName: kiki-infraops
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: infraops
+          image: registry.invalid/kiki/infraops@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          args:
+            - -host=0.0.0.0
+            - -port=8090
+            - -state=/var/lib/kiki/infraops-state.json
+            - -token-file=/run/secrets/infraops/admin-token
+            - -agent-token-file=/run/secrets/infraops/agent-token
+            - -factory-token-file=/run/secrets/infraops/factory-token
+            - -build-token-file=/run/secrets/infraops/build-token
+            - -build-token-secret=kiki-build-reporter
+            - -internal-infraops-url=http://kiki-infraops.kiki-system.svc.cluster.local:8090
+            - -enable-kubernetes-controller=true
+            - -llama-image=registry.invalid/kiki/llama-cpp@sha256:0000000000000000000000000000000000000000000000000000000000000000
+            - -vllm-image=registry.invalid/kiki/vllm@sha256:0000000000000000000000000000000000000000000000000000000000000000
+            - -model-fetcher-image=registry.invalid/oras/oras@sha256:0000000000000000000000000000000000000000000000000000000000000000
+            - -model-builder-image=registry.invalid/kiki/model-builder@sha256:0000000000000000000000000000000000000000000000000000000000000000
+            - -git-image=registry.invalid/kiki/git@sha256:0000000000000000000000000000000000000000000000000000000000000000
+            - -bos-builder-image=registry.invalid/kiki/bos-builder@sha256:0000000000000000000000000000000000000000000000000000000000000000
+            - -buildctl-image=registry.invalid/moby/buildkit@sha256:0000000000000000000000000000000000000000000000000000000000000000
+            - -supply-chain-image=registry.invalid/kiki/supply-chain@sha256:0000000000000000000000000000000000000000000000000000000000000000
+            - -allowed-git-hosts=git.example.com
+            - -allowed-source-hosts=sources.example.com
+            - -allowed-registries=registry.example.com
+            - -build-egress-proxy=http://egress-proxy.kiki-system.svc.cluster.local:8080
+            - -build-egress-proxy-cidr=10.20.0.10/32
+            - -buildkit-address=tcp://buildkitd.kiki-build.svc.cluster.local:1234
+            - -buildkit-cidr=10.30.0.20/32
+            - -buildkit-port=1234
+            - -registry-auth-secret=kiki-registry-auth
+            - -signing-secret=kiki-artifact-signing
+          ports:
+            - {name: http, containerPort: 8090}
+          readinessProbe: {httpGet: {path: /, port: http}, initialDelaySeconds: 2, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /, port: http}, initialDelaySeconds: 10, periodSeconds: 20}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: state, mountPath: /var/lib/kiki}
+            - {name: auth, mountPath: /run/secrets/infraops, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: state
+          persistentVolumeClaim: {claimName: kiki-infraops-state}
+        - name: auth
+          secret: {secretName: kiki-infraops-auth, defaultMode: 0400}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kiki-infraops
+  namespace: kiki-system
+spec:
+  selector: {app.kubernetes.io/name: kiki-infraops}
+  ports:
+    - {name: http, port: 8090, targetPort: http}

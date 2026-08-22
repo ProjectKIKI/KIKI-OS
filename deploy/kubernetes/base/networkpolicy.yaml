@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kiki-infraops-ingress
+  namespace: kiki-system
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: kiki-infraops}}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: kiki-agent}}
+      ports:
+        - {protocol: TCP, port: 8090}
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kiki-system}}
+      ports:
+        - {protocol: TCP, port: 8090}
+    - from:
+        - namespaceSelector: {matchLabels: {kiki.io/infraops-client: "true"}}
+      ports:
+        - {protocol: TCP, port: 8090}
