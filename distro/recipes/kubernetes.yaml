@@ -1,0 +1,536 @@
+# KIKI Stage 2 Kubernetes and node-runtime package catalog.
+#
+# Stage 2 packages use pinned upstream release binaries where available. A few
+# early node userspace packages are wrapped from the builder host so the ISO can
+# exercise real kubeadm/firewall/time-sync paths before Stage 3 source rebuilds.
+
+recipes:
+  - name: conmon
+    version: "2.1.13"
+    release: 2
+    summary: CRI-O container monitor
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://github.com/containers/conmon/releases/download/v2.1.13/conmon.amd64
+      file: conmon.amd64
+      sha256: aefa6f2e5f1eeddd65be1b2991a5852f7c2ab192a298eee19800bd79d788e4be
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: upstream-binary
+      commands:
+        - install -Dm755 "${KI2_SOURCE_DIR}/conmon.amd64" "${KI2_DESTDIR}/usr/bin/conmon"
+
+  - name: crun
+    version: "1.23.1"
+    release: 2
+    summary: OCI runtime for CRI-O
+    license: GPL-2.0-or-later
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://github.com/containers/crun/releases/download/1.23.1/crun-1.23.1-linux-amd64
+      file: crun-1.23.1-linux-amd64
+      sha256: 9ca2edc15f366b385eaae29a97ee06a390cb9baccf07a07fb48bb60e168e6056
+    depends:
+      build: []
+      runtime: [glibc, libseccomp]
+    build:
+      system: upstream-binary
+      commands:
+        - install -Dm755 "${KI2_SOURCE_DIR}/crun-1.23.1-linux-amd64" "${KI2_DESTDIR}/usr/bin/crun"
+
+  - name: runc
+    version: "1.3.0"
+    release: 2
+    summary: OCI runtime for containerd
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://github.com/opencontainers/runc/releases/download/v1.3.0/runc.amd64
+      file: runc.amd64
+      sha256: 028986516ab5646370edce981df2d8e8a8d12188deaf837142a02097000ae2f2
+    depends:
+      build: []
+      runtime: [glibc, libseccomp]
+    build:
+      system: upstream-binary
+      commands:
+        - install -Dm755 "${KI2_SOURCE_DIR}/runc.amd64" "${KI2_DESTDIR}/usr/bin/runc"
+
+  - name: containerd
+    version: "2.1.0"
+    release: 3
+    summary: Optional containerd runtime package
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://github.com/containerd/containerd/releases/download/v2.1.0/containerd-2.1.0-linux-amd64.tar.gz
+      file: containerd-2.1.0-linux-amd64.tar.gz
+      sha256: 0e5359e957b66b679be807563a543c7416e305e3aafcf56bad90ef87a917014d
+    depends:
+      build: []
+      runtime: [glibc, runc, systemd]
+    build:
+      system: upstream-binary
+      commands:
+        - install -Dm755 "${KI2_SOURCE_DIR}/containerd" "${KI2_DESTDIR}/usr/bin/containerd"
+        - install -Dm755 "${KI2_SOURCE_DIR}/ctr" "${KI2_DESTDIR}/usr/bin/ctr"
+        - install -Dm755 "${KI2_SOURCE_DIR}/containerd-shim-runc-v2" "${KI2_DESTDIR}/usr/bin/containerd-shim-runc-v2"
+      stub:
+        directories:
+          - /etc/containerd
+          - /var/lib/containerd
+        services:
+          - name: containerd.service
+            description: containerd container runtime
+            exec_start: /usr/bin/containerd
+            after: [network-online.target]
+            wants: [network-online.target]
+        files:
+          - path: /etc/containerd/config.toml
+            lines:
+              - "# KIKI Stage 2 containerd config."
+              - "version = 2"
+              - "[plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.runc]"
+              - "runtime_type = \"io.containerd.runc.v2\""
+              - "[plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.runc.options]"
+              - "SystemdCgroup = true"
+
+  - name: cri-o
+    version: "1.36.0"
+    release: 2
+    summary: Default KIKI Kubernetes CRI runtime
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://storage.googleapis.com/cri-o/artifacts/cri-o.amd64.v1.36.0.tar.gz
+      file: cri-o.amd64.v1.36.0.tar.gz
+      sha256: 7fc7a2cca25b4cf2de01660bc730fad92b6bcbecd47751e76be3d6ae545c56cd
+    depends:
+      build: []
+      runtime: [conmon, crun, glibc, libseccomp, systemd]
+    build:
+      system: upstream-binary
+      commands:
+        - install -Dm755 "${KI2_SOURCE_DIR}/bin/crio" "${KI2_DESTDIR}/usr/bin/crio"
+        - install -Dm755 "${KI2_SOURCE_DIR}/bin/pinns" "${KI2_DESTDIR}/usr/bin/pinns"
+        - install -Dm755 "${KI2_SOURCE_DIR}/bin/crio-credential-provider" "${KI2_DESTDIR}/usr/bin/crio-credential-provider"
+        - mkdir -p "${KI2_DESTDIR}/usr/bin" && printf '%s\n' '#!/bin/sh' 'exec /usr/bin/crio status "$@"' > "${KI2_DESTDIR}/usr/bin/crio-status" && chmod 755 "${KI2_DESTDIR}/usr/bin/crio-status"
+        - install -Dm644 "${KI2_SOURCE_DIR}/contrib/policy.json" "${KI2_DESTDIR}/etc/crio/policy.json"
+        - install -Dm644 "${KI2_SOURCE_DIR}/contrib/registries.conf" "${KI2_DESTDIR}/etc/containers/registries.conf"
+        - install -Dm644 "${KI2_SOURCE_DIR}/etc/crio-umount.conf" "${KI2_DESTDIR}/etc/crio/crio-umount.conf"
+        - install -Dm644 "${KI2_SOURCE_DIR}/man/crio.8" "${KI2_DESTDIR}/usr/share/man/man8/crio.8"
+        - install -Dm644 "${KI2_SOURCE_DIR}/man/crio.conf.5" "${KI2_DESTDIR}/usr/share/man/man5/crio.conf.5"
+        - install -Dm644 "${KI2_SOURCE_DIR}/man/crio.conf.d.5" "${KI2_DESTDIR}/usr/share/man/man5/crio.conf.d.5"
+      stub:
+        directories:
+          - /etc/crio/crio.conf.d
+          - /var/lib/containers
+          - /run/containers
+        services:
+          - name: crio.service
+            description: CRI-O container runtime
+            type: notify
+            exec_start: /usr/bin/crio
+            after: [network-online.target]
+            wants: [network-online.target]
+
+  - name: cni-plugins
+    version: "1.7.0"
+    release: 2
+    summary: CNI plugin binaries for Kubernetes networking
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://github.com/containernetworking/plugins/releases/download/v1.7.0/cni-plugins-linux-amd64-v1.7.0.tgz
+      file: cni-plugins-linux-amd64-v1.7.0.tgz
+      sha256: 6f4c2b1b3dff03747050b65fb0e5b3e8e17fb0eb574ae722fd686a4681c8d778
+    depends:
+      build: []
+      runtime: [glibc, iproute2]
+    build:
+      system: upstream-binary
+      commands:
+        - install -Dm755 "${KI2_SOURCE_DIR}/bridge" "${KI2_DESTDIR}/opt/cni/bin/bridge"
+        - install -Dm755 "${KI2_SOURCE_DIR}/host-local" "${KI2_DESTDIR}/opt/cni/bin/host-local"
+        - install -Dm755 "${KI2_SOURCE_DIR}/loopback" "${KI2_DESTDIR}/opt/cni/bin/loopback"
+        - mkdir -p "${KI2_DESTDIR}/etc/cni/net.d"
+        - printf '%s\n' 'Drop the cluster CNI configuration in this directory after kubeadm init or join.' > "${KI2_DESTDIR}/etc/cni/net.d/README"
+
+  - name: cri-tools
+    version: "1.36.0"
+    release: 2
+    summary: crictl and CRI validation tools
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.36.0/crictl-v1.36.0-linux-amd64.tar.gz
+      file: crictl-v1.36.0-linux-amd64.tar.gz
+      sha256: 83855e114566a8a8c44c548d515670f51de3a5e1da8b2effb59870e2f10c25a3
+      extra:
+        - url: https://github.com/kubernetes-sigs/cri-tools/releases/download/v1.36.0/critest-v1.36.0-linux-amd64.tar.gz
+          file: critest-v1.36.0-linux-amd64.tar.gz
+          sha256: 445038a6587dee041aefe1d92699772da814992f65fb81a0859bb4bd4b22f5f8
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: upstream-binary
+      commands:
+        - install -Dm755 "${KI2_SOURCE_DIR}/crictl" "${KI2_DESTDIR}/usr/bin/crictl"
+        - install -Dm755 "${KI2_SOURCE_DIR}/critest" "${KI2_DESTDIR}/usr/bin/critest"
+
+  - name: kubelet
+    version: "1.36.1"
+    release: 3
+    summary: Kubernetes node agent
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://dl.k8s.io/v1.36.1/bin/linux/amd64/kubelet
+      file: kubelet
+      sha256: 7efa1780c73d9fb3a464002864e582eb2d15aa691e475eaae323093d08feae14
+    depends:
+      build: []
+      runtime: [glibc, systemd, cni-plugins, cri-tools, conntrack-tools, e2fsprogs, iproute2, iptables, socat]
+    build:
+      system: upstream-binary
+      commands:
+        - install -Dm755 "${KI2_SOURCE_DIR}/kubelet" "${KI2_DESTDIR}/usr/bin/kubelet"
+      stub:
+        services:
+          - name: kubelet.service
+            description: Kubernetes kubelet
+            exec_start: /usr/bin/kubelet $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS
+            environment_files:
+              - "-/var/lib/kubelet/kubeadm-flags.env"
+              - "-/etc/sysconfig/kubelet"
+            after: [network-online.target, crio.service, containerd.service]
+            wants: [network-online.target]
+
+  - name: kubeadm
+    version: "1.36.1"
+    release: 2
+    summary: Kubernetes cluster bootstrap tool
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://dl.k8s.io/v1.36.1/bin/linux/amd64/kubeadm
+      file: kubeadm
+      sha256: f35980333a4dae753807345ae359eca03f48f9945855e6a6a6708fe8b3b24038
+    depends:
+      build: []
+      runtime: [ca-certificates, cri-tools, kubelet, kubectl]
+    build:
+      system: upstream-binary
+      commands:
+        - install -Dm755 "${KI2_SOURCE_DIR}/kubeadm" "${KI2_DESTDIR}/usr/bin/kubeadm"
+
+  - name: kubectl
+    version: "1.36.1"
+    release: 2
+    summary: Kubernetes command-line client
+    license: Apache-2.0
+    tier: kubernetes
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://dl.k8s.io/v1.36.1/bin/linux/amd64/kubectl
+      file: kubectl
+      sha256: 629d3f410e09bf49b64ae7079f7f0bda1191efed311f7d37fdbab0ad5b0ec2b7
+    depends:
+      build: []
+      runtime: [ca-certificates, glibc]
+    build:
+      system: upstream-binary
+      commands:
+        - install -Dm755 "${KI2_SOURCE_DIR}/kubectl" "${KI2_DESTDIR}/usr/bin/kubectl"
+
+  - name: conntrack-tools
+    version: "1.4.7"
+    release: 2
+    summary: Connection tracking tools for Kubernetes networking
+    license: GPL-2.0-or-later
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: host-files
+      host_files:
+        - source: /usr/sbin/conntrack
+          include_ldd: true
+
+  - name: nftables
+    version: "1.0.9"
+    release: 2
+    summary: nft userspace firewall package
+    license: GPL-2.0-only
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: host-files
+      host_files:
+        - source: /usr/sbin/nft
+          include_ldd: true
+      stub:
+        services:
+          - name: nftables.service
+            description: nftables firewall rules
+            exec_start: /usr/sbin/nft -f /etc/nftables.conf
+        files:
+          - path: /etc/nftables.conf
+            lines:
+              - "# KIKI Stage 2 nftables baseline."
+              - "flush ruleset"
+
+  - name: iptables
+    version: "1.8.10"
+    release: 2
+    summary: iptables nft compatibility package
+    license: GPL-2.0-only
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [glibc, nftables]
+    build:
+      system: host-files
+      host_files:
+        - source: /usr/sbin/iptables
+          include_ldd: true
+        - source: /usr/sbin/ip6tables
+          include_ldd: true
+        - source: /usr/sbin/iptables-save
+          include_ldd: true
+        - source: /usr/sbin/iptables-restore
+          include_ldd: true
+        - source: /usr/sbin/iptables-nft
+          include_ldd: true
+          optional: true
+        - source: /usr/sbin/ip6tables-nft
+          include_ldd: true
+          optional: true
+        - source: /usr/sbin/iptables-nft-save
+          include_ldd: true
+          optional: true
+        - source: /usr/sbin/iptables-nft-restore
+          include_ldd: true
+          optional: true
+
+  - name: firewalld
+    version: "1.3.4"
+    release: 2
+    summary: Optional dynamic firewall manager package
+    license: GPL-2.0-or-later
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [dbus, nftables, python, systemd]
+    build:
+      system: host-files
+      host_files:
+        - source: /usr/sbin/firewalld
+          mode: "0755"
+        - source: /usr/bin/firewall-cmd
+          mode: "0755"
+        - source: /usr/bin/firewall-offline-cmd
+          mode: "0755"
+          optional: true
+        - source: /usr/lib/firewalld
+          recursive: true
+          optional: true
+        - source: /usr/lib/python3.9/site-packages/firewall
+          destination: /usr/lib/python3.12/site-packages/firewall
+          recursive: true
+          optional: true
+        - source: /usr/lib/python3.9/site-packages/nftables
+          destination: /usr/lib/python3.12/site-packages/nftables
+          recursive: true
+          optional: true
+      stub:
+        directories:
+          - /etc/firewalld
+        services:
+          - name: firewalld.service
+            description: firewalld dynamic firewall manager
+            exec_start: /usr/sbin/firewalld --nofork --nopid
+            after: [dbus.service]
+            wants: [dbus.service]
+
+  - name: bridge-utils
+    version: "0.1.0"
+    release: 2
+    summary: Bridge command compatibility package for Kubernetes nodes
+    license: GPL-2.0-or-later
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [glibc, iproute2]
+    build:
+      system: host-files
+      host_files:
+        - source: /usr/sbin/bridge
+          include_ldd: true
+      stub:
+        files:
+          - path: /usr/sbin/brctl
+            mode: "0755"
+            lines:
+              - "#!/bin/sh"
+              - "exec /usr/sbin/bridge \"$@\""
+
+  - name: socat
+    version: "1.7.4.1"
+    release: 2
+    summary: Bidirectional relay tool package for kubeadm workflows
+    license: GPL-2.0-only
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [glibc, openssl]
+    build:
+      system: host-files
+      host_files:
+        - source: /usr/bin/socat
+          include_ldd: true
+
+  - name: ethtool
+    version: "6.15"
+    release: 2
+    summary: Ethernet device inspection package
+    license: GPL-2.0-only
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: host-files
+      host_files:
+        - source: /usr/sbin/ethtool
+          include_ldd: true
+
+  - name: chrony
+    version: "4.8"
+    release: 2
+    summary: Time synchronization package for Kubernetes nodes
+    license: GPL-2.0-only
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: virtual
+    depends:
+      build: []
+      runtime: [glibc, openssl, systemd]
+    build:
+      system: host-files
+      host_files:
+        - source: /usr/sbin/chronyd
+          include_ldd: true
+        - source: /usr/bin/chronyc
+          include_ldd: true
+      stub:
+        directories:
+          - /etc/chrony
+        files:
+          - path: /etc/chrony.conf
+            lines:
+              - "# KIKI Stage 2 chrony baseline."
+              - "pool pool.ntp.org iburst"
+              - "driftfile /var/lib/chrony/drift"
+        services:
+          - name: chronyd.service
+            description: chrony network time daemon
+            exec_start: /usr/sbin/chronyd -F 2
+            after: [network-online.target]
+            wants: [network-online.target]
+
+  - name: kube-node-config
+    version: "0.1.0"
+    release: 3
+    summary: KIKI CRI-O defaults for kubelet, sysctl, and CNI bootstrap
+    license: GPL-3.0-or-later
+    tier: kiki
+    architectures: [all]
+    source:
+      type: local
+      path: distro/sources/kube-node-config
+    depends:
+      build: []
+      runtime: [cri-o, kubelet, nftables, systemd]
+    build:
+      system: copy
+
+  - name: kube-node-config-containerd
+    version: "0.1.0"
+    release: 2
+    summary: KIKI containerd defaults for kubelet, crictl, sysctl, and CNI bootstrap
+    license: GPL-3.0-or-later
+    tier: kiki
+    architectures: [all]
+    source:
+      type: local
+      path: distro/sources/kube-node-config-containerd
+    depends:
+      build: []
+      runtime: [containerd, kubelet, nftables, systemd]
+    build:
+      system: copy
+
+  - name: kiki-kubeadm
+    version: "0.1.0"
+    release: 1
+    summary: KIKI kubeadm render/init/join executor
+    license: GPL-3.0-or-later
+    tier: kiki
+    architectures: [all]
+    source:
+      type: local
+      path: distro/sources/kiki-kubeadm
+    depends:
+      build: []
+      runtime: [python, kubeadm]
+    build:
+      system: copy

@@ -1,7 +1,13 @@
 .cache/
+build/
+dist/
 __pycache__/
 *.py[cod]
 *.go.[0-9]*
+*.exe
+*.test
+.codex-*
+.ki2osbuild/
 
 /bosbuild
 /bosctl

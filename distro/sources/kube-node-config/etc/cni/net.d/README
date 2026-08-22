@@ -1,0 +1,2 @@
+KIKI installs CNI plugin binaries under /opt/cni/bin.
+Drop the cluster CNI configuration in this directory after kubeadm init/join.

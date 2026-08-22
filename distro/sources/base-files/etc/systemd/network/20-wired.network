@@ -1,0 +1,21 @@
+[Match]
+Name=en* eth*
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=ipv4
+IPv6AcceptRA=yes
+LinkLocalAddressing=ipv6
+LLDP=yes
+EmitLLDP=nearest-bridge
+LLMNR=no
+MulticastDNS=no
+
+[DHCPv4]
+ClientIdentifier=mac
+UseDNS=yes
+UseNTP=yes
+UseHostname=no
+RouteMetric=100

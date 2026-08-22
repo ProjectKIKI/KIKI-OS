@@ -1,0 +1,6 @@
+NAME="KIKI OS"
+ID=kiki
+PRETTY_NAME="KIKI OS 0.1"
+VERSION_ID="0.1"
+HOME_URL="https://example.invalid/kiki"
+BUG_REPORT_URL="https://example.invalid/kiki/issues"

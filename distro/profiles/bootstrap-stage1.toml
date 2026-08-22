@@ -1,0 +1,23 @@
+[profile]
+name = "bootstrap-stage1"
+description = "Validated pre-systemd bootstrap package set for sysroot and repository smoke tests."
+packages = [
+  "base-files",
+  "linux",
+  "glibc",
+  "zlib",
+  "expat",
+  "openssl",
+  "attr",
+  "libcap",
+  "libseccomp",
+  "acl",
+  "ncurses",
+  "util-linux",
+  "cfdisk",
+  "xz",
+  "zstd",
+  "kmod",
+  "dbus",
+  "ca-certificates"
+]

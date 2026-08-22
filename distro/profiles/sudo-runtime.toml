@@ -1,0 +1,10 @@
+[profile]
+name = "sudo-runtime"
+description = "Small profile for building sudo and its runtime dependencies."
+arch = "x86_64"
+packages = [
+  "base-files",
+  "glibc",
+  "zlib",
+  "sudo",
+]

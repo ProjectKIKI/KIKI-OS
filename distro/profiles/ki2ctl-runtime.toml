@@ -1,0 +1,8 @@
+[profile]
+name = "ki2ctl-runtime"
+description = "Small profile for building the HTTP-backed ki2ctl package manager and runtime."
+arch = "x86_64"
+packages = [
+  "python",
+  "ki2ctl",
+]

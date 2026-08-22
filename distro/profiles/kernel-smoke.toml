@@ -1,0 +1,7 @@
+[profile]
+name = "kernel-smoke"
+description = "Build-only smoke profile for the KIKI Linux kernel package"
+arch = "x86_64"
+packages = [
+  "linux",
+]

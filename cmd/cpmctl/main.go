@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"example.com/aos-pkg/internal/model"
 	"example.com/aos-pkg/internal/store"
@@ -22,6 +23,7 @@ func usage() {
 	fmt.Println("  cpmctl add <name> <version> <image> <summary>")
 	fmt.Println("  cpmctl list")
 	fmt.Println("  cpmctl info <name>")
+	fmt.Println("  cpmctl remove <name>")
 }
 
 func main() {
@@ -56,7 +58,7 @@ func main() {
 		name := os.Args[2]
 		version := os.Args[3]
 		image := os.Args[4]
-		summary := os.Args[5]
+		summary := strings.Join(os.Args[5:], " ")
 
 		if err := st.Load(); err != nil {
 			fmt.Println("error: load db:", err)
@@ -113,6 +115,24 @@ func main() {
 		fmt.Println("Image  :", p.Image)
 		fmt.Println("Summary:", p.Summary)
 		fmt.Println("DB Path:", dbPath)
+
+	case "remove":
+		if len(os.Args) < 3 {
+			fmt.Println("error: missing package name")
+			fmt.Println("usage: cpmctl remove <name>")
+			os.Exit(1)
+		}
+		name := os.Args[2]
+
+		if err := st.Load(); err != nil {
+			fmt.Println("error: load db:", err)
+			os.Exit(1)
+		}
+		if err := st.Remove(name); err != nil {
+			fmt.Println("error:", err)
+			os.Exit(1)
+		}
+		fmt.Println("cpmctl: removed package", name)
 
 	default:
 		fmt.Println("error: unknown command:", cmd)

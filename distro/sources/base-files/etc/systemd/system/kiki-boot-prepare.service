@@ -1,0 +1,16 @@
+[Unit]
+Description=Prepare KIKI runtime directories
+DefaultDependencies=no
+After=systemd-remount-fs.service
+Before=local-fs.target sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/mkdir -p /tmp /var/tmp /run /var/log /var/lib
+ExecStart=/bin/chmod 1777 /tmp /var/tmp
+ExecStart=/bin/chmod 0755 /run /var/log /var/lib
+ExecStart=-/bin/chmod 0755 /lib64/ld-linux-x86-64.so.2
+
+[Install]
+WantedBy=sysinit.target

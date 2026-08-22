@@ -1,0 +1,7 @@
+[profile]
+name = "host-smoke"
+description = "Host-only smoke profile for validating .ki2 packaging without a Linux builder"
+arch = "x86_64"
+packages = [
+  "base-files",
+]

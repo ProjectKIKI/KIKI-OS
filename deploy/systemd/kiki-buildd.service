@@ -1,0 +1,18 @@
+[Unit]
+Description=KIKI build automation web console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kiki-builder
+Group=kiki-builder
+WorkingDirectory=/srv/kiki/KIKI-OS
+Environment=KIKI_TOOLCHAIN_ID=rocky9-stage0-gcc11-v1
+Environment=KIKI_PUBLISH_DIR=/srv/kiki/public
+ExecStart=/usr/bin/python3 tools/ki2ci.py serve --host 0.0.0.0 --port 8090 --artifact-root /srv/kiki/build/ki2ci --publish-dir /srv/kiki/public --jobs 8
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

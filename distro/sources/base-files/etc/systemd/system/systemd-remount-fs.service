@@ -1,0 +1,12 @@
+[Unit]
+Description=KIKI root filesystem remount compatibility
+DefaultDependencies=no
+Before=local-fs-pre.target local-fs.target
+Wants=local-fs-pre.target
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/busybox true

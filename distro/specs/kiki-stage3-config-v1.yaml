@@ -1,0 +1,156 @@
+schema: kiki-stage3-config-spec-v1
+name: kiki-stage3-config-v1
+status: draft
+description: Stage 3 default configuration and operator override contract.
+
+document:
+  encoding: utf-8-yaml
+  default_paths:
+    - /usr/share/kiki/defaults/system.yaml
+    - /usr/share/kiki/defaults/network.yaml
+    - /usr/share/kiki/defaults/kubernetes.yaml
+  profile_paths:
+    - /usr/share/kiki/profiles/server-core.yaml
+    - /usr/share/kiki/profiles/bootstrap.yaml
+    - /usr/share/kiki/profiles/control.yaml
+    - /usr/share/kiki/profiles/compute.yaml
+  install_plan_path: /var/lib/ki2/install-plan.yaml
+  override_dir: /etc/kiki/overrides
+  rendered_plan_path: /var/lib/kiki/rendered/stage3-plan.yaml
+  state_path: /var/lib/kiki/kubernetes/state.json
+  log_path: /var/log/kiki/stage3.log
+
+merge_order:
+  - distribution_defaults
+  - role_profile
+  - install_plan
+  - local_overrides
+  - one_shot_arguments
+
+merge_rules:
+  maps: merge_by_key
+  scalars: replace
+  lists: replace
+  list_append_requires: merge_strategy_append
+  secrets: never_write_plaintext_to_rendered_plan
+
+system:
+  hostname: localhost.localdomain
+  timezone: UTC
+  locale: C.UTF-8
+  services:
+    required:
+      - dbus.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+      - kubelet.service
+    optional:
+      - crio.service
+      - containerd.service
+      - chronyd.service
+
+network:
+  manager: systemd-networkd
+  resolver: systemd-resolved
+  mode: dhcp
+  interface_match: en* eth*
+  static:
+    address: ""
+    gateway: ""
+    dns: []
+    ntp: []
+
+runtime:
+  container_runtime: cri-o
+  cgroup_driver: systemd
+  swap_policy: kubernetes-off
+  cri_sockets:
+    cri-o: unix:///var/run/crio/crio.sock
+    containerd: unix:///run/containerd/containerd.sock
+
+kubernetes:
+  role: none
+  cluster:
+    name: kiki
+    control_plane_endpoint: ""
+    pod_cidr: 10.244.0.0/16
+    service_cidr: 10.96.0.0/12
+    dns_domain: cluster.local
+  kubeadm:
+    config_api: kubeadm.k8s.io/v1beta4
+    config_output: /etc/kubernetes/kiki/kubeadm.local.yaml
+    init_template: /etc/kubernetes/kiki/kubeadm-init.yaml
+    join_control_plane_template: /etc/kubernetes/kiki/kubeadm-join-control-plane.yaml
+    join_compute_template: /etc/kubernetes/kiki/kubeadm-join-compute.yaml
+  join:
+    token_ref: ""
+    ca_cert_hash: ""
+    control_plane_certificate_policy: manual
+  cni:
+    enabled: false
+    provider: ""
+    manifest_url: ""
+    manifest_path: ""
+    package: ""
+    allowed_providers:
+      - flannel
+      - calico
+      - cilium
+
+agent:
+  command: /usr/bin/kiki-agent
+  reconcile_command: kiki-agent kube reconcile
+  management_url: ""
+  heartbeat_interval: 60
+  state_dir: /var/lib/kiki
+
+remote_plan:
+  enabled: false
+  url: ""
+  sha256: ""
+  signature: ""
+  downloaded_path: /run/kiki/remote-install-plan.yaml
+  verified_path: /run/kiki/install-plan.yaml
+
+safety:
+  allow_cluster_reset: false
+  allow_unsigned_repository: false
+  allow_unverified_remote_plan: false
+  allow_control_plane_cert_upload: false
+  require_join_token: true
+  require_ca_cert_hash: true
+  require_repository_signature: true
+
+roles:
+  server-core:
+    kubernetes_role: none
+    kubeadm_action: none
+    required_inputs: []
+    default_services:
+      - dbus.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+      - nftables.service
+      - firewalld.service
+      - chronyd.service
+  bootstrap:
+    kubernetes_role: bootstrap-control-plane
+    kubeadm_action: init
+    required_inputs: []
+  control:
+    kubernetes_role: control-plane
+    kubeadm_action: join
+    required_inputs:
+      - kubernetes.cluster.control_plane_endpoint
+      - kubernetes.join.token_ref
+      - kubernetes.join.ca_cert_hash
+      - kubernetes.join.control_plane_certificate_policy
+  compute:
+    kubernetes_role: compute
+    kubeadm_action: join
+    required_inputs:
+      - kubernetes.cluster.control_plane_endpoint
+      - kubernetes.join.token_ref
+      - kubernetes.join.ca_cert_hash

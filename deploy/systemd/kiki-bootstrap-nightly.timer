@@ -1,0 +1,10 @@
+[Unit]
+Description=Run KIKI bootstrap-stage1 build every night
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+Unit=kiki-bootstrap-nightly.service
+
+[Install]
+WantedBy=timers.target

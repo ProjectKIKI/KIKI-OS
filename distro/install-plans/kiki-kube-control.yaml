@@ -1,0 +1,93 @@
+install_plan:
+  name: kiki-kube-control
+  description: Installation plan for additional Kubernetes control-plane nodes.
+  profile: kiki-kube-control
+  target:
+    partition_table: gpt
+    efi_system_partition:
+      size: 512MiB
+      filesystem: vfat
+      mountpoint: /boot/efi
+    root:
+      filesystem: ext4
+      mountpoint: /
+      min_size: 16GiB
+    swap:
+      enabled: false
+      policy: kubernetes-off
+  package_sets:
+    base:
+      - base-files
+      - linux
+      - ncurses
+      - cfdisk
+      - systemd
+      - openssh
+      - ca-certificates
+    kubernetes:
+      - cri-o
+      - conmon
+      - crun
+      - cni-plugins
+      - cri-tools
+      - kubelet
+      - kubeadm
+      - kubectl
+      - kiki-kubeadm
+      - kube-node-config
+    network:
+      - iproute2
+      - iptables
+      - nftables
+      - conntrack-tools
+      - socat
+      - ethtool
+      - chrony
+      - kiki-netconfig
+      - kiki-installer-tui
+    optional_firewall:
+      - firewalld
+      - bridge-utils
+  prompts:
+    role:
+      default: control
+      choices:
+        - control
+    node_name:
+      default: kiki-control
+    bootstrap_endpoint:
+      default: ""
+    join_command:
+      default: ""
+  post_install:
+    enable_services:
+      - dbus.service
+      - getty@tty1.service
+      - systemd-logind.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+      - crio.service
+      - kubelet.service
+      - chronyd.service
+    write_files:
+      - path: /etc/kiki/install-role
+        content: control
+  runtime:
+    container_runtime: cri-o
+    cgroup_driver: systemd
+    swap_policy: kubernetes-off
+  kubernetes:
+    role: control-plane
+    kubeadm:
+      config_api: kubeadm.k8s.io/v1beta4
+      action: join
+      config_template: /etc/kubernetes/kiki/kubeadm-join-control-plane.yaml
+      config_output: /etc/kubernetes/kiki/kubeadm.local.yaml
+      command: kubeadm join --config /etc/kubernetes/kiki/kubeadm.local.yaml
+      control_plane: true
+      cri_socket: unix:///var/run/crio/crio.sock
+  firewall:
+    backend: nftables
+    firewalld: true
+    bridge_tool: iproute2 bridge

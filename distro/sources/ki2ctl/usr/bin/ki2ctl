@@ -1,0 +1,1141 @@
+#!/usr/bin/env python3
+"""Small HTTP-backed package manager for KIKI .ki2 repositories."""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import contextlib
+import datetime as dt
+import hashlib
+import hmac
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+APP_VERSION = "0.1.0"
+DEFAULT_ARCH = "x86_64"
+DEFAULT_REPO_NAME = "default"
+INSTALLED_SCHEMA = "ki2-installed-v1"
+TRANSACTION_SCHEMA = "ki2-transaction-v1"
+SIGNATURE_ALGORITHM = "hmac-sha256"
+UTC = dt.timezone.utc
+
+
+class Ki2CtlError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class Repo:
+    name: str
+    url: str
+    verify_key: str = ""
+
+
+def norm_url(url: str) -> str:
+    value = url.strip()
+    if not value:
+        raise Ki2CtlError("repository URL is empty")
+    if value.startswith(("http://", "https://", "file://")):
+        return value.rstrip("/")
+    path = Path(value).expanduser()
+    if path.is_absolute() or value.startswith(".") or "/" in value or (os.altsep and os.altsep in value):
+        return path.resolve().as_uri().rstrip("/")
+    raise Ki2CtlError("repository URL must start with http://, https://, file://, or be a local path")
+
+
+def root_join(root: Path, *parts: str) -> Path:
+    cleaned = [part.strip("/") for part in parts if part]
+    return root.joinpath(*cleaned)
+
+
+def repo_config_dir(root: Path) -> Path:
+    return root_join(root, "etc", "ki2", "repos.d")
+
+
+def state_dir(root: Path) -> Path:
+    return root_join(root, "var", "lib", "ki2")
+
+
+def cache_dir(root: Path, arch: str) -> Path:
+    return root_join(root, "var", "cache", "ki2", "packages", arch)
+
+
+def repo_state_dir(root: Path, name: str) -> Path:
+    return state_dir(root) / "repos" / name
+
+
+def installed_db_path(root: Path) -> Path:
+    return state_dir(root) / "installed.json"
+
+
+def transaction_dir(root: Path) -> Path:
+    return state_dir(root) / "transactions"
+
+
+def pending_hooks_path(root: Path) -> Path:
+    return state_dir(root) / "pending-hooks.json"
+
+
+def repo_file(root: Path, name: str) -> Path:
+    return repo_config_dir(root) / f"{name}.repo"
+
+
+def trust_dir(root: Path) -> Path:
+    return root_join(root, "etc", "ki2", "trust")
+
+
+def valid_repo_name(name: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9._-]+", name)) and name not in (".", "..")
+
+
+def write_json(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def http_get(url: str) -> bytes:
+    request = urllib.request.Request(url, headers={"User-Agent": f"ki2ctl/{APP_VERSION}"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        raise Ki2CtlError(f"HTTP {exc.code} while fetching {url}") from exc
+    except urllib.error.URLError as exc:
+        raise Ki2CtlError(f"cannot fetch {url}: {exc.reason}") from exc
+
+
+def url_join(base: str, *parts: str) -> str:
+    suffix = "/".join(part.strip("/") for part in parts if part)
+    return f"{base.rstrip('/')}/{suffix}" if suffix else base.rstrip("/")
+
+
+def file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def bytes_sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def canonical_json_bytes(data: dict[str, Any]) -> bytes:
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def signature_payload(metadata: dict[str, Any]) -> dict[str, Any]:
+    payload = json.loads(json.dumps(metadata))
+    security = dict(payload.get("security", {}))
+    security["signature"] = None
+    payload["security"] = security
+    return payload
+
+
+def read_verify_key(path: Path) -> bytes:
+    raw = path.read_text(encoding="utf-8").strip()
+    try:
+        return bytes.fromhex(raw)
+    except ValueError:
+        return raw.encode("utf-8")
+
+
+def verify_metadata_signature(metadata: dict[str, Any], key: bytes) -> bool:
+    security = metadata.get("security", {})
+    if not isinstance(security, dict):
+        return False
+    if security.get("algorithm") != SIGNATURE_ALGORITHM:
+        return False
+    signature = str(security.get("signature") or "")
+    if not signature:
+        return False
+    expected = hmac.new(key, canonical_json_bytes(signature_payload(metadata)), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(signature, expected)
+
+
+def load_configured_repos(root: Path) -> list[Repo]:
+    directory = repo_config_dir(root)
+    repos: list[Repo] = []
+    if not directory.exists():
+        return repos
+    for path in sorted(directory.glob("*.repo")):
+        data = read_json(path)
+        name = str(data.get("name") or path.stem)
+        url = norm_url(str(data.get("url") or ""))
+        verify_key = str(data.get("verify_key") or "")
+        repos.append(Repo(name=name, url=url, verify_key=verify_key))
+    return repos
+
+
+def selected_repos(args: argparse.Namespace) -> list[Repo]:
+    if args.repo:
+        return [Repo(name="cli", url=norm_url(args.repo))]
+    repos = load_configured_repos(args.root)
+    if not repos:
+        raise Ki2CtlError("no repository configured; run: ki2ctl repo set http://server/kiki")
+    return repos
+
+
+def fetch_repo_index_payload(repo: Repo, arch: str) -> tuple[dict[str, Any], bytes]:
+    url = url_join(repo.url, "repo", f"index.{arch}.json")
+    data = http_get(url)
+    index = json.loads(data.decode("utf-8"))
+    if index.get("schema") != "ki2-repository-v1":
+        raise Ki2CtlError(f"{repo.name}: unsupported repository schema")
+    if index.get("arch") not in (arch, None):
+        raise Ki2CtlError(f"{repo.name}: repository arch {index.get('arch')} does not match {arch}")
+    return index, data
+
+
+def fetch_repo_index(repo: Repo, arch: str) -> dict[str, Any]:
+    index, _data = fetch_repo_index_payload(repo, arch)
+    return index
+
+
+def fetch_repo_metadata(repo: Repo, arch: str) -> dict[str, Any]:
+    url = url_join(repo.url, "repo", f"metadata.{arch}.json")
+    data = http_get(url)
+    metadata = json.loads(data.decode("utf-8"))
+    if metadata.get("schema") != "ki2-repository-metadata-v1":
+        raise Ki2CtlError(f"{repo.name}: unsupported repository metadata schema")
+    if metadata.get("arch") not in (arch, None):
+        raise Ki2CtlError(f"{repo.name}: repository metadata arch {metadata.get('arch')} does not match {arch}")
+    return metadata
+
+
+def save_repo_index(root: Path, repo: Repo, arch: str, index: dict[str, Any]) -> Path:
+    path = repo_state_dir(root, repo.name) / f"index.{arch}.json"
+    payload = dict(index)
+    payload["repo_name"] = repo.name
+    payload["repo_url"] = repo.url
+    write_json(path, payload)
+    return path
+
+
+def save_repo_metadata(root: Path, repo: Repo, arch: str, metadata: dict[str, Any]) -> Path:
+    path = repo_state_dir(root, repo.name) / f"metadata.{arch}.json"
+    payload = dict(metadata)
+    payload["repo_name"] = repo.name
+    payload["repo_url"] = repo.url
+    write_json(path, payload)
+    return path
+
+
+def load_saved_indexes(root: Path, arch: str) -> list[tuple[Repo, dict[str, Any]]]:
+    repos_by_name = {repo.name: repo for repo in load_configured_repos(root)}
+    result: list[tuple[Repo, dict[str, Any]]] = []
+    base = state_dir(root) / "repos"
+    if not base.exists():
+        return result
+    for path in sorted(base.glob(f"*/index.{arch}.json")):
+        index = read_json(path)
+        name = str(index.get("repo_name") or path.parent.name)
+        url = str(index.get("repo_url") or "")
+        repo = repos_by_name.get(name, Repo(name=name, url=norm_url(url))) if url else repos_by_name.get(name)
+        if repo is not None:
+            result.append((repo, index))
+    return result
+
+
+def indexes_for_command(args: argparse.Namespace) -> list[tuple[Repo, dict[str, Any]]]:
+    if args.repo:
+        repo = Repo(name="cli", url=norm_url(args.repo))
+        index = fetch_repo_index(repo, args.arch)
+        save_repo_index(args.root, repo, args.arch, index)
+        return [(repo, index)]
+    indexes = load_saved_indexes(args.root, args.arch)
+    if not indexes:
+        raise Ki2CtlError("no local repository index; run: ki2ctl update")
+    return indexes
+
+
+def rooted_verify_key_path(root: Path, value: str) -> Path:
+    if value.startswith(("/", "\\")):
+        return root / value.lstrip("/\\")
+    key = Path(value).expanduser()
+    if key.is_absolute():
+        rooted = root_join(root, str(key).lstrip("/"))
+        if rooted.exists():
+            return rooted
+        return key
+    if len(key.parts) == 1:
+        return trust_dir(root) / key
+    return root_join(root, str(key))
+
+
+def repo_verify_key_path(root: Path, repo: Repo, explicit_key: Path | None) -> Path | None:
+    if explicit_key is not None:
+        return explicit_key
+    if repo.verify_key:
+        return rooted_verify_key_path(root, repo.verify_key)
+    candidates = [
+        trust_dir(root) / f"{repo.name}.hmac",
+        trust_dir(root) / "stage2-v2-repo.hmac",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def natural_key(value: Any) -> tuple[tuple[int, Any], ...]:
+    parts: list[tuple[int, Any]] = []
+    for part in re.split(r"([0-9]+)", str(value)):
+        if not part:
+            continue
+        parts.append((0, int(part)) if part.isdigit() else (1, part))
+    return tuple(parts)
+
+
+def package_sort_key(pkg: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        natural_key(pkg.get("version", "")),
+        natural_key(pkg.get("release", "")),
+        str(pkg.get("file", "")),
+    )
+
+
+def installed_sort_key(pkg: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        natural_key(pkg.get("version", "")),
+        natural_key(pkg.get("release", "")),
+        str(pkg.get("file", "")),
+    )
+
+
+def package_catalog(indexes: list[tuple[Repo, dict[str, Any]]]) -> dict[str, tuple[Repo, dict[str, Any]]]:
+    catalog: dict[str, tuple[Repo, dict[str, Any]]] = {}
+    for repo, index in indexes:
+        for pkg in index.get("packages", []):
+            name = str(pkg.get("name", ""))
+            if not name:
+                continue
+            current = catalog.get(name)
+            if current is None or package_sort_key(pkg) > package_sort_key(current[1]):
+                catalog[name] = (repo, pkg)
+    return catalog
+
+
+def runtime_deps(pkg: dict[str, Any]) -> list[str]:
+    deps = pkg.get("dependencies", {})
+    if isinstance(deps, dict):
+        raw = deps.get("runtime", [])
+    else:
+        raw = pkg.get("runtime_dependencies", [])
+    if not isinstance(raw, list):
+        return []
+    return [str(item) for item in raw if str(item)]
+
+
+def resolve_packages(catalog: dict[str, tuple[Repo, dict[str, Any]]], roots: list[str]) -> list[tuple[Repo, dict[str, Any]]]:
+    ordered: list[tuple[Repo, dict[str, Any]]] = []
+    seen: set[str] = set()
+    visiting: set[str] = set()
+
+    def visit(name: str) -> None:
+        if name in seen:
+            return
+        if name in visiting:
+            raise Ki2CtlError(f"dependency cycle at {name}")
+        if name not in catalog:
+            raise Ki2CtlError(f"package not found: {name}")
+        visiting.add(name)
+        repo, pkg = catalog[name]
+        for dep in runtime_deps(pkg):
+            visit(dep)
+        visiting.remove(name)
+        seen.add(name)
+        ordered.append((repo, pkg))
+
+    for root in roots:
+        visit(root)
+    return ordered
+
+
+def fetch_package(repo: Repo, pkg: dict[str, Any], root: Path, arch: str) -> Path:
+    filename = str(pkg.get("file") or "")
+    expected = str(pkg.get("sha256") or "")
+    if not filename:
+        raise Ki2CtlError(f"{pkg.get('name')}: package file is missing in index")
+    target = cache_dir(root, arch) / filename
+    if target.exists() and (not expected or file_sha256(target) == expected):
+        return target
+
+    urls = [
+        url_join(repo.url, "packages", filename),
+        url_join(repo.url, "packages", arch, filename),
+        url_join(repo.url, "kiki", "packages", arch, filename),
+    ]
+    last_error: Exception | None = None
+    for url in urls:
+        try:
+            data = http_get(url)
+            if expected and bytes_sha256(data) != expected:
+                raise Ki2CtlError(f"{filename}: sha256 mismatch from {url}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_suffix(target.suffix + ".tmp")
+            tmp.write_bytes(data)
+            tmp.replace(target)
+            return target
+        except Ki2CtlError as exc:
+            last_error = exc
+    raise Ki2CtlError(str(last_error) if last_error else f"cannot fetch {filename}")
+
+
+def safe_target(root: Path, rel: str) -> Path:
+    rel_path = Path(rel)
+    if rel_path.is_absolute() or ".." in rel_path.parts:
+        raise Ki2CtlError(f"unsafe package path: {rel}")
+    root_resolved = root.resolve()
+    target = (root / rel_path).resolve(strict=False)
+    if target != root_resolved and root_resolved not in target.parents:
+        raise Ki2CtlError(f"package path escapes root: {rel}")
+    return target
+
+
+def package_payload_entries(package: Path) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    with tarfile.open(package, "r:gz") as tar:
+        for member in tar.getmembers():
+            if member.name == "manifest.json" or not member.name.startswith("rootfs/"):
+                continue
+            rel = member.name[len("rootfs/") :]
+            if not rel:
+                continue
+            kind = "other"
+            if member.isdir():
+                kind = "dir"
+            elif member.issym():
+                kind = "symlink"
+            elif member.islnk():
+                kind = "hardlink"
+            elif member.isfile():
+                kind = "file"
+            if kind == "other":
+                continue
+            entries.append({"path": "/" + rel, "kind": kind})
+    return entries
+
+
+def extract_package(package: Path, root: Path) -> list[str]:
+    extracted: list[str] = []
+    root.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(package, "r:gz") as tar:
+        members = tar.getmembers()
+        for member in members:
+            if member.name == "manifest.json" or not member.name.startswith("rootfs/"):
+                continue
+            rel = member.name[len("rootfs/") :]
+            if not rel:
+                continue
+            target = safe_target(root, rel)
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+                with contextlib.suppress(PermissionError):
+                    target.chmod(member.mode)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if member.issym():
+                if target.exists() or target.is_symlink():
+                    target.unlink()
+                os.symlink(member.linkname, target)
+            elif member.islnk():
+                link_rel = member.linkname[len("rootfs/") :] if member.linkname.startswith("rootfs/") else member.linkname
+                link_target = safe_target(root, link_rel)
+                if target.exists() or target.is_symlink():
+                    target.unlink()
+                os.link(link_target, target)
+            elif member.isfile():
+                handle = tar.extractfile(member)
+                if handle is None:
+                    continue
+                with target.open("wb") as out:
+                    shutil.copyfileobj(handle, out)
+                with contextlib.suppress(PermissionError):
+                    target.chmod(member.mode)
+            else:
+                continue
+            if hasattr(os, "chown"):
+                with contextlib.suppress(PermissionError):
+                    os.chown(target, member.uid, member.gid, follow_symlinks=False)
+            extracted.append("/" + rel)
+    return extracted
+
+
+def load_installed(root: Path) -> dict[str, Any]:
+    path = installed_db_path(root)
+    if not path.exists():
+        return {"schema": INSTALLED_SCHEMA, "packages": {}}
+    return read_json(path)
+
+
+def save_installed(root: Path, db: dict[str, Any]) -> None:
+    write_json(installed_db_path(root), db)
+    installed_list = sorted(db.get("packages", {}))
+    list_path = state_dir(root) / "installed.list"
+    list_path.parent.mkdir(parents=True, exist_ok=True)
+    list_path.write_text("\n".join(installed_list) + ("\n" if installed_list else ""), encoding="utf-8")
+
+
+def load_pending_hooks(root: Path) -> dict[str, Any]:
+    path = pending_hooks_path(root)
+    if not path.exists():
+        return {"schema": "ki2-pending-hooks-v1", "hooks": []}
+    return read_json(path)
+
+
+def save_pending_hooks(root: Path, data: dict[str, Any]) -> None:
+    write_json(pending_hooks_path(root), data)
+
+
+def detect_post_install_hooks(files: list[str]) -> list[str]:
+    hooks: set[str] = set()
+    for path in files:
+        if re.search(r"/(?:lib|lib64|usr/lib|usr/lib64)/.*\.so(?:\.|$)", path):
+            hooks.add("ldconfig")
+        if path.startswith("/usr/lib/systemd/system/") or path.startswith("/etc/systemd/system/"):
+            hooks.add("systemd-daemon-reload")
+        if path.startswith("/usr/lib/tmpfiles.d/") or path.startswith("/etc/tmpfiles.d/"):
+            hooks.add("systemd-tmpfiles-create")
+    return sorted(hooks)
+
+
+def record_pending_hooks(root: Path, package_name: str, files: list[str], *, phase: str = "post-install") -> None:
+    actions = detect_post_install_hooks(files)
+    if not actions:
+        return
+    data = load_pending_hooks(root)
+    existing = {
+        (item.get("action"), item.get("package"), item.get("phase", "post-install"))
+        for item in data.get("hooks", [])
+        if isinstance(item, dict)
+    }
+    hooks = data.setdefault("hooks", [])
+    for action in actions:
+        key = (action, package_name, phase)
+        if key in existing:
+            continue
+        hooks.append(
+            {
+                "action": action,
+                "package": package_name,
+                "phase": phase,
+                "created_at": dt.datetime.now(UTC).isoformat(),
+                "status": "pending",
+            }
+        )
+    save_pending_hooks(root, data)
+
+
+def package_version_label(pkg: dict[str, Any]) -> str:
+    return f"{pkg.get('version', '')}-{pkg.get('release', '')}"
+
+
+def installed_matches(root: Path, pkg: dict[str, Any]) -> bool:
+    record = load_installed(root).get("packages", {}).get(str(pkg.get("name", "")))
+    if not isinstance(record, dict):
+        return False
+    return package_version_label(record) == package_version_label(pkg)
+
+
+def record_install(root: Path, repo: Repo, pkg: dict[str, Any], files: list[str]) -> None:
+    db = load_installed(root)
+    packages = db.setdefault("packages", {})
+    packages[str(pkg["name"])] = {
+        "name": pkg["name"],
+        "version": pkg.get("version", ""),
+        "release": pkg.get("release", ""),
+        "arch": pkg.get("arch", ""),
+        "file": pkg.get("file", ""),
+        "sha256": pkg.get("sha256", ""),
+        "summary": pkg.get("summary", ""),
+        "dependencies": pkg.get("dependencies", {}),
+        "repository": {"name": repo.name, "url": repo.url},
+        "installed_at": dt.datetime.now(UTC).isoformat(),
+        "files": sorted(files),
+    }
+    save_installed(root, db)
+
+
+def file_owners(db: dict[str, Any]) -> dict[str, str]:
+    return {path: sorted(owners)[0] for path, owners in file_owner_sets(db).items() if owners}
+
+
+def file_owner_sets(db: dict[str, Any]) -> dict[str, set[str]]:
+    owner_sets: dict[str, set[str]] = {}
+    packages = db.get("packages", {})
+    if not isinstance(packages, dict):
+        return owner_sets
+    for name, record in packages.items():
+        if not isinstance(record, dict):
+            continue
+        for path in record.get("files", []):
+            owner_sets.setdefault(str(path), set()).add(str(name))
+    return owner_sets
+
+
+def reverse_dependency_blocks(packages: dict[str, Any], removing: set[str]) -> list[str]:
+    blocks: list[str] = []
+    for name, record in sorted(packages.items()):
+        if name in removing or not isinstance(record, dict):
+            continue
+        deps = set(runtime_deps(record))
+        for dep in sorted(deps & removing):
+            blocks.append(f"{dep}: required by installed package {name}")
+    return blocks
+
+
+def detect_file_conflicts(root: Path, db: dict[str, Any], planned: list[tuple[Repo, dict[str, Any], Path]]) -> list[str]:
+    owners = file_owner_sets(db)
+    planned_owners: dict[str, str] = {}
+    conflicts: list[str] = []
+    for _repo, pkg, package_path in planned:
+        package_name = str(pkg.get("name", ""))
+        for entry in package_payload_entries(package_path):
+            path = entry["path"]
+            kind = entry["kind"]
+            target = safe_target(root, path.lstrip("/"))
+            planned_owner = planned_owners.get(path)
+            if planned_owner and planned_owner != package_name:
+                # Stage 2 bootstrap packages can share copied runtime libraries.
+                # The transaction is ordered, and remove preserves shared owners.
+                continue
+            if kind != "dir":
+                planned_owners[path] = package_name
+            exists = target.exists() or target.is_symlink()
+            if not exists:
+                continue
+            existing_owners = owners.get(path, set())
+            conflicting_owners = sorted(owner for owner in existing_owners if owner != package_name)
+            if conflicting_owners:
+                conflicts.append(f"{path}: owned by installed package {', '.join(conflicting_owners)}, cannot install {package_name}")
+            elif not existing_owners:
+                if kind == "dir" and target.is_dir() and not target.is_symlink():
+                    continue
+                conflicts.append(f"{path}: existing unowned path would be overwritten by {package_name}")
+    return conflicts
+
+
+def transaction_id(action: str) -> str:
+    stamp = dt.datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    return f"{stamp}-{action}"
+
+
+def transaction_path(root: Path, txid: str) -> Path:
+    return transaction_dir(root) / f"{txid}.json"
+
+
+def begin_transaction(root: Path, action: str, plan: list[tuple[Repo, dict[str, Any], Path]]) -> dict[str, Any]:
+    txid = transaction_id(action)
+    tx = {
+        "schema": TRANSACTION_SCHEMA,
+        "id": txid,
+        "action": action,
+        "status": "running",
+        "started_at": dt.datetime.now(UTC).isoformat(),
+        "finished_at": None,
+        "packages": [
+            {
+                "name": pkg.get("name", ""),
+                "version": pkg.get("version", ""),
+                "release": pkg.get("release", ""),
+                "file": pkg.get("file", ""),
+                "repository": repo.name,
+            }
+            for repo, pkg, _package_path in plan
+        ],
+        "events": [],
+        "backups": [],
+    }
+    write_json(transaction_path(root, txid), tx)
+    return tx
+
+
+def update_transaction(root: Path, tx: dict[str, Any]) -> None:
+    write_json(transaction_path(root, str(tx["id"])), tx)
+
+
+def backup_root(root: Path, tx: dict[str, Any]) -> Path:
+    return transaction_dir(root) / str(tx["id"]) / "backup"
+
+
+def remember_backup(root: Path, tx: dict[str, Any], path: str) -> None:
+    if any(item.get("path") == path for item in tx.get("backups", [])):
+        return
+    target = safe_target(root, path.lstrip("/"))
+    record: dict[str, Any] = {"path": path, "existed": target.exists() or target.is_symlink()}
+    if target.is_symlink():
+        record["kind"] = "symlink"
+        record["target"] = os.readlink(target)
+    elif target.is_file():
+        record["kind"] = "file"
+        backup = backup_root(root, tx) / path.lstrip("/")
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(target, backup)
+        record["backup"] = str(backup.relative_to(transaction_dir(root) / str(tx["id"])))
+    elif target.is_dir():
+        record["kind"] = "dir"
+    else:
+        record["kind"] = "missing"
+    tx.setdefault("backups", []).append(record)
+
+
+def prepare_backups(root: Path, tx: dict[str, Any], planned: list[tuple[Repo, dict[str, Any], Path]]) -> None:
+    for _repo, _pkg, package_path in planned:
+        for entry in package_payload_entries(package_path):
+            if entry["kind"] == "dir":
+                continue
+            remember_backup(root, tx, entry["path"])
+    tx.setdefault("events", []).append({"event": "backup-prepared", "count": len(tx.get("backups", []))})
+    update_transaction(root, tx)
+
+
+def prepare_remove_backups(root: Path, tx: dict[str, Any], records: list[dict[str, Any]]) -> None:
+    for record in records:
+        for path in record.get("files", []):
+            remember_backup(root, tx, str(path))
+    tx.setdefault("events", []).append({"event": "backup-prepared", "count": len(tx.get("backups", []))})
+    update_transaction(root, tx)
+
+
+def remove_path_for_rollback(target: Path) -> None:
+    if target.is_dir() and not target.is_symlink():
+        with contextlib.suppress(OSError):
+            target.rmdir()
+    else:
+        with contextlib.suppress(FileNotFoundError):
+            target.unlink()
+
+
+def prune_empty_parent_dirs(root: Path, target: Path) -> None:
+    root_resolved = root.resolve()
+    current = target.resolve(strict=False)
+    while current != root_resolved and root_resolved in current.parents:
+        with contextlib.suppress(OSError):
+            current.rmdir()
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+
+def rollback_transaction(root: Path, tx: dict[str, Any], db_before: dict[str, Any]) -> None:
+    for record in reversed(tx.get("backups", [])):
+        path = str(record.get("path", ""))
+        if not path:
+            continue
+        target = safe_target(root, path.lstrip("/"))
+        if not record.get("existed"):
+            remove_path_for_rollback(target)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        kind = record.get("kind")
+        if kind == "file":
+            remove_path_for_rollback(target)
+            backup = transaction_dir(root) / str(tx["id"]) / str(record.get("backup", ""))
+            shutil.copy2(backup, target)
+        elif kind == "symlink":
+            remove_path_for_rollback(target)
+            os.symlink(str(record.get("target", "")), target)
+        elif kind == "dir":
+            target.mkdir(parents=True, exist_ok=True)
+    save_installed(root, db_before)
+    tx["status"] = "rolled-back"
+    tx["finished_at"] = dt.datetime.now(UTC).isoformat()
+    tx.setdefault("events", []).append({"event": "rollback-complete"})
+    update_transaction(root, tx)
+
+
+def finish_transaction(root: Path, tx: dict[str, Any], status: str) -> None:
+    tx["status"] = status
+    tx["finished_at"] = dt.datetime.now(UTC).isoformat()
+    update_transaction(root, tx)
+
+
+def install_plan(args: argparse.Namespace, names: list[str]) -> list[tuple[Repo, dict[str, Any]]]:
+    catalog = package_catalog(indexes_for_command(args))
+    return resolve_packages(catalog, names)
+
+
+def execute_install_plan(args: argparse.Namespace, plan: list[tuple[Repo, dict[str, Any]]], *, skip_current: bool = True) -> None:
+    db_before = load_installed(args.root)
+    planned: list[tuple[Repo, dict[str, Any], Path]] = []
+    for repo, pkg in plan:
+        if skip_current and not getattr(args, "reinstall", False) and installed_matches(args.root, pkg):
+            print(f"already installed {pkg['name']} {package_version_label(pkg)}")
+            continue
+        planned.append((repo, pkg, fetch_package(repo, pkg, args.root, args.arch)))
+    if not planned:
+        return
+    conflicts = detect_file_conflicts(args.root, db_before, planned)
+    if conflicts:
+        raise Ki2CtlError("file conflicts:\n" + "\n".join(f"  {item}" for item in conflicts))
+    tx = begin_transaction(args.root, args.command, planned)
+    try:
+        prepare_backups(args.root, tx, planned)
+        for repo, pkg, package_path in planned:
+            files = extract_package(package_path, args.root)
+            record_install(args.root, repo, pkg, files)
+            record_pending_hooks(args.root, str(pkg.get("name", "")), files)
+            tx.setdefault("events", []).append({"event": "installed", "package": pkg.get("name", ""), "files": len(files)})
+            update_transaction(args.root, tx)
+            print(f"installed {pkg['name']} ({len(files)} files)")
+    except Exception as exc:
+        tx.setdefault("events", []).append({"event": "error", "message": str(exc)})
+        update_transaction(args.root, tx)
+        rollback_transaction(args.root, tx, db_before)
+        raise
+    finish_transaction(args.root, tx, "succeeded")
+
+
+def command_repo_set(args: argparse.Namespace) -> None:
+    name = args.name or DEFAULT_REPO_NAME
+    if not valid_repo_name(name):
+        raise Ki2CtlError(f"invalid repository name: {name}")
+    data = {
+        "schema": "ki2-repo-config-v1",
+        "name": name,
+        "url": norm_url(args.url),
+    }
+    if args.verify_key:
+        data["verify_key"] = str(args.verify_key)
+    path = repo_file(args.root, name)
+    write_json(path, data)
+    print(f"repo {name}: {data['url']}")
+    if args.verify_key:
+        print(f"repo {name}: verify-key {args.verify_key}")
+
+
+def command_repo_remove(args: argparse.Namespace) -> None:
+    name = args.name or DEFAULT_REPO_NAME
+    if not valid_repo_name(name):
+        raise Ki2CtlError(f"invalid repository name: {name}")
+    removed = False
+    path = repo_file(args.root, name)
+    if path.exists():
+        path.unlink()
+        removed = True
+    state = repo_state_dir(args.root, name)
+    if state.exists():
+        shutil.rmtree(state)
+        removed = True
+    if removed:
+        print(f"removed repo {name}")
+    else:
+        print(f"repo {name} is not configured")
+
+
+def command_repo_list(args: argparse.Namespace) -> None:
+    repos = load_configured_repos(args.root)
+    if not repos:
+        print("no repositories configured")
+        return
+    for repo in repos:
+        print(f"{repo.name}\t{repo.url}")
+
+
+def command_update(args: argparse.Namespace) -> None:
+    for repo in selected_repos(args):
+        metadata: dict[str, Any] | None = None
+        verify_key = None if args.no_verify else repo_verify_key_path(args.root, repo, args.verify_key)
+        if verify_key is not None:
+            if not verify_key.exists():
+                raise Ki2CtlError(f"{repo.name}: repository verify key not found: {verify_key}")
+            metadata = fetch_repo_metadata(repo, args.arch)
+            if not verify_metadata_signature(metadata, read_verify_key(verify_key)):
+                raise Ki2CtlError(f"{repo.name}: repository metadata signature verification failed")
+            save_repo_metadata(args.root, repo, args.arch, metadata)
+        elif args.require_signature:
+            raise Ki2CtlError(f"{repo.name}: repository signature verification key is required")
+        index, index_payload = fetch_repo_index_payload(repo, args.arch)
+        if metadata is not None:
+            expected = str(metadata.get("index", {}).get("sha256") or "")
+            actual = bytes_sha256(index_payload)
+            if expected and expected != actual:
+                raise Ki2CtlError(f"{repo.name}: repository index sha256 does not match signed metadata")
+        path = save_repo_index(args.root, repo, args.arch, index)
+        suffix = " (metadata verified)" if metadata is not None else ""
+        print(f"{repo.name}: {len(index.get('packages', []))} packages -> {path}{suffix}")
+
+
+def command_search(args: argparse.Namespace) -> None:
+    term = args.term.lower()
+    catalog = package_catalog(indexes_for_command(args))
+    for name, (_repo, pkg) in sorted(catalog.items()):
+        text = f"{name} {pkg.get('summary', '')}".lower()
+        if term in text:
+            print(f"{name}\t{pkg.get('version')}-{pkg.get('release')}\t{pkg.get('summary', '')}")
+
+
+def command_info(args: argparse.Namespace) -> None:
+    catalog = package_catalog(indexes_for_command(args))
+    if args.name not in catalog:
+        raise Ki2CtlError(f"package not found: {args.name}")
+    repo, pkg = catalog[args.name]
+    print(f"Name    : {pkg.get('name')}")
+    print(f"Version : {pkg.get('version')}-{pkg.get('release')}")
+    print(f"Arch    : {pkg.get('arch')}")
+    print(f"Repo    : {repo.name} ({repo.url})")
+    print(f"Summary : {pkg.get('summary', '')}")
+    deps = runtime_deps(pkg)
+    print("Runtime :", ", ".join(deps) if deps else "-")
+    print(f"File    : {pkg.get('file')}")
+    print(f"SHA256  : {pkg.get('sha256', '')}")
+
+
+def command_install(args: argparse.Namespace) -> None:
+    plan = install_plan(args, args.names)
+    for _repo, pkg in plan:
+        print(f"{pkg['name']} {package_version_label(pkg)}")
+    if args.dry_run:
+        return
+    execute_install_plan(args, plan)
+
+
+def command_installed_list(args: argparse.Namespace) -> None:
+    db = load_installed(args.root)
+    packages = db.get("packages", {})
+    if not packages:
+        print("no installed packages recorded")
+        return
+    for name in sorted(packages):
+        pkg = packages[name]
+        print(f"{name}\t{pkg.get('version')}-{pkg.get('release')}")
+
+
+def command_remove(args: argparse.Namespace) -> None:
+    db = load_installed(args.root)
+    packages = db.get("packages", {})
+    removing = set(args.names)
+    for name in args.names:
+        if name not in packages:
+            raise Ki2CtlError(f"package is not installed: {name}")
+    blocks = reverse_dependency_blocks(packages, removing)
+    if blocks and not args.force:
+        raise Ki2CtlError("reverse dependencies prevent removal:\n" + "\n".join(f"  {item}" for item in blocks))
+    if args.dry_run:
+        for name in args.names:
+            for item in sorted(packages[name].get("files", []), reverse=True):
+                print(f"remove {item}")
+        return
+
+    db_before = copy.deepcopy(db)
+    records = [copy.deepcopy(packages[name]) for name in args.names]
+    owner_sets = file_owner_sets(db_before)
+    tx_plan = [(Repo(name="installed", url="installed"), record, Path()) for record in records]
+    tx = begin_transaction(args.root, args.command, tx_plan)
+    try:
+        prepare_remove_backups(args.root, tx, records)
+        for name in args.names:
+            files = sorted(packages[name].get("files", []), reverse=True)
+            for item in files:
+                print(f"remove {item}")
+                other_owners = owner_sets.get(str(item), set()) - removing
+                if other_owners:
+                    print(f"preserve {item} (shared by {', '.join(sorted(other_owners))})")
+                    continue
+                target = safe_target(args.root, item.lstrip("/"))
+                if target.is_dir() and not target.is_symlink():
+                    with contextlib.suppress(OSError):
+                        target.rmdir()
+                else:
+                    with contextlib.suppress(FileNotFoundError):
+                        target.unlink()
+                    prune_empty_parent_dirs(args.root, target.parent)
+            record_pending_hooks(args.root, name, files, phase="post-remove")
+            del packages[name]
+            tx.setdefault("events", []).append({"event": "removed", "package": name, "files": len(files)})
+            update_transaction(args.root, tx)
+        save_installed(args.root, db)
+    except Exception as exc:
+        tx.setdefault("events", []).append({"event": "error", "message": str(exc)})
+        update_transaction(args.root, tx)
+        rollback_transaction(args.root, tx, db_before)
+        raise
+    finish_transaction(args.root, tx, "succeeded")
+
+
+def command_upgrade(args: argparse.Namespace) -> None:
+    installed = load_installed(args.root).get("packages", {})
+    if not installed:
+        print("no installed packages recorded")
+        return
+    catalog = package_catalog(indexes_for_command(args))
+    candidates = args.names or sorted(installed)
+    roots: list[str] = []
+    for name in candidates:
+        if name not in installed:
+            raise Ki2CtlError(f"package is not installed: {name}")
+        if name not in catalog:
+            raise Ki2CtlError(f"package not found in repositories: {name}")
+        _repo, latest = catalog[name]
+        current = installed[name]
+        if package_sort_key(latest) > installed_sort_key(current):
+            roots.append(name)
+    if not roots:
+        print("no upgrades available")
+        return
+    plan = install_plan(args, roots)
+    for _repo, pkg in plan:
+        current = installed.get(str(pkg.get("name", "")))
+        current_label = package_version_label(current) if isinstance(current, dict) else "-"
+        print(f"{pkg['name']} {current_label} -> {package_version_label(pkg)}")
+    if args.dry_run:
+        return
+    execute_install_plan(args, plan)
+
+
+def command_hooks_list(args: argparse.Namespace) -> None:
+    hooks = load_pending_hooks(args.root).get("hooks", [])
+    if not hooks:
+        print("no pending hooks")
+        return
+    for item in hooks:
+        if not isinstance(item, dict):
+            continue
+        print(f"{item.get('status', 'pending')}\t{item.get('phase', 'post-install')}\t{item.get('action')}\t{item.get('package')}")
+
+
+def run_hook_action(action: str, root: Path, dry_run: bool) -> None:
+    if dry_run:
+        print(f"would run {action}")
+        return
+    if root != Path("/"):
+        print(f"deferred {action}: apply inside the installed system or run with --root /")
+        return
+    commands = {
+        "ldconfig": ["ldconfig"],
+        "systemd-daemon-reload": ["systemctl", "daemon-reload"],
+        "systemd-tmpfiles-create": ["systemd-tmpfiles", "--create"],
+    }
+    command = commands.get(action)
+    if not command:
+        print(f"unknown hook action: {action}")
+        return
+    if shutil.which(command[0]) is None:
+        print(f"missing command for {action}: {command[0]}")
+        return
+    subprocess.run(command, check=False)
+    print(f"ran {action}")
+
+
+def command_hooks_apply(args: argparse.Namespace) -> None:
+    data = load_pending_hooks(args.root)
+    hooks = [item for item in data.get("hooks", []) if isinstance(item, dict)]
+    if not hooks:
+        print("no pending hooks")
+        return
+    for item in hooks:
+        if item.get("status") == "applied":
+            continue
+        action = str(item.get("action", ""))
+        run_hook_action(action, args.root, args.dry_run)
+        if not args.dry_run and args.root == Path("/"):
+            item["status"] = "applied"
+            item["applied_at"] = dt.datetime.now(UTC).isoformat()
+    if not args.dry_run:
+        save_pending_hooks(args.root, data)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="KIKI HTTP package manager")
+    parser.add_argument("--root", type=Path, default=Path("/"), help="target root, defaults to /")
+    parser.add_argument("--arch", default=DEFAULT_ARCH)
+    parser.add_argument("--repo", default="", help="temporary repository base URL or local path")
+    parser.add_argument("--version", action="version", version=f"ki2ctl {APP_VERSION}")
+    subcommands = parser.add_subparsers(dest="command", required=True)
+
+    repo = subcommands.add_parser("repo", help="manage repositories")
+    repo_sub = repo.add_subparsers(dest="repo_command", required=True)
+    repo_set = repo_sub.add_parser("set", help="set a repository URL or local path")
+    repo_set.add_argument("url")
+    repo_set.add_argument("--name", default=DEFAULT_REPO_NAME)
+    repo_set.add_argument("--verify-key", default="", help="store repository HMAC verify key path in the repo config")
+    repo_set.set_defaults(func=command_repo_set)
+    repo_remove = repo_sub.add_parser("remove", help="remove a repository config and cached index")
+    repo_remove.add_argument("name", nargs="?", default=DEFAULT_REPO_NAME)
+    repo_remove.set_defaults(func=command_repo_remove)
+    repo_list = repo_sub.add_parser("list", help="list configured repositories")
+    repo_list.set_defaults(func=command_repo_list)
+
+    update = subcommands.add_parser("update", help="download repository indexes")
+    update.add_argument("--verify-key", type=Path, default=None, help="verify repository metadata with an HMAC key")
+    update.add_argument("--require-signature", action="store_true", help="fail when no repository verify key is configured")
+    update.add_argument("--no-verify", action="store_true", help="skip configured repository metadata verification")
+    update.set_defaults(func=command_update)
+
+    search = subcommands.add_parser("search", help="search packages")
+    search.add_argument("term")
+    search.set_defaults(func=command_search)
+
+    info = subcommands.add_parser("info", help="show package metadata")
+    info.add_argument("name")
+    info.set_defaults(func=command_info)
+
+    install = subcommands.add_parser("install", help="install packages and runtime dependencies")
+    install.add_argument("names", nargs="+")
+    install.add_argument("--dry-run", action="store_true")
+    install.add_argument("--reinstall", action="store_true")
+    install.set_defaults(func=command_install)
+
+    upgrade = subcommands.add_parser("upgrade", help="upgrade installed packages from configured repositories")
+    upgrade.add_argument("names", nargs="*")
+    upgrade.add_argument("--dry-run", action="store_true")
+    upgrade.add_argument("--reinstall", action="store_true")
+    upgrade.set_defaults(func=command_upgrade)
+
+    installed = subcommands.add_parser("list", help="list installed package records")
+    installed.set_defaults(func=command_installed_list)
+
+    remove = subcommands.add_parser("remove", help="remove installed package records and files")
+    remove.add_argument("names", nargs="+")
+    remove.add_argument("--dry-run", action="store_true")
+    remove.add_argument("--force", action="store_true", help="remove even when installed packages depend on the target")
+    remove.set_defaults(func=command_remove)
+
+    hooks = subcommands.add_parser("hooks", help="list or apply pending post-install hooks")
+    hooks_sub = hooks.add_subparsers(dest="hooks_command", required=True)
+    hooks_list = hooks_sub.add_parser("list", help="list pending hooks")
+    hooks_list.set_defaults(func=command_hooks_list)
+    hooks_apply = hooks_sub.add_parser("apply", help="apply pending hooks")
+    hooks_apply.add_argument("--dry-run", action="store_true")
+    hooks_apply.set_defaults(func=command_hooks_apply)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    args.root = args.root.resolve()
+    if isinstance(getattr(args, "verify_key", None), Path):
+        args.verify_key = args.verify_key.resolve()
+    try:
+        args.func(args)
+    except (Ki2CtlError, OSError, json.JSONDecodeError, tarfile.TarError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

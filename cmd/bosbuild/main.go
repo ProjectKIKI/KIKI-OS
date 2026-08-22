@@ -3,37 +3,14 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
-	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 const appVersion = "0.0.3"
-
-var packageNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`)
-
-type manifest struct {
-	Name    string `yaml:"name"`
-	Version string `yaml:"version"`
-	Release string `yaml:"release"`
-	Arch    string `yaml:"arch"`
-}
-
-type buildResult struct {
-	Path   string
-	SHA256 string
-	Size   int64
-}
 
 func usage() {
 	fmt.Println("bosbuild - AOS BOS package builder (v" + appVersion + ")")
@@ -42,13 +19,13 @@ func usage() {
 	fmt.Println("  bosbuild -C <workdir> -o <output.bos>")
 	fmt.Println()
 	fmt.Println("Options:")
-	fmt.Println("  -C   작업 디렉터리 (manifest.yaml, rootfs/, scripts/ 포함)")
-	fmt.Println("  -o   출력 BOS 패키지 파일 이름 (*.bos)")
+	fmt.Println("  -C   Work directory containing manifest.yaml, rootfs/, and optional scripts/")
+	fmt.Println("  -o   Output BOS package file (*.bos)")
 }
 
 func main() {
-	workdir := flag.String("C", "", "작업 디렉터리 (manifest.yaml, rootfs/, scripts/ 포함)")
-	output := flag.String("o", "", "출력 BOS 패키지 파일 (*.bos)")
+	workdir := flag.String("C", "", "work directory containing manifest.yaml, rootfs/, and optional scripts/")
+	output := flag.String("o", "", "output BOS package file (*.bos)")
 	flag.Usage = usage
 	flag.Parse()
 
@@ -57,200 +34,161 @@ func main() {
 		os.Exit(1)
 	}
 
-	result, err := buildBos(*workdir, *output)
-	if err != nil {
+	if err := buildBos(*workdir, *output); err != nil {
 		fmt.Println("error:", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("bosbuild: created %s\nsha256: %s\nsize: %d\n", result.Path, result.SHA256, result.Size)
+	fmt.Println("bosbuild: created", *output)
 }
 
-func buildBos(workdir, output string) (buildResult, error) {
-	root, err := filepath.Abs(workdir)
+func buildBos(workdir, output string) error {
+	workdirAbs, err := filepath.Abs(workdir)
 	if err != nil {
-		return buildResult{}, fmt.Errorf("resolve workdir: %w", err)
+		return fmt.Errorf("resolve workdir: %w", err)
 	}
-	rootInfo, err := os.Stat(root)
+	outputAbs, err := filepath.Abs(output)
 	if err != nil {
-		return buildResult{}, fmt.Errorf("stat workdir: %w", err)
-	}
-	if !rootInfo.IsDir() {
-		return buildResult{}, errors.New("workdir must be a directory")
+		return fmt.Errorf("resolve output: %w", err)
 	}
 
-	outputPath, err := filepath.Abs(output)
-	if err != nil {
-		return buildResult{}, fmt.Errorf("resolve output: %w", err)
-	}
-	if filepath.Ext(outputPath) != ".bos" {
-		return buildResult{}, errors.New("output must have a .bos extension")
-	}
-	if pathWithin(root, outputPath) {
-		return buildResult{}, errors.New("output must be outside the build workdir")
+	manifestPath := filepath.Join(workdirAbs, "manifest.yaml")
+	if info, err := os.Stat(manifestPath); err != nil {
+		return fmt.Errorf("manifest.yaml not found in workdir: %w", err)
+	} else if info.IsDir() {
+		return fmt.Errorf("manifest.yaml is a directory")
 	}
 
-	if _, err := loadManifest(filepath.Join(root, "manifest.yaml")); err != nil {
-		return buildResult{}, err
+	outputDir := filepath.Dir(outputAbs)
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		return fmt.Errorf("create output directory: %w", err)
 	}
 
-	entries, err := collectEntries(root)
+	tmpFile, err := os.CreateTemp(outputDir, ".bosbuild-*.tmp")
 	if err != nil {
-		return buildResult{}, err
+		return fmt.Errorf("create temporary output: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
-		return buildResult{}, fmt.Errorf("create output directory: %w", err)
+	tmpPath := tmpFile.Name()
+	tmpAbs, err := filepath.Abs(tmpPath)
+	if err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("resolve temporary output: %w", err)
 	}
 
-	temporary, err := os.CreateTemp(filepath.Dir(outputPath), ".bosbuild-*.tmp")
-	if err != nil {
-		return buildResult{}, fmt.Errorf("create temporary output: %w", err)
-	}
-	temporaryPath := temporary.Name()
-	committed := false
+	keepTemp := false
 	defer func() {
-		_ = temporary.Close()
-		if !committed {
-			_ = os.Remove(temporaryPath)
+		if !keepTemp {
+			os.Remove(tmpPath)
 		}
 	}()
 
-	hash := sha256.New()
-	if err := writeArchive(io.MultiWriter(temporary, hash), root, entries); err != nil {
-		return buildResult{}, err
-	}
-	if err := temporary.Sync(); err != nil {
-		return buildResult{}, fmt.Errorf("sync output: %w", err)
-	}
-	info, err := temporary.Stat()
-	if err != nil {
-		return buildResult{}, fmt.Errorf("stat output: %w", err)
-	}
-	if err := temporary.Close(); err != nil {
-		return buildResult{}, fmt.Errorf("close output: %w", err)
-	}
-	if err := os.Rename(temporaryPath, outputPath); err != nil {
-		return buildResult{}, fmt.Errorf("commit output: %w", err)
-	}
-	committed = true
+	gz := gzip.NewWriter(tmpFile)
+	tw := tar.NewWriter(gz)
 
-	return buildResult{Path: outputPath, SHA256: hex.EncodeToString(hash.Sum(nil)), Size: info.Size()}, nil
-}
-
-func loadManifest(path string) (manifest, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return manifest{}, fmt.Errorf("read manifest.yaml: %w", err)
-	}
-	var value manifest
-	if err := yaml.Unmarshal(data, &value); err != nil {
-		return manifest{}, fmt.Errorf("parse manifest.yaml: %w", err)
-	}
-	value.Name = strings.TrimSpace(value.Name)
-	value.Version = strings.TrimSpace(value.Version)
-	value.Release = strings.TrimSpace(value.Release)
-	value.Arch = strings.TrimSpace(value.Arch)
-	if value.Name == "" || value.Version == "" || value.Arch == "" {
-		return manifest{}, errors.New("manifest.yaml requires name, version, and arch")
-	}
-	if !packageNamePattern.MatchString(value.Name) {
-		return manifest{}, errors.New("manifest name contains unsupported characters")
-	}
-	for field, value := range map[string]string{"version": value.Version, "release": value.Release, "arch": value.Arch} {
-		if strings.ContainsAny(value, "/\\\x00\r\n\t ") {
-			return manifest{}, fmt.Errorf("manifest %s contains unsupported characters", field)
-		}
-	}
-	return value, nil
-}
-
-func collectEntries(root string) ([]string, error) {
-	var entries []string
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+	if err := filepath.WalkDir(workdirAbs, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if path == root {
-			return nil
-		}
-		info, err := entry.Info()
+
+		pathAbs, err := filepath.Abs(path)
 		if err != nil {
 			return err
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symbolic links are not allowed: %s", path)
+		if samePath(pathAbs, outputAbs) || samePath(pathAbs, tmpAbs) {
+			return nil
 		}
-		if !info.Mode().IsRegular() && !info.IsDir() {
-			return fmt.Errorf("unsupported file type: %s", path)
-		}
-		entries = append(entries, path)
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("scan workdir: %w", err)
-	}
-	return entries, nil
-}
 
-func writeArchive(output io.Writer, root string, entries []string) error {
-	gzipWriter, err := gzip.NewWriterLevel(output, gzip.BestCompression)
-	if err != nil {
-		return fmt.Errorf("create gzip writer: %w", err)
-	}
-	gzipWriter.Header.ModTime = time.Unix(0, 0).UTC()
-	gzipWriter.Header.OS = 255
-	tarWriter := tar.NewWriter(gzipWriter)
+		rel, err := filepath.Rel(workdirAbs, pathAbs)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
 
-	for _, path := range entries {
-		info, err := os.Lstat(path)
-		if err != nil {
-			return fmt.Errorf("stat %s: %w", path, err)
-		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
-			return fmt.Errorf("resolve archive path: %w", err)
-		}
-		header, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return fmt.Errorf("create header for %s: %w", relative, err)
-		}
-		header.Name = filepath.ToSlash(relative)
-		header.ModTime = time.Unix(0, 0).UTC()
-		header.AccessTime = time.Time{}
-		header.ChangeTime = time.Time{}
-		header.Uid = 0
-		header.Gid = 0
-		header.Uname = "root"
-		header.Gname = "root"
-		if err := tarWriter.WriteHeader(header); err != nil {
-			return fmt.Errorf("write header for %s: %w", relative, err)
-		}
-		if !info.Mode().IsRegular() {
-			continue
-		}
-		file, err := os.Open(path)
-		if err != nil {
-			return fmt.Errorf("open %s: %w", relative, err)
-		}
-		_, copyErr := io.Copy(tarWriter, file)
-		closeErr := file.Close()
-		if copyErr != nil {
-			return fmt.Errorf("archive %s: %w", relative, copyErr)
-		}
-		if closeErr != nil {
-			return fmt.Errorf("close %s: %w", relative, closeErr)
-		}
+		return addPathToTar(tw, workdirAbs, pathAbs, d)
+	}); err != nil {
+		closeWriters(tw, gz, tmpFile)
+		return fmt.Errorf("walk workdir: %w", err)
 	}
-	if err := tarWriter.Close(); err != nil {
-		return fmt.Errorf("close tar archive: %w", err)
+
+	if err := tw.Close(); err != nil {
+		gz.Close()
+		tmpFile.Close()
+		return fmt.Errorf("close tar writer: %w", err)
 	}
-	if err := gzipWriter.Close(); err != nil {
-		return fmt.Errorf("close gzip archive: %w", err)
+	if err := gz.Close(); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("close gzip writer: %w", err)
 	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("close output: %w", err)
+	}
+
+	if err := os.Remove(outputAbs); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("replace existing output: %w", err)
+	}
+	if err := os.Rename(tmpPath, outputAbs); err != nil {
+		return fmt.Errorf("move output into place: %w", err)
+	}
+	keepTemp = true
+
 	return nil
 }
 
-func pathWithin(root, candidate string) bool {
-	relative, err := filepath.Rel(root, candidate)
-	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+func addPathToTar(tw *tar.Writer, workdir, path string, d os.DirEntry) error {
+	info, err := d.Info()
+	if err != nil {
+		return err
+	}
+
+	var linkTarget string
+	if info.Mode()&os.ModeSymlink != 0 {
+		linkTarget, err = os.Readlink(path)
+		if err != nil {
+			return err
+		}
+	} else if !info.Mode().IsRegular() && !info.IsDir() {
+		return nil
+	}
+
+	hdr, err := tar.FileInfoHeader(info, linkTarget)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(workdir, path)
+	if err != nil {
+		return err
+	}
+	hdr.Name = filepath.ToSlash(rel)
+
+	if err := tw.WriteHeader(hdr); err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return nil
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(tw, f)
+	closeErr := f.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
+}
+
+func samePath(a, b string) bool {
+	rel, err := filepath.Rel(a, b)
+	return err == nil && rel == "."
+}
+
+func closeWriters(tw *tar.Writer, gz *gzip.Writer, f *os.File) {
+	_ = tw.Close()
+	_ = gz.Close()
+	_ = f.Close()
 }
