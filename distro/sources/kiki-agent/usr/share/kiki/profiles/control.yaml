@@ -1,0 +1,7 @@
+kubernetes:
+  role: control-plane
+  kubeadm:
+    action: join
+    config_template: /etc/kubernetes/kiki/kubeadm-join-control-plane.yaml
+  join:
+    control_plane_certificate_policy: manual

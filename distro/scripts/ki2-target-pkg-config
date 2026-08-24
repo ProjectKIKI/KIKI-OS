@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+# pkg-config is a host build tool. GIR generation runs it while target shared
+# libraries are on LD_LIBRARY_PATH, which must not leak into the host RPM-backed
+# pkg-config wrapper.
+unset LD_LIBRARY_PATH
+exec /usr/bin/pkg-config "$@"

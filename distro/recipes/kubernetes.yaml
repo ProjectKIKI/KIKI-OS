@@ -5,6 +5,245 @@
 # exercise real kubeadm/firewall/time-sync paths before Stage 3 source rebuilds.
 
 recipes:
+  - name: libffi
+    version: "3.4.8"
+    release: 1
+    summary: Foreign function interface library for GLib and Python bindings
+    license: MIT
+    tier: base
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://github.com/libffi/libffi/releases/download/v3.4.8/libffi-3.4.8.tar.gz
+      file: libffi-3.4.8.tar.gz
+      sha256: bc9842a18898bfacb0ed1252c4febcc7e78fa139fd27fdc7a3e30d9d9356119b
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --disable-static --enable-shared --disable-docs
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+        - find "${KI2_DESTDIR}/usr/lib" -name '*.la' -delete
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "-Wl,-z,relro,-z,now"
+
+  - name: pcre2
+    version: "10.46"
+    release: 1
+    summary: Perl-compatible regular expression library for GLib
+    license: BSD-3-Clause
+    tier: base
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.46/pcre2-10.46.tar.bz2
+      file: pcre2-10.46.tar.bz2
+      sha256: 15fbc5aba6beee0b17aecb04602ae39432393aba1ebd8e39b7cabf7db883299f
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --disable-static --enable-shared --enable-pcre2-8 --disable-pcre2-16 --disable-pcre2-32 --enable-unicode --enable-jit
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+        - find "${KI2_DESTDIR}/usr/lib" -name '*.la' -delete
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "-Wl,-z,relro,-z,now"
+
+  - name: glib
+    version: "2.84.4"
+    release: 1
+    summary: Core event loop, object system, and GIO runtime
+    license: LGPL-2.1-or-later
+    tier: base
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://download.gnome.org/sources/glib/2.84/glib-2.84.4.tar.xz
+      file: glib-2.84.4.tar.xz
+      sha256: 8a9ea10943c36fc117e253f80c91e477b673525ae45762942858aef57631bb90
+    depends:
+      build: [libffi, pcre2, zlib]
+      runtime: [glibc, libffi, pcre2, zlib]
+    build:
+      system: meson
+      sysroot_exclude: [glibc]
+      configure_options: [-Ddefault_library=shared, -Dbuildtype=release, -Dtests=false, -Dinstalled_tests=false, -Ddocumentation=false, -Dman-pages=disabled, -Dnls=disabled, -Dglib_debug=disabled, -Dselinux=disabled, -Dlibmount=disabled, -Dlibelf=disabled, -Dsysprof=disabled, -Ddtrace=disabled, -Dsystemtap=disabled, -Dintrospection=disabled]
+      configure:
+        - meson setup "${KI2_BUILD_DIR}/glib" "${KI2_SOURCE_DIR}" --prefix=/usr --libdir=lib -Ddefault_library=shared -Dbuildtype=release -Dtests=false -Dinstalled_tests=false -Ddocumentation=false -Dman-pages=disabled -Dnls=disabled -Dglib_debug=disabled -Dselinux=disabled -Dlibmount=disabled -Dlibelf=disabled -Dsysprof=disabled -Ddtrace=disabled -Dsystemtap=disabled -Dintrospection=disabled
+      compile:
+        - meson compile -C "${KI2_BUILD_DIR}/glib" -j "${KI2_JOBS}"
+      install:
+        - DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/glib"
+      env:
+        CFLAGS: "${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+  - name: python-setuptools
+    version: "84.0.0"
+    release: 2
+    summary: Python packaging bootstrap and distutils compatibility runtime
+    license: MIT
+    tier: runtime
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://files.pythonhosted.org/packages/6d/44/f5da03a8ef95d369145c5bb53050e7877c9f3d312e128605fd9504829143/setuptools-84.0.0.tar.gz
+      file: setuptools-84.0.0.tar.gz
+      sha256: f4695c21257f0d9b537ec2692c941d02ee143b7cc1276941349a546573b2ef73
+    depends:
+      build: [python]
+      runtime: [python]
+    build:
+      system: python
+      sysroot_exclude: [glibc]
+      install:
+        - install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3" "${KI2_BUILD_DIR}/target-python3"
+        - cd "${KI2_SOURCE_DIR}" && "${KI2_BUILD_DIR}/target-python3" setup.py install --root="${KI2_DESTDIR}" --prefix=/usr --single-version-externally-managed --record="${KI2_BUILD_DIR}/setuptools-files.txt"
+        - find "${KI2_DESTDIR}/usr/lib/python3.12" -type f -name '*.pyc' -delete
+        - find "${KI2_DESTDIR}/usr/lib/python3.12" -depth -type d -name '__pycache__' -empty -delete
+        - find "${KI2_DESTDIR}" -type f -name '*.exe' -delete
+      env:
+        PYTHONDONTWRITEBYTECODE: "1"
+        PYTHONHASHSEED: "0"
+
+  - name: gobject-introspection
+    version: "1.84.0"
+    release: 6
+    summary: GObject introspection tools, GIR metadata, and typelib runtime
+    license: LGPL-2.1-or-later AND GPL-2.0-or-later
+    tier: runtime
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://download.gnome.org/sources/gobject-introspection/1.84/gobject-introspection-1.84.0.tar.xz
+      file: gobject-introspection-1.84.0.tar.xz
+      sha256: 945b57da7ec262e5c266b89e091d14be800cc424277d82a02872b7d794a84779
+      extra:
+        - url: https://download.gnome.org/sources/glib/2.84/glib-2.84.4.tar.xz
+          file: glib-2.84.4.tar.xz
+          sha256: 8a9ea10943c36fc117e253f80c91e477b673525ae45762942858aef57631bb90
+    depends:
+      build: [glib, libffi, python, python-setuptools]
+      runtime: [glib, libffi, python, python-setuptools]
+    build:
+      system: meson
+      sysroot_exclude: [glibc]
+      configure_options: [-Ddefault_library=shared, -Dbuildtype=release, -Dcairo=disabled, -Ddoctool=disabled, -Dgtk_doc=false, -Dtests=false, -Dbuild_introspection_data=true, -Dpython.platlibdir=lib/python3.12/site-packages, -Dpython.purelibdir=lib/python3.12/site-packages]
+      configure:
+        - install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3" "${KI2_BUILD_DIR}/target-python3"
+        - install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"
+        - meson setup "${KI2_BUILD_DIR}/gobject-introspection" "${KI2_SOURCE_DIR}/gobject-introspection-1.84.0" --prefix=/usr --libdir=lib -Ddefault_library=shared -Dbuildtype=release -Dcairo=disabled -Ddoctool=disabled -Dgtk_doc=false -Dtests=false -Dbuild_introspection_data=true -Dpython="${KI2_BUILD_DIR}/target-python3" -Dpython.platlibdir=lib/python3.12/site-packages -Dpython.purelibdir=lib/python3.12/site-packages
+      compile:
+        - meson compile -C "${KI2_BUILD_DIR}/gobject-introspection" -j "${KI2_JOBS}"
+      install:
+        - DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/gobject-introspection"
+        - for tool in g-ir-scanner g-ir-annotation-tool; do sed -i '1c #!/usr/bin/python3' "${KI2_DESTDIR}/usr/bin/${tool}"; done
+        - cp -a "${KI2_DESTDIR}/usr/." "${KI2_SYSROOT}/usr/"
+        - sed -i "1c #!/usr/bin/env ${KI2_BUILD_DIR}/target-python3" "${KI2_SYSROOT}/usr/bin/g-ir-scanner"
+        - install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-scanner" "${KI2_BUILD_DIR}/glib-tools/g-ir-scanner"
+        - 'PATH="${KI2_BUILD_DIR}/glib-tools:$PATH" meson setup "${KI2_BUILD_DIR}/glib-introspection" "${KI2_SOURCE_DIR}/glib-2.84.4" --prefix=/usr --libdir=lib -Ddefault_library=shared -Dbuildtype=release -Dtests=false -Dinstalled_tests=false -Ddocumentation=false -Dman-pages=disabled -Dnls=disabled -Dglib_debug=disabled -Dselinux=disabled -Dlibmount=disabled -Dlibelf=disabled -Dsysprof=disabled -Ddtrace=disabled -Dsystemtap=disabled -Dintrospection=enabled'
+        - ninja -C "${KI2_BUILD_DIR}/glib-introspection" -j "${KI2_JOBS}"
+        - mkdir -p "${KI2_BUILD_DIR}/glib-introspection-install" && DESTDIR="${KI2_BUILD_DIR}/glib-introspection-install" ninja -C "${KI2_BUILD_DIR}/glib-introspection" install
+        - mkdir -p "${KI2_DESTDIR}/usr/share/gir-1.0" "${KI2_DESTDIR}/usr/lib/girepository-1.0"
+        - find "${KI2_BUILD_DIR}/glib-introspection-install/usr/share/gir-1.0" -maxdepth 1 -type f -name '*.gir' -exec install -m644 '{}' "${KI2_DESTDIR}/usr/share/gir-1.0/" ';'
+        - find "${KI2_BUILD_DIR}/glib-introspection-install/usr/lib/girepository-1.0" -maxdepth 1 -type f -name '*.typelib' -exec install -m644 '{}' "${KI2_DESTDIR}/usr/lib/girepository-1.0/" ';'
+        - find "${KI2_DESTDIR}/usr" -type f -name '*.pyc' -delete
+        - find "${KI2_DESTDIR}/usr" -depth -type d -name '__pycache__' -empty -delete
+        - find "${KI2_DESTDIR}/usr/lib" -name '*.a' -delete
+      env:
+        CPPFLAGS: "${KI2_SYSROOT_CPPFLAGS}"
+        CFLAGS: "${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        PKG_CONFIG: "${KI2_BUILD_DIR}/target-pkg-config"
+        PYTHONDONTWRITEBYTECODE: "1"
+        PYTHONHASHSEED: "0"
+
+  - name: python3-dbus
+    version: "1.4.0"
+    release: 3
+    summary: Python 3 bindings for the D-Bus message bus
+    license: MIT
+    tier: runtime
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://dbus.freedesktop.org/releases/dbus-python/dbus-python-1.4.0.tar.xz
+      file: dbus-python-1.4.0.tar.xz
+      sha256: c36b28f10ffcc8f1f798aca973bcc132f91f33eb9b6b8904381b4077766043d5
+    depends:
+      build: [dbus, glib, python]
+      runtime: [dbus, glib, python]
+    build:
+      system: meson
+      sysroot_exclude: [glibc]
+      configure_options: [-Dbuildtype=release, -Ddoc=disabled, -Dinstalled_tests=false, -Dtests=disabled, -Dpython.platlibdir=lib/python3.12/site-packages, -Dpython.purelibdir=lib/python3.12/site-packages]
+      configure:
+        - install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3" "${KI2_BUILD_DIR}/target-python3"
+        - meson setup "${KI2_BUILD_DIR}/python3-dbus" "${KI2_SOURCE_DIR}" --prefix=/usr --libdir=lib -Dbuildtype=release -Ddoc=disabled -Dinstalled_tests=false -Dtests=disabled -Dpython="${KI2_BUILD_DIR}/target-python3" -Dpython.platlibdir=lib/python3.12/site-packages -Dpython.purelibdir=lib/python3.12/site-packages
+      compile:
+        - meson compile -C "${KI2_BUILD_DIR}/python3-dbus" -j "${KI2_JOBS}"
+      install:
+        - DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/python3-dbus"
+        - find "${KI2_DESTDIR}/usr/lib/python3.12" -type f -name '*.pyc' -delete
+        - find "${KI2_DESTDIR}/usr/lib/python3.12" -depth -type d -name '__pycache__' -empty -delete
+        - find "${KI2_DESTDIR}/usr/lib/python3.12" -type f -exec sh -c 'for binary do file "${binary}" | grep -q ELF && strip --strip-unneeded "${binary}" || true; done' sh '{}' +
+      env:
+        CPPFLAGS: "${KI2_SYSROOT_CPPFLAGS}"
+        CFLAGS: "${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=${KI2_WORK}=/usr/src/python3-dbus -fdebug-prefix-map=${KI2_WORK}=/usr/src/python3-dbus -ffile-prefix-map=${KI2_SYSROOT}=/usr -fdebug-prefix-map=${KI2_SYSROOT}=/usr"
+        LDFLAGS: "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        PYTHONDONTWRITEBYTECODE: "1"
+        PYTHONHASHSEED: "0"
+
+  - name: python3-gobject
+    version: "3.52.3"
+    release: 3
+    summary: Python 3 bindings for GLib and GObject Introspection
+    license: LGPL-2.1-or-later
+    tier: runtime
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://download.gnome.org/sources/pygobject/3.52/pygobject-3.52.3.tar.gz
+      file: pygobject-3.52.3.tar.gz
+      sha256: 00e427d291e957462a8fad659a9f9c8be776ff82a8b76bdf402f1eaeec086d82
+    depends:
+      build: [glib, gobject-introspection, libffi, python]
+      runtime: [glib, gobject-introspection, libffi, python]
+    build:
+      system: meson
+      sysroot_exclude: [glibc]
+      configure_options: [-Dbuildtype=release, -Dtests=false, -Dpycairo=disabled, -Dpython.platlibdir=lib/python3.12/site-packages, -Dpython.purelibdir=lib/python3.12/site-packages]
+      configure:
+        - install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3" "${KI2_BUILD_DIR}/target-python3"
+        - meson setup "${KI2_BUILD_DIR}/python3-gobject" "${KI2_SOURCE_DIR}" --prefix=/usr --libdir=lib -Dbuildtype=release -Dtests=false -Dpycairo=disabled -Dpython="${KI2_BUILD_DIR}/target-python3" -Dpython.platlibdir=lib/python3.12/site-packages -Dpython.purelibdir=lib/python3.12/site-packages
+      compile:
+        - meson compile -C "${KI2_BUILD_DIR}/python3-gobject" -j "${KI2_JOBS}"
+      install:
+        - DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/python3-gobject"
+        - find "${KI2_DESTDIR}/usr/lib/python3.12" -type f -name '*.pyc' -delete
+        - find "${KI2_DESTDIR}/usr/lib/python3.12" -depth -type d -name '__pycache__' -empty -delete
+        - find "${KI2_DESTDIR}/usr/lib/python3.12" -type f -exec sh -c 'for binary do file "${binary}" | grep -q ELF && strip --strip-unneeded "${binary}" || true; done' sh '{}' +
+      env:
+        CPPFLAGS: "${KI2_SYSROOT_CPPFLAGS}"
+        CFLAGS: "${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=${KI2_WORK}=/usr/src/python3-gobject -fdebug-prefix-map=${KI2_WORK}=/usr/src/python3-gobject -ffile-prefix-map=${KI2_SYSROOT}=/usr -fdebug-prefix-map=${KI2_SYSROOT}=/usr"
+        LDFLAGS: "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        PYTHONDONTWRITEBYTECODE: "1"
+        PYTHONHASHSEED: "0"
+
   - name: conmon
     version: "2.1.13"
     release: 2
@@ -266,41 +505,279 @@ recipes:
       commands:
         - install -Dm755 "${KI2_SOURCE_DIR}/kubectl" "${KI2_DESTDIR}/usr/bin/kubectl"
 
-  - name: conntrack-tools
-    version: "1.4.7"
+  - name: gmp
+    version: "6.3.0"
+    release: 1
+    summary: GNU multiple precision arithmetic library
+    license: LGPL-3.0-or-later OR GPL-2.0-or-later
+    tier: base
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
+      file: gmp-6.3.0.tar.xz
+      sha256: a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --disable-static --enable-shared
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+        - find "${KI2_DESTDIR}/usr/lib" -name '*.la' -delete
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "-Wl,-z,relro,-z,now"
+
+  - name: jansson
+    version: "2.15.0"
+    release: 1
+    summary: C library for encoding and decoding JSON
+    license: MIT
+    tier: base
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://github.com/akheron/jansson/releases/download/v2.15.0/jansson-2.15.0.tar.gz
+      file: jansson-2.15.0.tar.gz
+      sha256: 070a629590723228dc3b744ae90e965a569efb9c535b3309b52e80e75d8eb3be
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --disable-static --enable-shared --enable-dtoa
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+        - find "${KI2_DESTDIR}/usr/lib" -name '*.la' -delete
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "-Wl,-z,relro,-z,now"
+
+  - name: readline
+    version: "8.3"
     release: 2
+    summary: GNU command line editing library
+    license: GPL-3.0-or-later
+    tier: base
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz
+      file: readline-8.3.tar.gz
+      sha256: fe5383204467828cd495ee8d1d3c037a7eba1389c22bc6a041f627976f9061cc
+    depends:
+      build: [ncurses]
+      runtime: [glibc, ncurses]
+    build:
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --disable-static --enable-shared --with-curses --with-shared-termcap-library
+        - sed -i 's# -Wl,-rpath,$(libdir)##g' "${KI2_SOURCE_DIR}/shlib/Makefile"
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+      env:
+        CPPFLAGS: "${KI2_SYSROOT_CPPFLAGS}"
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+  - name: libmnl
+    version: "1.0.5"
+    release: 1
+    summary: Minimalistic Netlink userspace library
+    license: LGPL-2.1-or-later
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://www.netfilter.org/projects/libmnl/files/libmnl-1.0.5.tar.bz2
+      file: libmnl-1.0.5.tar.bz2
+      sha256: 274b9b919ef3152bfb3da3a13c950dd60d6e2bcd54230ffeca298d03b40d0525
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+        - find "${KI2_DESTDIR}/usr/lib" -name '*.la' -delete
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "-Wl,-z,relro,-z,now"
+
+  - name: libnfnetlink
+    version: "1.0.2"
+    release: 1
+    summary: Low-level nfnetlink userspace library
+    license: GPL-2.0-or-later
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://www.netfilter.org/projects/libnfnetlink/files/libnfnetlink-1.0.2.tar.bz2
+      file: libnfnetlink-1.0.2.tar.bz2
+      sha256: b064c7c3d426efb4786e60a8e6859b82ee2f2c5e49ffeea640cfe4fe33cbc376
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+        - find "${KI2_DESTDIR}/usr/lib" -name '*.la' -delete
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "-Wl,-z,relro,-z,now"
+
+  - name: libnetfilter-conntrack
+    version: "1.1.1"
+    release: 2
+    summary: Netfilter connection tracking userspace library
+    license: GPL-2.0-or-later
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://www.netfilter.org/projects/libnetfilter_conntrack/files/libnetfilter_conntrack-1.1.1.tar.xz
+      file: libnetfilter_conntrack-1.1.1.tar.xz
+      sha256: 769d3eaf57fa4fbdb05dd12873b6cb9a5be7844d8937e222b647381d44284820
+    depends:
+      build: [libmnl, libnfnetlink]
+      runtime: [glibc, libmnl, libnfnetlink]
+    build:
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+        - find "${KI2_DESTDIR}/usr/lib" -name '*.la' -delete
+        - sed -i "s#-L${KI2_SYSROOT}/usr/lib ##g" "${KI2_DESTDIR}/usr/lib/pkgconfig/libnetfilter_conntrack.pc"
+      env:
+        CPPFLAGS: "${KI2_SYSROOT_CPPFLAGS}"
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+  - name: libnftnl
+    version: "1.3.1"
+    release: 1
+    summary: Netfilter nftables userspace library
+    license: GPL-2.0-or-later
+    tier: network
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://www.netfilter.org/projects/libnftnl/files/libnftnl-1.3.1.tar.xz
+      file: libnftnl-1.3.1.tar.xz
+      sha256: 607da28dba66fbdeccf8ef1395dded9077e8d19f2995f9a4d45a9c2f0bcffba8
+    depends:
+      build: [libmnl]
+      runtime: [glibc, libmnl]
+    build:
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --disable-static --enable-shared
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+        - find "${KI2_DESTDIR}/usr/lib" -name '*.la' -delete
+      env:
+        CPPFLAGS: "${KI2_SYSROOT_CPPFLAGS}"
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+  - name: conntrack-tools
+    version: "1.4.9"
+    release: 3
     summary: Connection tracking tools for Kubernetes networking
     license: GPL-2.0-or-later
     tier: network
     architectures: [x86_64]
     source:
-      type: virtual
+      type: url
+      url: https://www.netfilter.org/projects/conntrack-tools/files/conntrack-tools-1.4.9.tar.xz
+      file: conntrack-tools-1.4.9.tar.xz
+      sha256: c15afe488a8d408c9d6d61e97dbd19f3c591942f62c13df6453a961ca4231cae
     depends:
-      build: []
-      runtime: [glibc]
+      build: [libmnl, libnfnetlink, libnetfilter-conntrack]
+      runtime: [glibc, libmnl, libnfnetlink, libnetfilter-conntrack]
     build:
-      system: host-files
-      host_files:
-        - source: /usr/sbin/conntrack
-          include_ldd: true
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure_options: [--disable-cthelper, --disable-cttimeout]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --disable-cthelper --disable-cttimeout
+      compile:
+        - make -C "${KI2_SOURCE_DIR}/extensions" -j"${KI2_JOBS}"
+        - make -C "${KI2_SOURCE_DIR}/src" conntrack -j"${KI2_JOBS}"
+      install:
+        - install -Dm755 "${KI2_SOURCE_DIR}/src/conntrack" "${KI2_DESTDIR}/usr/sbin/conntrack"
+        - install -Dm644 "${KI2_SOURCE_DIR}/conntrack.8" "${KI2_DESTDIR}/usr/share/man/man8/conntrack.8"
+      env:
+        ac_cv_header_rpc_rpc_msg_h: "yes"
+        CPPFLAGS: "${KI2_SYSROOT_CPPFLAGS}"
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
 
   - name: nftables
-    version: "1.0.9"
-    release: 2
+    version: "1.1.6"
+    release: 5
     summary: nft userspace firewall package
     license: GPL-2.0-only
     tier: network
     architectures: [x86_64]
     source:
-      type: virtual
+      type: url
+      url: https://www.netfilter.org/projects/nftables/files/nftables-1.1.6.tar.xz
+      file: nftables-1.1.6.tar.xz
+      sha256: 372931bda8556b310636a2f9020adc710f9bab66f47efe0ce90bff800ac2530c
     depends:
-      build: []
-      runtime: [glibc]
+      build: [gmp, jansson, readline, libmnl, libnftnl, iptables]
+      runtime: [glibc, gmp, jansson, readline, libmnl, libnftnl, iptables]
     build:
-      system: host-files
-      host_files:
-        - source: /usr/sbin/nft
-          include_ldd: true
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure_options: [--disable-debug, --with-cli=readline, --with-json, --with-xtables]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --sbindir=/usr/sbin --sysconfdir=/etc --disable-debug --with-cli=readline --with-json --with-xtables --with-unitdir=/usr/lib/systemd/system
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+        - install -Dm644 "${KI2_SOURCE_DIR}/py/src/__init__.py" "${KI2_DESTDIR}/usr/lib/python3.12/site-packages/nftables/__init__.py"
+        - install -Dm644 "${KI2_SOURCE_DIR}/py/src/nftables.py" "${KI2_DESTDIR}/usr/lib/python3.12/site-packages/nftables/nftables.py"
+        - install -Dm644 "${KI2_SOURCE_DIR}/py/src/schema.json" "${KI2_DESTDIR}/usr/lib/python3.12/site-packages/nftables/schema.json"
+        - find "${KI2_DESTDIR}/usr/lib" -name '*.la' -delete
+      env:
+        CPPFLAGS: "${KI2_SYSROOT_CPPFLAGS}"
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
       stub:
         services:
           - name: nftables.service
@@ -309,175 +786,194 @@ recipes:
         files:
           - path: /etc/nftables.conf
             lines:
-              - "# KIKI Stage 2 nftables baseline."
+              - "# KIKI Stage 3 nftables baseline."
               - "flush ruleset"
 
   - name: iptables
-    version: "1.8.10"
-    release: 2
+    version: "1.8.13"
+    release: 4
     summary: iptables nft compatibility package
     license: GPL-2.0-only
     tier: network
     architectures: [x86_64]
     source:
-      type: virtual
+      type: url
+      url: https://www.netfilter.org/projects/iptables/files/iptables-1.8.13.tar.xz
+      file: iptables-1.8.13.tar.xz
+      sha256: 1afcd33da9e8f913ace6a2126788162e207e26f5d5e29c6573c0e581ffc58b99
     depends:
-      build: []
-      runtime: [glibc, nftables]
+      build: [libmnl, libnfnetlink, libnetfilter-conntrack, libnftnl]
+      runtime: [glibc, libmnl, libnfnetlink, libnetfilter-conntrack, libnftnl]
     build:
-      system: host-files
-      host_files:
-        - source: /usr/sbin/iptables
-          include_ldd: true
-        - source: /usr/sbin/ip6tables
-          include_ldd: true
-        - source: /usr/sbin/iptables-save
-          include_ldd: true
-        - source: /usr/sbin/iptables-restore
-          include_ldd: true
-        - source: /usr/sbin/iptables-nft
-          include_ldd: true
-          optional: true
-        - source: /usr/sbin/ip6tables-nft
-          include_ldd: true
-          optional: true
-        - source: /usr/sbin/iptables-nft-save
-          include_ldd: true
-          optional: true
-        - source: /usr/sbin/iptables-nft-restore
-          include_ldd: true
-          optional: true
-
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure_options: [--enable-nftables, --enable-libnfnetlink, --enable-connlabel, --enable-devel, --disable-static, --enable-shared]
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --sbindir=/usr/sbin --libexecdir=/usr/lib --enable-nftables --enable-libnfnetlink --enable-connlabel --enable-devel --disable-static --enable-shared
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+        - ln -sfn ../sbin/xtables-legacy-multi "${KI2_DESTDIR}/usr/bin/iptables-xml"
+        - for command in iptables iptables-restore iptables-save ip6tables ip6tables-restore ip6tables-save; do ln -sfn xtables-nft-multi "${KI2_DESTDIR}/usr/sbin/${command}"; done
+        - find "${KI2_DESTDIR}/usr/lib" -name '*.la' -delete
+      env:
+        CPPFLAGS: "${KI2_SYSROOT_CPPFLAGS}"
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
   - name: firewalld
-    version: "1.3.4"
-    release: 2
+    version: "2.5.1"
+    release: 10
     summary: Optional dynamic firewall manager package
     license: GPL-2.0-or-later
     tier: network
     architectures: [x86_64]
     source:
-      type: virtual
+      type: url
+      url: https://github.com/firewalld/firewalld/releases/download/v2.5.1/firewalld-2.5.1.tar.bz2
+      file: firewalld-2.5.1.tar.bz2
+      sha256: 50fd01cf0b696a1cb7ca722e972d6173b0c5aa6ab13892b00842ae52172b081e
     depends:
-      build: []
-      runtime: [dbus, nftables, python, systemd]
+      build: [glib]
+      runtime: [dbus, glib, gobject-introspection, nftables, python, python3-dbus, python3-gobject, systemd]
     build:
-      system: host-files
-      host_files:
-        - source: /usr/sbin/firewalld
-          mode: "0755"
-        - source: /usr/bin/firewall-cmd
-          mode: "0755"
-        - source: /usr/bin/firewall-offline-cmd
-          mode: "0755"
-          optional: true
-        - source: /usr/lib/firewalld
-          recursive: true
-          optional: true
-        - source: /usr/lib/python3.9/site-packages/firewall
-          destination: /usr/lib/python3.12/site-packages/firewall
-          recursive: true
-          optional: true
-        - source: /usr/lib/python3.9/site-packages/nftables
-          destination: /usr/lib/python3.12/site-packages/nftables
-          recursive: true
-          optional: true
+      system: gnu
+      skip_sysroot: true
+      configure_options: [--disable-docs, --disable-nls, --disable-schemas-compile, --disable-sysconfig, --with-systemd-unitdir=/usr/lib/systemd/system]
+      configure:
+        - install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/intltool-minimal" "${KI2_BUILD_DIR}/firewalld-tools/intltool-merge" && ln -sf intltool-merge "${KI2_BUILD_DIR}/firewalld-tools/intltool-update" && ln -sf intltool-merge "${KI2_BUILD_DIR}/firewalld-tools/intltool-extract"
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-docs --disable-nls --disable-schemas-compile --disable-sysconfig --with-systemd-unitdir=/usr/lib/systemd/system --with-iptables=/usr/sbin/iptables --with-ip6tables=/usr/sbin/ip6tables --with-ebtables=/usr/sbin/ebtables --without-ipset PYTHON=/usr/bin/python3
+      compile:
+        - make -C "${KI2_SOURCE_DIR}/config" -j"${KI2_JOBS}"
+        - make -C "${KI2_SOURCE_DIR}/src" SUBDIRS=icons -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}/config" DESTDIR="${KI2_DESTDIR}" install
+        - make -C "${KI2_SOURCE_DIR}/doc" DESTDIR="${KI2_DESTDIR}" install
+        - make -C "${KI2_SOURCE_DIR}/shell-completion" DESTDIR="${KI2_DESTDIR}" install
+        - make -C "${KI2_SOURCE_DIR}/src" SUBDIRS=icons DESTDIR="${KI2_DESTDIR}" pythondir=/usr/lib/python3.12/site-packages pkgpythondir=/usr/lib/python3.12/site-packages/firewall install
+        - find "${KI2_DESTDIR}/usr/bin" -maxdepth 1 -type f \( -name 'firewall-applet' -o -name 'firewall-config' \) -delete
+        - find "${KI2_DESTDIR}/usr/share" -type f \( -name 'firewall-applet*' -o -name 'firewall-config.desktop' -o -name 'org.firewalld.firewall-config.metainfo.xml' -o -name 'org.fedoraproject.FirewallConfig.gschema.xml' -o -name 'firewall-config.glade' -o -name 'gtk3_*.py' \) -delete
+        - find "${KI2_DESTDIR}/etc/xdg" -type f -name 'firewall-applet.desktop' -delete
+        - find "${KI2_DESTDIR}" -name '*.pyc' -delete
+        - find "${KI2_DESTDIR}" -depth -type d -name '__pycache__' -empty -delete
+      env:
+        GLIB_COMPILE_SCHEMAS: /bin/true
+        PATH: "${KI2_BUILD_DIR}/firewalld-tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
       stub:
         directories:
           - /etc/firewalld
-        services:
-          - name: firewalld.service
-            description: firewalld dynamic firewall manager
-            exec_start: /usr/sbin/firewalld --nofork --nopid
-            after: [dbus.service]
-            wants: [dbus.service]
 
   - name: bridge-utils
-    version: "0.1.0"
-    release: 2
-    summary: Bridge command compatibility package for Kubernetes nodes
+    version: "1.7.1"
+    release: 3
+    summary: Legacy brctl compatibility package for Kubernetes nodes
     license: GPL-2.0-or-later
     tier: network
     architectures: [x86_64]
     source:
-      type: virtual
+      type: url
+      url: https://cdn.kernel.org/pub/linux/utils/net/bridge-utils/bridge-utils-1.7.1.tar.xz
+      file: bridge-utils-1.7.1.tar.xz
+      sha256: a61d8be4f1a1405c60c8ef38d544f0c18c05b33b9b07e5b4b31033536165e60e
     depends:
       build: []
       runtime: [glibc, iproute2]
     build:
-      system: host-files
-      host_files:
-        - source: /usr/sbin/bridge
-          include_ldd: true
-      stub:
-        files:
-          - path: /usr/sbin/brctl
-            mode: "0755"
-            lines:
-              - "#!/bin/sh"
-              - "exec /usr/sbin/bridge \"$@\""
+      system: make
+      skip_sysroot: true
+      configure:
+        - mkdir -p "${KI2_BUILD_DIR}/bridge-utils" && install -m644 /dev/null "${KI2_BUILD_DIR}/bridge-utils/config.h"
+      compile:
+        - for source in libbridge_devif libbridge_if libbridge_init libbridge_misc; do cc $CFLAGS -Wall -I"${KI2_BUILD_DIR}/bridge-utils" -I"${KI2_SOURCE_DIR}/libbridge" -c "${KI2_SOURCE_DIR}/libbridge/${source}.c" -o "${KI2_BUILD_DIR}/bridge-utils/${source}.o"; done
+        - ar rcs "${KI2_BUILD_DIR}/bridge-utils/libbridge.a" "${KI2_BUILD_DIR}"/bridge-utils/libbridge_*.o
+        - for source in brctl brctl_cmd brctl_disp; do cc $CFLAGS -Wall '-DPACKAGE_NAME="bridge-utils"' '-DPACKAGE_VERSION="1.7.1"' -I"${KI2_BUILD_DIR}/bridge-utils" -I"${KI2_SOURCE_DIR}/libbridge" -I"${KI2_SOURCE_DIR}/brctl" -c "${KI2_SOURCE_DIR}/brctl/${source}.c" -o "${KI2_BUILD_DIR}/bridge-utils/${source}.o"; done
+        - cc $LDFLAGS "${KI2_BUILD_DIR}/bridge-utils/brctl.o" "${KI2_BUILD_DIR}/bridge-utils/brctl_cmd.o" "${KI2_BUILD_DIR}/bridge-utils/brctl_disp.o" "${KI2_BUILD_DIR}/bridge-utils/libbridge.a" -o "${KI2_BUILD_DIR}/bridge-utils/brctl"
+      install:
+        - install -Dm755 "${KI2_BUILD_DIR}/bridge-utils/brctl" "${KI2_DESTDIR}/usr/sbin/brctl"
+        - install -Dm644 "${KI2_SOURCE_DIR}/doc/brctl.8" "${KI2_DESTDIR}/usr/share/man/man8/brctl.8"
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "-Wl,-z,relro,-z,now"
 
   - name: socat
-    version: "1.7.4.1"
-    release: 2
+    version: "1.8.1.3"
+    release: 3
     summary: Bidirectional relay tool package for kubeadm workflows
     license: GPL-2.0-only
     tier: network
     architectures: [x86_64]
     source:
-      type: virtual
+      type: url
+      url: https://deb.debian.org/debian/pool/main/s/socat/socat_1.8.1.3.orig.tar.bz2
+      file: socat-1.8.1.3.tar.bz2
+      sha256: 25bc6476292b2e614220989c77b0b6fca87bb2525d9747b31a6639b1fb602418
     depends:
-      build: []
+      build: [openssl]
       runtime: [glibc, openssl]
     build:
-      system: host-files
-      host_files:
-        - source: /usr/bin/socat
-          include_ldd: true
+      system: gnu
+      skip_sysroot: true
+      configure_options: [--disable-readline, --disable-libwrap]
+      env:
+        SOURCE_DATE_EPOCH: "1782453234"
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "-Wl,-z,relro,-z,now"
 
   - name: ethtool
     version: "6.15"
-    release: 2
+    release: 3
     summary: Ethernet device inspection package
     license: GPL-2.0-only
     tier: network
     architectures: [x86_64]
     source:
-      type: virtual
+      type: url
+      url: https://www.kernel.org/pub/software/network/ethtool/ethtool-6.15.tar.xz
+      file: ethtool-6.15.tar.xz
+      sha256: 9477c365114d910120aaec5336a1d16196c833d8486f7c6da67bedef57880ade
     depends:
       build: []
       runtime: [glibc]
     build:
-      system: host-files
-      host_files:
-        - source: /usr/sbin/ethtool
-          include_ldd: true
+      system: gnu
+      skip_sysroot: true
+      configure_options: [--disable-netlink]
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
 
   - name: chrony
     version: "4.8"
-    release: 2
+    release: 3
     summary: Time synchronization package for Kubernetes nodes
     license: GPL-2.0-only
     tier: network
     architectures: [x86_64]
     source:
-      type: virtual
+      type: url
+      url: https://chrony-project.org/releases/chrony-4.8.tar.gz
+      file: chrony-4.8.tar.gz
+      sha256: 33ea8eb2a4daeaa506e8fcafd5d6d89027ed6f2f0609645c6f149b560d301706
     depends:
       build: []
-      runtime: [glibc, openssl, systemd]
+      runtime: [glibc, libcap, libseccomp, systemd]
     build:
-      system: host-files
-      host_files:
-        - source: /usr/sbin/chronyd
-          include_ldd: true
-        - source: /usr/bin/chronyc
-          include_ldd: true
+      system: make
+      skip_sysroot: true
+      configure:
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --with-user=chrony --disable-readline --disable-sechash --disable-nts --enable-scfilter
+      compile:
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+      install:
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
       stub:
         directories:
           - /etc/chrony
         files:
           - path: /etc/chrony.conf
             lines:
-              - "# KIKI Stage 2 chrony baseline."
+              - "# KIKI Stage 3 chrony baseline."
               - "pool pool.ntp.org iburst"
               - "driftfile /var/lib/chrony/drift"
         services:

@@ -385,30 +385,34 @@ def local_source_inputs(ctx: BuildContext, recipe: Recipe) -> list[dict[str, str
         return str(path.relative_to(ctx.repo_root) if path.is_relative_to(ctx.repo_root) else path)
 
     inputs: list[dict[str, str]] = []
-    if source_path.is_file():
-        inputs.append(
-            {
-                "field": "source",
-                "path": display_path(source_path),
-                "sha256": file_sha256(source_path),
-            }
-        )
-        return inputs
 
-    for path in sorted(source_path.rglob("*")):
-        if path.is_dir():
-            continue
-        item: dict[str, str] = {
-            "field": "source",
-            "path": display_path(path),
-        }
-        if path.is_symlink():
-            item["symlink"] = os.readlink(path)
-        elif path.is_file():
-            item["sha256"] = file_sha256(path)
-        else:
-            continue
-        inputs.append(item)
+    def append_path_inputs(path_root: Path, field: str) -> None:
+        candidates = [path_root] if path_root.is_file() else sorted(path_root.rglob("*"))
+        for path in candidates:
+            if path.is_dir():
+                continue
+            item: dict[str, str] = {
+                "field": field,
+                "path": display_path(path),
+            }
+            if path.is_symlink():
+                item["symlink"] = os.readlink(path)
+            elif path.is_file():
+                item["sha256"] = file_sha256(path)
+            else:
+                continue
+            inputs.append(item)
+
+    append_path_inputs(source_path, "source")
+
+    extra_paths = source.get("inputs", [])
+    if not isinstance(extra_paths, list) or not all(isinstance(value, str) and value for value in extra_paths):
+        raise Ki2Error(f"{recipe.name}: local source.inputs must be a list of non-empty paths")
+    for value in extra_paths:
+        extra_path = repo_relative_path(ctx.repo_root, value)
+        if not extra_path.exists():
+            raise Ki2Error(f"{recipe.name}: local source input not found: {extra_path}")
+        append_path_inputs(extra_path, "source-input")
     return inputs
 
 
@@ -698,6 +702,16 @@ def validate_recipes(
             for dep in deps:
                 if dep not in recipes:
                     raise Ki2Error(f"{recipe.name}: unknown {group} dependency {dep!r}")
+        sysroot_exclude = string_list(
+            recipe.build.get("sysroot_exclude"),
+            field="sysroot_exclude",
+            recipe=recipe.name,
+        )
+        if recipe.build.get("skip_sysroot", False) and sysroot_exclude:
+            raise Ki2Error(f"{recipe.name}: build.skip_sysroot and build.sysroot_exclude cannot be combined")
+        for excluded in sysroot_exclude:
+            if excluded not in recipes:
+                raise Ki2Error(f"{recipe.name}: unknown sysroot exclusion {excluded!r}")
         if recipe.source.get("type") == "url":
             sha = str(recipe.source.get("sha256", ""))
             if sha in PIN_PLACEHOLDERS:
@@ -1868,7 +1882,20 @@ def prepare_sysroot(
     if not deps:
         return
 
+    excluded_roots = string_list(
+        recipe.build.get("sysroot_exclude"),
+        field="sysroot_exclude",
+        recipe=recipe.name,
+    )
+    excluded = set(
+        dependency_closure(recipes, excluded_roots, ctx.arch, include_build_deps=True)
+    )
+
     for dep in deps:
+        if dep in excluded:
+            if ctx.verbose:
+                print(f"[sysroot] {recipe.name}: host bootstrap excludes {dep}")
+            continue
         package = dependency_package_path(ctx, recipes, state, dep)
         if ctx.verbose:
             print(f"[sysroot] {recipe.name}: {package.name}")
@@ -1918,7 +1945,10 @@ def build_recipes(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list[s
         build_dir.mkdir(parents=True, exist_ok=True)
         destdir.mkdir(parents=True, exist_ok=True)
 
-        if recipe.build.get("system") != "host-files":
+        skip_sysroot = recipe.build.get("skip_sysroot", False)
+        if not isinstance(skip_sysroot, bool):
+            raise Ki2Error(f"{recipe.name}: build.skip_sysroot must be boolean")
+        if recipe.build.get("system") != "host-files" and not skip_sysroot:
             prepare_sysroot(ctx, recipe, recipes, state)
         source_dir = fetch_source(ctx, recipe, work)
         env = command_env(ctx, recipe, work, source_dir, build_dir, destdir)
@@ -1936,7 +1966,7 @@ def build_recipes(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list[s
         else:
             for command in commands:
                 run_shell(command, env, work, dry_run=False)
-            if recipe.build.get("system") == "upstream-binary":
+            if recipe.build.get("stub"):
                 install_stage2_support_files(recipe, destdir)
 
         create_package(ctx, recipe, destdir, output, key, dep_keys)

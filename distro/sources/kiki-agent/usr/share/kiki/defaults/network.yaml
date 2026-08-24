@@ -1,0 +1,10 @@
+network:
+  manager: systemd-networkd
+  resolver: systemd-resolved
+  mode: dhcp
+  interface_match: en* eth*
+  static:
+    address: ""
+    gateway: ""
+    dns: []
+    ntp: []

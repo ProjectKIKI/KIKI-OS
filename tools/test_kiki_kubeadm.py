@@ -70,6 +70,33 @@ class KikiKubeadmTests(unittest.TestCase):
             self.assertEqual(state["status"], "dry-run")
             self.assertEqual(state["action"], "join")
 
+    def test_join_token_file_is_read_without_command_line_secret(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            install_template(root, CRIO_TEMPLATES / "kubeadm-join-compute.yaml")
+            plan = write_plan(root, role="compute", action="join", runtime="cri-o")
+            token_file = root / "run/secrets/kubeadm-token"
+            token_file.parent.mkdir(parents=True)
+            token_file.write_text("abcdef.0123456789abcdef\n", encoding="utf-8")
+
+            result = self.run_tool(
+                root,
+                "--plan",
+                str(plan),
+                "join",
+                "--dry-run",
+                "--endpoint",
+                "10.0.0.10:6443",
+                "--token-file",
+                "/run/secrets/kubeadm-token",
+                "--ca-cert-hash",
+                "4" * 64,
+            )
+
+            rendered = (root / "etc/kubernetes/kiki/kubeadm.local.yaml").read_text(encoding="utf-8")
+            self.assertIn("abcdef.0123456789abcdef", rendered)
+            self.assertNotIn("abcdef.0123456789abcdef", result.stdout)
+
     def test_init_dry_run_renders_containerd_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

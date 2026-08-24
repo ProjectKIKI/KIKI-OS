@@ -155,6 +155,8 @@ def base_smoke_steps(config: CiConfig) -> list[Step]:
                 "tools/ki2bootiso.py",
                 "tools/ki2ci.py",
                 "tools/ki2iso.py",
+                "tools/kiki_console.py",
+                "tools/ki2osbuild.py",
                 "tools/ki2publish.py",
                 "tools/ki2repo.py",
                 "tools/ki2stage2.py",
@@ -163,6 +165,8 @@ def base_smoke_steps(config: CiConfig) -> list[Step]:
                 "tools/test_ki2ci.py",
                 "tools/test_ki2ctl.py",
                 "tools/test_ki2iso.py",
+                "tools/test_kiki_console.py",
+                "tools/test_ki2osbuild.py",
                 "tools/test_ki2publish.py",
                 "tools/test_ki2repo.py",
                 "tools/test_ki2stage2.py",
@@ -174,6 +178,8 @@ def base_smoke_steps(config: CiConfig) -> list[Step]:
         Step("ki2repo unit tests", python_cmd(config, "tools/test_ki2repo.py")),
         Step("ki2stage2 unit tests", python_cmd(config, "tools/test_ki2stage2.py")),
         Step("ki2ci unit tests", python_cmd(config, "tools/test_ki2ci.py")),
+        Step("KIKI management console unit tests", python_cmd(config, "tools/test_kiki_console.py")),
+        Step("KIKI OS build orchestrator unit tests", python_cmd(config, "tools/test_ki2osbuild.py")),
         Step(
             "Core seed profile validation",
             ki2build_cmd(

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import copy
 import contextlib
 import datetime as dt
@@ -28,7 +29,9 @@ DEFAULT_ARCH = "x86_64"
 DEFAULT_REPO_NAME = "default"
 INSTALLED_SCHEMA = "ki2-installed-v1"
 TRANSACTION_SCHEMA = "ki2-transaction-v1"
-SIGNATURE_ALGORITHM = "hmac-sha256"
+HMAC_SIGNATURE_ALGORITHM = "hmac-sha256"
+ED25519_SIGNATURE_ALGORITHM = "ed25519"
+SIGNATURE_ALGORITHM = HMAC_SIGNATURE_ALGORITHM
 UTC = dt.timezone.utc
 
 
@@ -94,6 +97,17 @@ def repo_file(root: Path, name: str) -> Path:
 
 def trust_dir(root: Path) -> Path:
     return root_join(root, "etc", "ki2", "trust")
+
+
+def repository_policy(root: Path) -> dict[str, Any]:
+    path = root_join(root, "etc", "ki2", "policy.json")
+    if not path.exists():
+        return {}
+    try:
+        value = read_json(path)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise Ki2CtlError(f"invalid repository policy {path}: {exc}") from exc
+    return value
 
 
 def valid_repo_name(name: str) -> bool:
@@ -170,6 +184,132 @@ def verify_metadata_signature(metadata: dict[str, Any], key: bytes) -> bool:
         return False
     expected = hmac.new(key, canonical_json_bytes(signature_payload(metadata)), hashlib.sha256).hexdigest()
     return hmac.compare_digest(signature, expected)
+
+
+ED25519_Q = 2**255 - 19
+ED25519_L = 2**252 + 27742317777372353535851937790883648493
+ED25519_D = (-121665 * pow(121666, ED25519_Q - 2, ED25519_Q)) % ED25519_Q
+ED25519_I = pow(2, (ED25519_Q - 1) // 4, ED25519_Q)
+ED25519_BY = (4 * pow(5, ED25519_Q - 2, ED25519_Q)) % ED25519_Q
+ED25519_DER_PREFIX = bytes.fromhex("302a300506032b6570032100")
+
+
+def ed25519_xrecover(y: int) -> int:
+    xx = (y * y - 1) * pow(ED25519_D * y * y + 1, ED25519_Q - 2, ED25519_Q)
+    x = pow(xx % ED25519_Q, (ED25519_Q + 3) // 8, ED25519_Q)
+    if (x * x - xx) % ED25519_Q != 0:
+        x = (x * ED25519_I) % ED25519_Q
+    if x & 1:
+        x = ED25519_Q - x
+    return x
+
+
+ED25519_B = (ed25519_xrecover(ED25519_BY), ED25519_BY)
+
+
+def ed25519_add(left: tuple[int, int], right: tuple[int, int]) -> tuple[int, int]:
+    x1, y1 = left
+    x2, y2 = right
+    product = ED25519_D * x1 * x2 * y1 * y2
+    x3 = (x1 * y2 + x2 * y1) * pow(1 + product, ED25519_Q - 2, ED25519_Q)
+    y3 = (y1 * y2 + x1 * x2) * pow(1 - product, ED25519_Q - 2, ED25519_Q)
+    return x3 % ED25519_Q, y3 % ED25519_Q
+
+
+def ed25519_scalar_mult(point: tuple[int, int], scalar: int) -> tuple[int, int]:
+    result = (0, 1)
+    addend = point
+    while scalar:
+        if scalar & 1:
+            result = ed25519_add(result, addend)
+        addend = ed25519_add(addend, addend)
+        scalar >>= 1
+    return result
+
+
+def ed25519_decode_point(encoded: bytes) -> tuple[int, int]:
+    if len(encoded) != 32:
+        raise ValueError("Ed25519 point must contain 32 bytes")
+    value = int.from_bytes(encoded, "little")
+    sign = value >> 255
+    y = value & ((1 << 255) - 1)
+    if y >= ED25519_Q:
+        raise ValueError("Ed25519 point is not canonical")
+    x = ed25519_xrecover(y)
+    if (x & 1) != sign:
+        x = ED25519_Q - x
+    if x == 0 and sign:
+        raise ValueError("Ed25519 point has an invalid sign bit")
+    if (-x * x + y * y - 1 - ED25519_D * x * x * y * y) % ED25519_Q != 0:
+        raise ValueError("Ed25519 point is not on the curve")
+    return x, y
+
+
+def parse_ed25519_public_key(data: bytes) -> tuple[bytes, bytes]:
+    stripped = data.strip()
+    if stripped.startswith(b"-----BEGIN PUBLIC KEY-----"):
+        lines = [line for line in stripped.splitlines() if not line.startswith(b"-----")]
+        der = base64.b64decode(b"".join(lines), validate=True)
+        if not der.startswith(ED25519_DER_PREFIX) or len(der) != len(ED25519_DER_PREFIX) + 32:
+            raise ValueError("public key is not Ed25519 SubjectPublicKeyInfo")
+        return der[-32:], der
+    if len(stripped) == 32:
+        return stripped, ED25519_DER_PREFIX + stripped
+    raw = base64.b64decode(stripped, validate=True)
+    if len(raw) != 32:
+        raise ValueError("Ed25519 public key must contain 32 bytes")
+    return raw, ED25519_DER_PREFIX + raw
+
+
+def verify_ed25519(public_key: bytes, message: bytes, signature: bytes) -> bool:
+    if len(public_key) != 32 or len(signature) != 64:
+        return False
+    scalar = int.from_bytes(signature[32:], "little")
+    if scalar >= ED25519_L:
+        return False
+    try:
+        public_point = ed25519_decode_point(public_key)
+        signature_point = ed25519_decode_point(signature[:32])
+    except ValueError:
+        return False
+    identity = (0, 1)
+    if ed25519_scalar_mult(public_point, 8) == identity:
+        return False
+    if ed25519_scalar_mult(public_point, ED25519_L) != identity:
+        return False
+    digest = hashlib.sha512(signature[:32] + public_key + message).digest()
+    challenge = int.from_bytes(digest, "little") % ED25519_L
+    return ed25519_scalar_mult(ED25519_B, scalar) == ed25519_add(
+        signature_point, ed25519_scalar_mult(public_point, challenge)
+    )
+
+
+def verify_metadata_ed25519(metadata: dict[str, Any], public_key_path: Path) -> bool:
+    security = metadata.get("security", {})
+    if not isinstance(security, dict) or security.get("algorithm") != ED25519_SIGNATURE_ALGORITHM:
+        return False
+    try:
+        signature = base64.b64decode(str(security.get("signature") or ""), validate=True)
+    except (ValueError, TypeError):
+        return False
+    if len(signature) != 64:
+        return False
+    try:
+        public_key, public_der = parse_ed25519_public_key(public_key_path.read_bytes())
+    except (OSError, ValueError, TypeError):
+        return False
+    if str(security.get("key_id") or "") != hashlib.sha256(public_der).hexdigest()[:16]:
+        return False
+    return verify_ed25519(public_key, canonical_json_bytes(signature_payload(metadata)), signature)
+
+
+def verify_metadata_with_key(metadata: dict[str, Any], key_path: Path) -> bool:
+    algorithm = str(metadata.get("security", {}).get("algorithm") or "")
+    if algorithm == ED25519_SIGNATURE_ALGORITHM:
+        return verify_metadata_ed25519(metadata, key_path)
+    if algorithm == HMAC_SIGNATURE_ALGORITHM:
+        return verify_metadata_signature(metadata, read_verify_key(key_path))
+    return False
 
 
 def load_configured_repos(root: Path) -> list[Repo]:
@@ -282,15 +422,23 @@ def rooted_verify_key_path(root: Path, value: str) -> Path:
     return root_join(root, str(key))
 
 
-def repo_verify_key_path(root: Path, repo: Repo, explicit_key: Path | None) -> Path | None:
+def repo_verify_key_path(
+    root: Path, repo: Repo, explicit_key: Path | None, policy: dict[str, Any] | None = None
+) -> Path | None:
     if explicit_key is not None:
         return explicit_key
     if repo.verify_key:
         return rooted_verify_key_path(root, repo.verify_key)
-    candidates = [
+    candidates: list[Path] = []
+    trusted_key = str((policy or {}).get("trusted_key") or "")
+    if trusted_key:
+        candidates.append(rooted_verify_key_path(root, trusted_key))
+    candidates.extend([
+        trust_dir(root) / f"{repo.name}.ed25519.pub",
+        trust_dir(root) / "stage3-repo.ed25519.pub",
         trust_dir(root) / f"{repo.name}.hmac",
         trust_dir(root) / "stage2-v2-repo.hmac",
-    ]
+    ])
     for candidate in candidates:
         if candidate.exists():
             return candidate
@@ -854,17 +1002,26 @@ def command_repo_list(args: argparse.Namespace) -> None:
 
 
 def command_update(args: argparse.Namespace) -> None:
+    policy = repository_policy(args.root)
+    require_signature = args.require_signature or policy.get("require_repository_signature") is True
     for repo in selected_repos(args):
         metadata: dict[str, Any] | None = None
-        verify_key = None if args.no_verify else repo_verify_key_path(args.root, repo, args.verify_key)
+        verify_key = None if args.no_verify else repo_verify_key_path(args.root, repo, args.verify_key, policy)
         if verify_key is not None:
             if not verify_key.exists():
                 raise Ki2CtlError(f"{repo.name}: repository verify key not found: {verify_key}")
             metadata = fetch_repo_metadata(repo, args.arch)
-            if not verify_metadata_signature(metadata, read_verify_key(verify_key)):
+            required_algorithm = str(policy.get("signature_algorithm") or "")
+            actual_algorithm = str(metadata.get("security", {}).get("algorithm") or "")
+            if required_algorithm and actual_algorithm != required_algorithm:
+                raise Ki2CtlError(
+                    f"{repo.name}: repository signature algorithm {actual_algorithm or 'none'} "
+                    f"does not satisfy policy {required_algorithm}"
+                )
+            if not verify_metadata_with_key(metadata, verify_key):
                 raise Ki2CtlError(f"{repo.name}: repository metadata signature verification failed")
             save_repo_metadata(args.root, repo, args.arch, metadata)
-        elif args.require_signature:
+        elif require_signature and not args.no_verify:
             raise Ki2CtlError(f"{repo.name}: repository signature verification key is required")
         index, index_payload = fetch_repo_index_payload(repo, args.arch)
         if metadata is not None:
@@ -1069,7 +1226,7 @@ def build_parser() -> argparse.ArgumentParser:
     repo_set = repo_sub.add_parser("set", help="set a repository URL or local path")
     repo_set.add_argument("url")
     repo_set.add_argument("--name", default=DEFAULT_REPO_NAME)
-    repo_set.add_argument("--verify-key", default="", help="store repository HMAC verify key path in the repo config")
+    repo_set.add_argument("--verify-key", default="", help="store repository Ed25519 public key or legacy HMAC key path")
     repo_set.set_defaults(func=command_repo_set)
     repo_remove = repo_sub.add_parser("remove", help="remove a repository config and cached index")
     repo_remove.add_argument("name", nargs="?", default=DEFAULT_REPO_NAME)
@@ -1078,7 +1235,7 @@ def build_parser() -> argparse.ArgumentParser:
     repo_list.set_defaults(func=command_repo_list)
 
     update = subcommands.add_parser("update", help="download repository indexes")
-    update.add_argument("--verify-key", type=Path, default=None, help="verify repository metadata with an HMAC key")
+    update.add_argument("--verify-key", type=Path, default=None, help="verify repository metadata with an Ed25519 public key or legacy HMAC key")
     update.add_argument("--require-signature", action="store_true", help="fail when no repository verify key is configured")
     update.add_argument("--no-verify", action="store_true", help="skip configured repository metadata verification")
     update.set_defaults(func=command_update)

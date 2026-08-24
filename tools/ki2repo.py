@@ -4,14 +4,18 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import datetime as dt
 import hashlib
 import hmac
 import json
 import re
 import secrets
+import subprocess
 import sys
 import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +27,9 @@ UTC = dt.timezone.utc
 INDEX_SCHEMA = "ki2-repository-v1"
 METADATA_SCHEMA = "ki2-repository-metadata-v1"
 CHANNELS_SCHEMA = "ki2-repository-channels-v1"
-SIGNATURE_ALGORITHM = "hmac-sha256"
+HMAC_SIGNATURE_ALGORITHM = "hmac-sha256"
+ED25519_SIGNATURE_ALGORITHM = "ed25519"
+SIGNATURE_ALGORITHM = HMAC_SIGNATURE_ALGORITHM
 DEFAULT_STAGE2_CHANNEL = "stage2-v2"
 
 
@@ -159,6 +165,34 @@ def key_id(key: bytes) -> str:
     return hashlib.sha256(key).hexdigest()[:16]
 
 
+def run_openssl(arguments: list[str], *, payload: bytes | None = None) -> bytes:
+    try:
+        result = subprocess.run(
+            ["openssl", *arguments],
+            input=payload,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        raise Ki2RepoError(f"cannot run OpenSSL: {exc}") from exc
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise Ki2RepoError(f"OpenSSL failed: {detail or result.returncode}")
+    return result.stdout
+
+
+def infer_signing_algorithm(path: Path, requested: str = "auto") -> str:
+    if requested != "auto":
+        return requested
+    prefix = path.read_bytes()[:80]
+    return ED25519_SIGNATURE_ALGORITHM if b"BEGIN PRIVATE KEY" in prefix else HMAC_SIGNATURE_ALGORITHM
+
+
+def ed25519_public_der(private_key_path: Path) -> bytes:
+    return run_openssl(["pkey", "-in", str(private_key_path), "-pubout", "-outform", "DER"])
+
+
 def signature_payload(metadata: dict[str, Any]) -> dict[str, Any]:
     payload = json.loads(json.dumps(metadata))
     security = dict(payload.get("security", {}))
@@ -189,6 +223,38 @@ def sign_metadata(metadata: dict[str, Any], key: bytes, *, signed_at: str | None
     return signed
 
 
+def sign_metadata_ed25519(
+    metadata: dict[str, Any], private_key_path: Path, *, signed_at: str | None = None
+) -> dict[str, Any]:
+    signed = json.loads(json.dumps(metadata))
+    capabilities = signed.setdefault("capabilities", [])
+    if isinstance(capabilities, list) and "signed-metadata-ed25519" not in capabilities:
+        capabilities.append("signed-metadata-ed25519")
+    public_der = ed25519_public_der(private_key_path)
+    security = dict(signed.get("security", {}))
+    security.update(
+        {
+            "signed": True,
+            "algorithm": ED25519_SIGNATURE_ALGORITHM,
+            "key_id": key_id(public_der),
+            "signed_at": signed_at or dt.datetime.now(UTC).isoformat(),
+            "signature": None,
+            "note": "Stage 3 repository metadata is signed with Ed25519.",
+        }
+    )
+    signed["security"] = security
+    with tempfile.TemporaryDirectory(prefix="ki2repo-ed25519-sign-") as tmp:
+        payload_path = Path(tmp) / "metadata.payload"
+        payload_path.write_bytes(canonical_json_bytes(signature_payload(signed)))
+        signature = run_openssl(
+            ["pkeyutl", "-sign", "-inkey", str(private_key_path), "-rawin", "-in", str(payload_path)]
+        )
+    if len(signature) != 64:
+        raise Ki2RepoError("OpenSSL returned an invalid Ed25519 signature")
+    signed["security"]["signature"] = base64.b64encode(signature).decode("ascii")
+    return signed
+
+
 def verify_metadata_signature(metadata: dict[str, Any], key: bytes) -> bool:
     security = metadata.get("security", {})
     if not isinstance(security, dict):
@@ -202,16 +268,68 @@ def verify_metadata_signature(metadata: dict[str, Any], key: bytes) -> bool:
     return hmac.compare_digest(signature, expected)
 
 
-def sign_metadata_file(metadata_path: Path, key_path: Path) -> dict[str, Any]:
+def verify_metadata_ed25519(metadata: dict[str, Any], public_key_path: Path) -> bool:
+    security = metadata.get("security", {})
+    if not isinstance(security, dict) or security.get("algorithm") != ED25519_SIGNATURE_ALGORITHM:
+        return False
+    try:
+        signature = base64.b64decode(str(security.get("signature") or ""), validate=True)
+    except (ValueError, binascii.Error):
+        return False
+    if len(signature) != 64:
+        return False
+    try:
+        public_der = run_openssl(["pkey", "-pubin", "-in", str(public_key_path), "-outform", "DER"])
+    except Ki2RepoError:
+        return False
+    if str(security.get("key_id") or "") != key_id(public_der):
+        return False
+    with tempfile.TemporaryDirectory(prefix="ki2repo-ed25519-") as tmp:
+        signature_path = Path(tmp) / "metadata.sig"
+        payload_path = Path(tmp) / "metadata.payload"
+        signature_path.write_bytes(signature)
+        payload_path.write_bytes(canonical_json_bytes(signature_payload(metadata)))
+        try:
+            run_openssl(
+                [
+                    "pkeyutl",
+                    "-verify",
+                    "-pubin",
+                    "-inkey",
+                    str(public_key_path),
+                    "-rawin",
+                    "-in",
+                    str(payload_path),
+                    "-sigfile",
+                    str(signature_path),
+                ]
+            )
+        except Ki2RepoError:
+            return False
+    return True
+
+
+def sign_metadata_file(metadata_path: Path, key_path: Path, algorithm: str = "auto") -> dict[str, Any]:
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    signed = sign_metadata(metadata, read_signing_key(key_path))
+    selected = infer_signing_algorithm(key_path, algorithm)
+    if selected == ED25519_SIGNATURE_ALGORITHM:
+        signed = sign_metadata_ed25519(metadata, key_path)
+    elif selected == HMAC_SIGNATURE_ALGORITHM:
+        signed = sign_metadata(metadata, read_signing_key(key_path))
+    else:
+        raise Ki2RepoError(f"unsupported signing algorithm: {selected}")
     write_json(metadata_path, signed)
     return signed
 
 
 def verify_metadata_file(metadata_path: Path, key_path: Path) -> bool:
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    return verify_metadata_signature(metadata, read_signing_key(key_path))
+    algorithm = str(metadata.get("security", {}).get("algorithm") or "")
+    if algorithm == ED25519_SIGNATURE_ALGORITHM:
+        return verify_metadata_ed25519(metadata, key_path)
+    if algorithm == HMAC_SIGNATURE_ALGORITHM:
+        return verify_metadata_signature(metadata, read_signing_key(key_path))
+    return False
 
 
 def build_index(packages: list[dict[str, Any]], arch: str, created_at: str) -> dict[str, Any]:
@@ -383,7 +501,7 @@ def generate(args: argparse.Namespace) -> dict[str, Any]:
     metadata_path = args.repo_dir / f"metadata.{args.arch}.json"
     write_json(metadata_path, metadata)
     if getattr(args, "sign_key", None):
-        sign_metadata_file(metadata_path, args.sign_key)
+        sign_metadata_file(metadata_path, args.sign_key, getattr(args, "sign_algorithm", "auto"))
 
     channels = build_channels(
         name=args.name,
@@ -443,9 +561,25 @@ def command_keygen(args: argparse.Namespace) -> None:
     print(f"[repo] wrote signing key {args.output}")
 
 
+def command_keygen_ed25519(args: argparse.Namespace) -> None:
+    for path in (args.private_key, args.public_key):
+        if path.exists() and not args.force:
+            raise Ki2RepoError(f"key already exists: {path}; use --force to overwrite")
+        path.parent.mkdir(parents=True, exist_ok=True)
+    run_openssl(["genpkey", "-algorithm", "ED25519", "-out", str(args.private_key)])
+    run_openssl(["pkey", "-in", str(args.private_key), "-pubout", "-out", str(args.public_key)])
+    try:
+        args.private_key.chmod(0o600)
+        args.public_key.chmod(0o644)
+    except OSError:
+        pass
+    print(f"[repo] wrote Ed25519 private key {args.private_key}")
+    print(f"[repo] wrote Ed25519 public key {args.public_key}")
+
+
 def command_sign(args: argparse.Namespace) -> None:
     metadata_path = args.repo_dir / f"metadata.{args.arch}.json"
-    signed = sign_metadata_file(metadata_path, args.key)
+    signed = sign_metadata_file(metadata_path, args.key, args.algorithm)
     channels_path = args.repo_dir / "channels.json"
     if channels_path.exists():
         channels = json.loads(channels_path.read_text(encoding="utf-8"))
@@ -474,7 +608,7 @@ def resolve_paths(args: argparse.Namespace) -> None:
     for attr, default in defaults.items():
         value = getattr(args, attr)
         setattr(args, attr, value.resolve() if value else default)
-    for attr in ("sign_key", "key", "output"):
+    for attr in ("sign_key", "key", "output", "private_key", "public_key"):
         if hasattr(args, attr):
             value = getattr(args, attr)
             if value is not None:
@@ -497,7 +631,8 @@ def build_parser() -> argparse.ArgumentParser:
     generate_parser.add_argument("--description", default="KIKI OS .ki2 package repository")
     generate_parser.add_argument("--channel", default=DEFAULT_STAGE2_CHANNEL)
     generate_parser.add_argument("--base-url", default="")
-    generate_parser.add_argument("--sign-key", type=Path, default=None, help="optional HMAC signing key")
+    generate_parser.add_argument("--sign-key", type=Path, default=None, help="optional HMAC or Ed25519 private signing key")
+    generate_parser.add_argument("--sign-algorithm", choices=("auto", HMAC_SIGNATURE_ALGORITHM, ED25519_SIGNATURE_ALGORITHM), default="auto")
     generate_parser.set_defaults(func=command_generate)
 
     summary_parser = subcommands.add_parser("summary", help="show repository metadata summary")
@@ -508,8 +643,15 @@ def build_parser() -> argparse.ArgumentParser:
     keygen_parser.add_argument("--force", action="store_true")
     keygen_parser.set_defaults(func=command_keygen)
 
+    ed25519_parser = subcommands.add_parser("keygen-ed25519", help="generate Stage 3 Ed25519 repository keys")
+    ed25519_parser.add_argument("--private-key", type=Path, default=Path("build/ki2/keys/stage3-repo.ed25519"))
+    ed25519_parser.add_argument("--public-key", type=Path, default=Path("build/ki2/keys/stage3-repo.ed25519.pub"))
+    ed25519_parser.add_argument("--force", action="store_true")
+    ed25519_parser.set_defaults(func=command_keygen_ed25519)
+
     sign_parser = subcommands.add_parser("sign", help="sign repository metadata")
     sign_parser.add_argument("--key", type=Path, required=True)
+    sign_parser.add_argument("--algorithm", choices=("auto", HMAC_SIGNATURE_ALGORITHM, ED25519_SIGNATURE_ALGORITHM), default="auto")
     sign_parser.set_defaults(func=command_sign)
 
     verify_parser = subcommands.add_parser("verify", help="verify repository metadata signature")

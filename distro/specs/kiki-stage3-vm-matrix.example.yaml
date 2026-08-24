@@ -1,0 +1,24 @@
+schema: kiki-stage3-vm-matrix-v1
+cluster:
+  control_plane_endpoint: 10.20.0.10:6443
+  node_timeout: 600
+  require_ready: true
+ssh:
+  user: kiki-admin
+  port: 22
+  identity_file: ~/.ssh/kiki-stage3
+  known_hosts: ~/.ssh/kiki-stage3-known-hosts
+  connect_timeout: 10
+nodes:
+  - name: kiki-bootstrap-1
+    role: bootstrap
+    host: 10.20.0.10
+  - name: kiki-control-1
+    role: control
+    host: 10.20.0.11
+    # The runner never copies control-plane private keys. Complete the documented
+    # manual PKI distribution first, then explicitly acknowledge it here.
+    control_plane_certificates_ready: true
+  - name: kiki-compute-1
+    role: compute
+    host: 10.20.0.12

@@ -1,0 +1,35 @@
+runtime:
+  container_runtime: cri-o
+  cgroup_driver: systemd
+  swap_policy: kubernetes-off
+  cri_sockets:
+    cri-o: unix:///var/run/crio/crio.sock
+    containerd: unix:///run/containerd/containerd.sock
+kubernetes:
+  role: none
+  cluster:
+    name: kiki
+    control_plane_endpoint: ""
+    pod_cidr: 10.244.0.0/16
+    service_cidr: 10.96.0.0/12
+    dns_domain: cluster.local
+  kubeadm:
+    config_api: kubeadm.k8s.io/v1beta4
+    config_output: /etc/kubernetes/kiki/kubeadm.local.yaml
+    init_template: /etc/kubernetes/kiki/kubeadm-init.yaml
+    join_control_plane_template: /etc/kubernetes/kiki/kubeadm-join-control-plane.yaml
+    join_compute_template: /etc/kubernetes/kiki/kubeadm-join-compute.yaml
+  join:
+    token_ref: ""
+    ca_cert_hash: ""
+    control_plane_certificate_policy: manual
+  cni:
+    enabled: false
+    provider: ""
+    manifest_url: ""
+    manifest_path: ""
+    package: ""
+    allowed_providers:
+      - flannel
+      - calico
+      - cilium

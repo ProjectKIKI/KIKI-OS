@@ -39,4 +39,5 @@ systemd-network:x:192:
 systemd-resolve:x:193:
 messagebus:x:81:
 sshd:x:74:
+chrony:x:998:
 nogroup:x:65534:

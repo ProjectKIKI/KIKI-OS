@@ -10,6 +10,17 @@ from urllib.parse import urljoin
 
 
 CONFIG = Path("/etc/kiki/node.json")
+STAGE3_AGENT = Path(os.environ.get("KIKI_STAGE3_AGENT", "/usr/libexec/kiki-agent-stage3"))
+
+
+def dispatch_stage3():
+    if sys.argv[1:3] not in (["kube", "reconcile"], ["plan", "fetch"]):
+        return False
+    if not STAGE3_AGENT.is_file():
+        print(f"kiki-agent: Stage 3 agent binary not found: {STAGE3_AGENT}", file=sys.stderr)
+        raise SystemExit(1)
+    os.execv(str(STAGE3_AGENT), [str(STAGE3_AGENT), *sys.argv[1:]])
+    return True
 
 
 def load_config():
@@ -35,6 +46,7 @@ def post(url, payload):
 
 
 def main():
+    dispatch_stage3()
     config = load_config()
     base = config.get("management_url", "").rstrip("/") + "/"
     if base == "/":

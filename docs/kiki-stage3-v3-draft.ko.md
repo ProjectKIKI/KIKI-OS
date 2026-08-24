@@ -18,6 +18,20 @@ CRI 런타임, Kubernetes 역할별 패키지, `kiki-kubeadm init/join` 실행�
 3단계는 “무조건 모든 것을 자동 실행”하는 단계가 아니다. 파괴적 작업은 기본값으로
 막고, 사용자가 설치 계획서에 명시한 경우에만 실행한다.
 
+2026-08-22 기준으로 Stage 3 관리 에이전트, 원격 계획서 검증, Ed25519 저장소
+서명, 실제 VM 검증 도구까지 구현되어 있다. `ethtool`, `chrony`, `socat`,
+`bridge-utils`, `conntrack-tools`, `iptables`, `nftables`, `firewalld`는 고정된
+upstream 소스 빌드로 전환했으며 레시피의 `host-files` 빌드 타입은 제거됐다.
+conntrack/nftables 계층은 KIKI가 패키징한 `libmnl`,
+`libnfnetlink`, `libnetfilter_conntrack`, `libnftnl`, GMP, Jansson, Readline을
+sysroot에서 연결한다. firewalld의 `python3-dbus`·`python3-gobject` 런타임을
+포함해 Python 3.12, D-Bus, GLib, GObject Introspection 계층을 KIKI 패키지로
+구성했다. 조합한 패키지 루트에서 GLib/GObject/Gio import, 격리된 D-Bus 세션 연결,
+nftables/iptables 실행 및 firewalld 서버 모듈 import를 통과했다. 실제 KIKI OS의
+systemd system bus에서 firewalld를 기동하는 검사와 1대/2대/3대 VM 매트릭스 통과가
+완료 조건으로 남아 있다. 최신 통합 루트의 `.pyc`, 절대 심볼릭 링크, 정적
+아카이브, 빌드 경로, ELF RPATH/RUNPATH 검사는 모두 0건이다.
+
 ## 기준 노드 모델
 
 3단계의 일반 서버 프로파일은 다음과 같다.
@@ -134,6 +148,11 @@ kiki.plan.sha256=<sha256>
 kiki.plan.signature=<url-or-inline-ref>
 ```
 
+기본 공개키 경로는 `/etc/kiki/trust/install-plan.ed25519.pub`이다. 서명 값은
+Ed25519 원시 서명 파일의 HTTP(S) URL, `file://` URL, `@/로컬/경로`, 또는
+`base64:<서명>` 형식을 사용한다. 해시와 서명을 함께 지정하면 두 검증 모두
+통과해야 한다. 개인키는 설치 노드나 HTTP 저장소에 배포하지 않는다.
+
 실행 규칙은 다음과 같다.
 
 - URL만 있고 해시 또는 서명이 없으면 실행하지 않는다.
@@ -176,6 +195,13 @@ safety:
 7. 원격 YAML 설치 계획서 검증 도구 추가
 8. CNI 매니페스트 적용을 명시 옵션으로 추가
 9. 3단계 검증기 `tools/ki2stage3.py` 추가
+
+현재 구현은 1~4번, compute `join --dry-run`, SHA-256/Ed25519 기반 원격 계획서 검증,
+명시적 CNI 적용 정책까지 연결했다. 배포용 `kiki-agent` 패키지는 Go Stage 3
+바이너리를 `/usr/libexec/kiki-agent-stage3`에 설치하고 기존 Python 에이전트가
+`kube reconcile`과 `plan fetch` 명령을 위임한다. 계약·compute 조인 dry-run을
+묶은 종합 검증기와 Ed25519 저장소 정책 검증을 추가했으며, 실제
+`kubeadm init/join` VM 매트릭스는 아직 완료 기준을 충족하지 않는다.
 
 ## 완료 기준 초안
 

@@ -1,0 +1,39 @@
+#!/bin/sh
+set -eu
+
+case "${0##*/}" in
+    intltool-update)
+        printf '%s\n' 'intltool-update (intltool) 0.51.0'
+        exit 0
+        ;;
+    intltool-extract)
+        exit 0
+        ;;
+    intltool-merge)
+        ;;
+    *)
+        printf 'unsupported intltool invocation: %s\n' "${0##*/}" >&2
+        exit 2
+        ;;
+esac
+
+previous=
+current=
+for argument do
+    previous=$current
+    current=$argument
+done
+
+if [ -z "$previous" ] || [ -z "$current" ]; then
+    printf '%s\n' 'intltool-merge requires an input and output path' >&2
+    exit 2
+fi
+
+# KIKI ships the canonical untranslated English metadata for its server image.
+# Remove intltool's translatable-key markers while preserving valid XML and
+# desktop-entry syntax.
+sed \
+    -e 's/^_\([A-Za-z][A-Za-z0-9_-]*\)=/\1=/' \
+    -e 's/<_\([A-Za-z][A-Za-z0-9_-]*\)>/<\1>/g' \
+    -e 's#</_\([A-Za-z][A-Za-z0-9_-]*\)>#</\1>#g' \
+    "$previous" > "$current"

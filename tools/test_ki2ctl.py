@@ -1,4 +1,5 @@
 import functools
+import base64
 import hmac
 import hashlib
 import http.server
@@ -266,6 +267,48 @@ class Ki2CtlTests(unittest.TestCase):
             failure = self.run_ki2ctl_failure(target, "update", "--verify-key", str(key))
             self.assertIn("signature verification failed", failure.stderr)
 
+    def test_update_can_verify_ed25519_repository_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            target = base / "target"
+            private_key = base / "stage3-repo.ed25519"
+            public_key = base / "stage3-repo.ed25519.pub"
+            (repo / "packages/x86_64").mkdir(parents=True)
+            (repo / "repo").mkdir(parents=True)
+            package = repo / "packages/x86_64/tool-1-1.x86_64.ki2"
+            write_ki2_package(package, name="tool", dependencies=[], files={"rootfs/usr/bin/tool": b"tool\n"})
+            index_path = repo / "repo/index.x86_64.json"
+            write_index(index_path, [package])
+            generate_ed25519_keys(private_key, public_key)
+            write_ed25519_signed_metadata(repo / "repo/metadata.x86_64.json", index_path, private_key, public_key)
+
+            trusted_key = target / "etc/ki2/trust/stage3-repo.ed25519.pub"
+            trusted_key.parent.mkdir(parents=True)
+            trusted_key.write_bytes(public_key.read_bytes())
+            policy = target / "etc/ki2/policy.json"
+            policy.write_text(
+                json.dumps(
+                    {
+                        "require_repository_signature": True,
+                        "signature_algorithm": "ed25519",
+                        "trusted_key": "/etc/ki2/trust/stage3-repo.ed25519.pub",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.run_ki2ctl(target, "repo", "set", str(repo))
+            update = self.run_ki2ctl(target, "update").stdout
+            self.assertIn("metadata verified", update)
+
+            metadata_path = repo / "repo/metadata.x86_64.json"
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            metadata["name"] = "tampered"
+            metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            failure = self.run_ki2ctl_failure(target, "update")
+            self.assertIn("signature verification failed", failure.stderr)
+
     def test_repo_config_verify_key_enables_default_metadata_verification(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -291,6 +334,35 @@ class Ki2CtlTests(unittest.TestCase):
             self.run_ki2ctl(unsigned, "repo", "set", repo_url)
             failure = self.run_ki2ctl_failure(unsigned, "update", "--require-signature")
             self.assertIn("signature verification key is required", failure.stderr)
+
+    def test_installed_policy_rejects_unsigned_repository_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            target = base / "target"
+            (repo / "packages/x86_64").mkdir(parents=True)
+            (repo / "repo").mkdir(parents=True)
+            package = repo / "packages/x86_64/tool-1-1.x86_64.ki2"
+            write_ki2_package(package, name="tool", dependencies=[], files={"rootfs/usr/bin/tool": b"tool\n"})
+            write_index(repo / "repo/index.x86_64.json", [package])
+            policy = target / "etc/ki2/policy.json"
+            policy.parent.mkdir(parents=True)
+            policy.write_text(
+                json.dumps(
+                    {
+                        "require_repository_signature": True,
+                        "signature_algorithm": "ed25519",
+                        "trusted_key": "/etc/ki2/trust/stage3-repo.ed25519.pub",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.run_ki2ctl(target, "repo", "set", str(repo))
+            failure = self.run_ki2ctl_failure(target, "update")
+            self.assertIn("signature verification key is required", failure.stderr)
+            update = self.run_ki2ctl(target, "update", "--no-verify").stdout
+            self.assertIn("1 packages", update)
 
     def test_install_records_pending_hooks(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -460,6 +532,63 @@ def write_signed_metadata(path: Path, index_path: Path, key_path: Path) -> None:
     }
     signature = hmac.new(key, canonical_json_bytes(metadata), hashlib.sha256).hexdigest()
     metadata["security"]["signature"] = signature
+    path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def generate_ed25519_keys(private_key: Path, public_key: Path) -> None:
+    subprocess.run(["openssl", "genpkey", "-algorithm", "ED25519", "-out", str(private_key)], check=True)
+    subprocess.run(
+        ["openssl", "pkey", "-in", str(private_key), "-pubout", "-out", str(public_key)], check=True
+    )
+
+
+def write_ed25519_signed_metadata(
+    path: Path, index_path: Path, private_key: Path, public_key: Path
+) -> None:
+    public_der = subprocess.run(
+        ["openssl", "pkey", "-pubin", "-in", str(public_key), "-outform", "DER"],
+        check=True,
+        capture_output=True,
+    ).stdout
+    metadata = {
+        "schema": "ki2-repository-metadata-v1",
+        "name": "test",
+        "arch": "x86_64",
+        "channel": "stage3-v3",
+        "created_at": "2026-08-22T00:00:00+00:00",
+        "index": {
+            "path": "repo/index.x86_64.json",
+            "size": index_path.stat().st_size,
+            "sha256": sha256(index_path),
+            "package_count": 1,
+        },
+        "security": {
+            "signed": True,
+            "algorithm": "ed25519",
+            "key_id": hashlib.sha256(public_der).hexdigest()[:16],
+            "signed_at": "2026-08-22T00:00:00+00:00",
+            "signature": None,
+        },
+    }
+    payload_path = path.with_suffix(".payload")
+    signature_path = path.with_suffix(".sig")
+    payload_path.write_bytes(canonical_json_bytes(metadata))
+    subprocess.run(
+        [
+            "openssl",
+            "pkeyutl",
+            "-sign",
+            "-inkey",
+            str(private_key),
+            "-rawin",
+            "-in",
+            str(payload_path),
+            "-out",
+            str(signature_path),
+        ],
+        check=True,
+    )
+    metadata["security"]["signature"] = base64.b64encode(signature_path.read_bytes()).decode("ascii")
     path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 

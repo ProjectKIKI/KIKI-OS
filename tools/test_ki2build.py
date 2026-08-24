@@ -282,6 +282,146 @@ packages = ["host-tool"]
                 self.assertNotIn("rootfs/usr/share/kiki/stage2/host-tool.json", names)
                 self.assertNotIn("rootfs/usr/share/doc/kiki-stage2/host-tool.txt", names)
 
+    def test_source_build_installs_declared_support_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "distro/recipes").mkdir(parents=True)
+            (root / "distro/profiles").mkdir(parents=True)
+            source = root / "distro/sources/tool/tool"
+            source.parent.mkdir(parents=True)
+            source.write_text("#!/bin/sh\necho source-built\n", encoding="utf-8")
+            source.chmod(0o755)
+            (root / "distro/recipes/source.toml").write_text(
+                """
+[[recipe]]
+name = "tool"
+version = "1"
+release = 1
+summary = "source tool"
+license = "MIT"
+architectures = ["all"]
+[recipe.source]
+type = "local"
+path = "distro/sources/tool"
+[recipe.dependencies]
+build = []
+runtime = []
+[recipe.build]
+system = "make"
+skip_sysroot = true
+install = ["install -Dm755 ${KI2_SOURCE_DIR}/tool ${KI2_DESTDIR}/usr/bin/tool"]
+[[recipe.build.stub.services]]
+name = "tool.service"
+description = "source tool service"
+exec_start = "/usr/bin/tool"
+[[recipe.build.stub.files]]
+path = "/etc/tool.conf"
+lines = ["enabled=true"]
+""",
+                encoding="utf-8",
+            )
+            (root / "distro/profiles/source.toml").write_text(
+                """
+[profile]
+name = "source"
+packages = ["tool"]
+""",
+                encoding="utf-8",
+            )
+
+            self.run_ki2(root, "build", "--profile", "distro/profiles/source.toml")
+            package = root / "dist/ki2/packages/x86_64/tool-1-1.x86_64.ki2"
+            with tarfile.open(package, "r:gz") as archive:
+                names = set(archive.getnames())
+            self.assertIn("rootfs/usr/bin/tool", names)
+            self.assertIn("rootfs/usr/lib/systemd/system/tool.service", names)
+            self.assertIn("rootfs/etc/tool.conf", names)
+
+    def test_sysroot_exclude_keeps_other_packaged_dependencies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "distro/recipes").mkdir(parents=True)
+            (root / "distro/profiles").mkdir(parents=True)
+            for name in ("host-base", "library", "application"):
+                source = root / f"distro/sources/{name}/usr/share/{name}"
+                source.parent.mkdir(parents=True)
+                source.write_text(name + "\n", encoding="utf-8")
+            (root / "distro/recipes/sysroot.toml").write_text(
+                """
+[[recipe]]
+name = "host-base"
+version = "1"
+summary = "host bootstrap base"
+license = "MIT"
+[recipe.source]
+type = "local"
+path = "distro/sources/host-base"
+[recipe.dependencies]
+build = ["host-headers"]
+runtime = []
+[recipe.build]
+system = "copy"
+
+[[recipe]]
+name = "host-headers"
+version = "1"
+summary = "host bootstrap headers"
+license = "MIT"
+[recipe.source]
+type = "virtual"
+[recipe.dependencies]
+build = []
+runtime = []
+[recipe.build]
+system = "stage2-stub"
+
+[[recipe]]
+name = "library"
+version = "1"
+summary = "packaged library"
+license = "MIT"
+[recipe.source]
+type = "local"
+path = "distro/sources/library"
+[recipe.dependencies]
+build = []
+runtime = ["host-base"]
+[recipe.build]
+system = "copy"
+
+[[recipe]]
+name = "application"
+version = "1"
+summary = "hybrid sysroot application"
+license = "MIT"
+[recipe.source]
+type = "local"
+path = "distro/sources/application"
+[recipe.dependencies]
+build = ["library"]
+runtime = ["host-base"]
+[recipe.build]
+system = "make"
+sysroot_exclude = ["host-base"]
+install = ["test -f ${KI2_SYSROOT}/usr/share/library && test ! -e ${KI2_SYSROOT}/usr/share/host-base && install -Dm644 ${KI2_SOURCE_DIR}/usr/share/application ${KI2_DESTDIR}/usr/share/application"]
+""",
+                encoding="utf-8",
+            )
+            (root / "distro/profiles/sysroot.toml").write_text(
+                """
+[profile]
+name = "sysroot"
+packages = ["application"]
+""",
+                encoding="utf-8",
+            )
+
+            self.run_ki2(root, "build", "--profile", "distro/profiles/sysroot.toml")
+            sysroot = root / "build/ki2/x86_64/sysroot/usr/share"
+            self.assertTrue((sysroot / "library").is_file())
+            self.assertFalse((sysroot / "host-base").exists())
+            self.assertFalse((sysroot.parent / "bin/host-headers").exists())
+
     def test_host_ldd_filter_keeps_core_runtime_owned_by_kiki_packages(self):
         self.assertFalse(ki2build.should_copy_host_ldd_dependency(Path("/lib64/libc.so.6")))
         self.assertFalse(ki2build.should_copy_host_ldd_dependency(Path("/lib64/ld-linux-x86-64.so.2")))
@@ -496,6 +636,58 @@ packages = ["app"]
             self.assertIsNotNone(first_key)
 
             source.write_text("second\n", encoding="utf-8")
+            second = self.run_ki2(root, "build", "--dry-run", "--profile", "distro/profiles/test.toml").stdout
+            second_key = re.search(r"key=([0-9a-f]+)", second)
+            self.assertIsNotNone(second_key)
+            self.assertNotEqual(first_key.group(1), second_key.group(1))
+
+    def test_additional_local_source_inputs_are_keyed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "distro/recipes").mkdir(parents=True)
+            (root / "distro/profiles").mkdir(parents=True)
+            source = root / "distro/sources/app/usr/bin/app"
+            source.parent.mkdir(parents=True)
+            source.write_text("app\n", encoding="utf-8")
+            extra = root / "internal/app/main.go"
+            extra.parent.mkdir(parents=True)
+            extra.write_text("package app\n", encoding="utf-8")
+
+            (root / "distro/recipes/local.toml").write_text(
+                """
+[[recipe]]
+name = "app"
+version = "1"
+release = 1
+summary = "local source app"
+license = "MIT"
+architectures = ["all"]
+[recipe.source]
+type = "local"
+path = "distro/sources/app"
+inputs = ["internal/app"]
+[recipe.dependencies]
+build = []
+runtime = []
+[recipe.build]
+system = "copy"
+""",
+                encoding="utf-8",
+            )
+            (root / "distro/profiles/test.toml").write_text(
+                """
+[profile]
+name = "test"
+packages = ["app"]
+""",
+                encoding="utf-8",
+            )
+
+            first = self.run_ki2(root, "build", "--dry-run", "--profile", "distro/profiles/test.toml").stdout
+            first_key = re.search(r"key=([0-9a-f]+)", first)
+            self.assertIsNotNone(first_key)
+
+            extra.write_text("package app\n// changed\n", encoding="utf-8")
             second = self.run_ki2(root, "build", "--dry-run", "--profile", "distro/profiles/test.toml").stdout
             second_key = re.search(r"key=([0-9a-f]+)", second)
             self.assertIsNotNone(second_key)

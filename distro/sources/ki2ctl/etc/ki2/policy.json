@@ -1,0 +1,5 @@
+{
+  "require_repository_signature": true,
+  "signature_algorithm": "ed25519",
+  "trusted_key": "/etc/ki2/trust/stage3-repo.ed25519.pub"
+}

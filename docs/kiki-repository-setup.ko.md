@@ -396,6 +396,31 @@ sudo ki2ctl update --verify-key /etc/ki2/trust/stage2-v2-repo.hmac
 중요: `build/ki2/keys/stage2-v2-repo.hmac`는 배포 대상이 아니다. HTTP 저장소에
 함께 올리면 서명의 의미가 사라진다.
 
+## 3단계 Ed25519 저장소 서명
+
+3단계 운영 저장소는 공유 비밀 HMAC 대신 Ed25519 개인키로 서명하고 공개키만
+노드에 배포한다.
+
+```bash
+python3 tools/ki2repo.py keygen-ed25519 \
+  --private-key build/ki2/keys/stage3-repo.ed25519 \
+  --public-key build/ki2/keys/stage3-repo.ed25519.pub
+
+python3 tools/ki2repo.py generate \
+  --channel stage3-v3 \
+  --base-url https://repo.example/kiki \
+  --sign-key build/ki2/keys/stage3-repo.ed25519 \
+  --sign-algorithm ed25519
+
+python3 tools/ki2repo.py verify \
+  --key build/ki2/keys/stage3-repo.ed25519.pub
+```
+
+공개키는 노드의 `/etc/ki2/trust/stage3-repo.ed25519.pub`에 설치한다. 배포된
+`/etc/ki2/policy.json`은 `ki2ctl update`에서 서명과 Ed25519 알고리즘을 기본
+강제한다. `--no-verify`는 격리된 복구 상황에서 운영자가 위험을 명시적으로
+수용할 때만 사용한다. 개인키는 빌드 서명 환경 밖으로 배포하지 않는다.
+
 ## 2단계 테스트 ISO
 
 2026-05-26 기준 테스트용 설치 ISO:

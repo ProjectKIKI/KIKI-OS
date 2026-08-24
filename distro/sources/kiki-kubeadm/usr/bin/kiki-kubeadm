@@ -144,7 +144,14 @@ def render_config(values: dict[str, str], template_text: str, args: argparse.Nam
     if action == "init" and not endpoint:
         endpoint = f"{node_name}:6443"
 
+    if args.token and args.token_file:
+        raise KikiKubeadmError("pass only one of --token or --token-file")
     token = first_text(args.token, plan_get(values, "kubernetes.join.token"))
+    if args.token_file:
+        token_path = rooted_path(args.root.resolve(), args.token_file)
+        token = token_path.read_text(encoding="utf-8").strip()
+        if not token:
+            raise KikiKubeadmError("join token file is empty")
     ca_hash = first_text(args.ca_cert_hash, plan_get(values, "kubernetes.join.ca_cert_hash"))
     if ca_hash:
         ca_hash = normalize_ca_hash(ca_hash)
@@ -295,6 +302,7 @@ def add_render_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--node-name", default="", help="nodeRegistration.name")
     parser.add_argument("--endpoint", default="", help="control-plane endpoint host:port")
     parser.add_argument("--token", default="", help="kubeadm bootstrap token for join")
+    parser.add_argument("--token-file", default="", help="file containing the kubeadm bootstrap token")
     parser.add_argument("--ca-cert-hash", default="", help="discovery token CA cert hash")
     parser.add_argument("--cri-socket", default="", help="CRI socket endpoint")
     parser.add_argument("--pod-cidr", default="", help="pod subnet for kubeadm init")

@@ -1,0 +1,5 @@
+kubernetes:
+  role: bootstrap-control-plane
+  kubeadm:
+    action: init
+    config_template: /etc/kubernetes/kiki/kubeadm-init.yaml

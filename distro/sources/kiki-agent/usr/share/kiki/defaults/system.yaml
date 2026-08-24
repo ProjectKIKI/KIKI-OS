@@ -1,0 +1,27 @@
+system:
+  hostname: localhost.localdomain
+  timezone: UTC
+  locale: C.UTF-8
+  services:
+    required:
+      - dbus.service
+      - systemd-networkd.service
+      - systemd-resolved.service
+      - sshd.service
+    optional:
+      - crio.service
+      - containerd.service
+      - kubelet.service
+      - chronyd.service
+agent:
+  management_url: ""
+  heartbeat_interval: 60
+  state_dir: /var/lib/kiki
+safety:
+  allow_cluster_reset: false
+  allow_unsigned_repository: false
+  allow_unverified_remote_plan: false
+  allow_control_plane_cert_upload: false
+  require_join_token: true
+  require_ca_cert_hash: true
+  require_repository_signature: true

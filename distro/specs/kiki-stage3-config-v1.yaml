@@ -1,6 +1,6 @@
 schema: kiki-stage3-config-spec-v1
 name: kiki-stage3-config-v1
-status: draft
+status: stage3-v3-in-progress
 description: Stage 3 default configuration and operator override contract.
 
 document:
@@ -33,6 +33,9 @@ merge_rules:
   lists: replace
   list_append_requires: merge_strategy_append
   secrets: never_write_plaintext_to_rendered_plan
+  append_directive:
+    merge_strategy: append
+    items: []
 
 system:
   hostname: localhost.localdomain
@@ -110,6 +113,7 @@ remote_plan:
   url: ""
   sha256: ""
   signature: ""
+  public_key: /etc/kiki/trust/install-plan.ed25519.pub
   downloaded_path: /run/kiki/remote-install-plan.yaml
   verified_path: /run/kiki/install-plan.yaml
 

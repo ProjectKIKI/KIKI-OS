@@ -8,7 +8,7 @@
 [[recipe]]
 name = "base-files"
 version = "0.1.0"
-release = 18
+release = 19
 summary = "KIKI filesystem skeleton, os-release, and default system layout"
 license = "GPL-3.0-or-later"
 tier = "base"
@@ -90,7 +90,7 @@ install = ["make -C ${KI2_BUILD_DIR}/glibc DESTDIR=${KI2_DESTDIR} install"]
 [[recipe]]
 name = "zlib"
 version = "1.3.1"
-release = 1
+release = 3
 summary = "Compression library used by core userland"
 license = "Zlib"
 tier = "base"
@@ -104,6 +104,13 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
+sysroot_exclude = ["glibc"]
+configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr"]
+compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
+install = [
+  "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
+  "find ${KI2_DESTDIR}/usr -type f -name '*.a' -delete"
+]
 
 [[recipe]]
 name = "libxcrypt"
@@ -132,7 +139,7 @@ install = [
 [[recipe]]
 name = "expat"
 version = "2.6.2"
-release = 1
+release = 3
 summary = "XML parser required by D-Bus"
 license = "MIT"
 tier = "base"
@@ -146,11 +153,21 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
+sysroot_exclude = ["glibc"]
+configure_options = ["--disable-static"]
+configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --disable-static"]
+compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
+install = [
+  "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
+  "find ${KI2_DESTDIR}/usr/lib -name '*.la' -delete",
+  "find ${KI2_DESTDIR}/usr/lib -name '*.a' -delete",
+  "find ${KI2_DESTDIR}/usr/bin ${KI2_DESTDIR}/usr/lib -type f -exec sh -c 'for binary do file \"${binary}\" | grep -q ELF && strip --strip-unneeded \"${binary}\" || true; done' sh {} +"
+]
 
 [[recipe]]
 name = "openssl"
 version = "3.3.1"
-release = 1
+release = 5
 summary = "TLS and cryptographic primitives"
 license = "Apache-2.0"
 tier = "base"
@@ -164,9 +181,20 @@ build = []
 runtime = ["glibc", "zlib"]
 [recipe.build]
 system = "make"
-configure = ["cd ${KI2_SOURCE_DIR} && ./Configure linux-x86_64 --prefix=/usr --openssldir=/etc/ssl shared zlib"]
+sysroot_exclude = ["glibc"]
+configure = [
+  "cd ${KI2_SOURCE_DIR} && ./Configure linux-x86_64 --prefix=/usr --openssldir=/etc/ssl --with-zlib-include=${KI2_SYSROOT}/usr/include --with-zlib-lib=${KI2_SYSROOT}/usr/lib shared zlib no-tests",
+  "sed -i '/^CPPFLAGS_Q=/s#${KI2_SYSROOT}##g' ${KI2_SOURCE_DIR}/Makefile"
+]
 compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
-install = ["make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install_sw install_ssldirs"]
+install = [
+  "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install_sw install_ssldirs",
+  "find ${KI2_DESTDIR}/usr/lib64 -name '*.a' -delete",
+  "find ${KI2_DESTDIR}/usr/bin ${KI2_DESTDIR}/usr/lib64 -type f -exec sh -c 'for binary do file \"${binary}\" | grep -q ELF && strip --strip-unneeded \"${binary}\" || true; done' sh {} +"
+]
+[recipe.build.env]
+CFLAGS = "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
 
 [[recipe]]
 name = "libcap"
@@ -243,7 +271,7 @@ system = "gnu"
 [[recipe]]
 name = "ncurses"
 version = "6.5"
-release = 1
+release = 2
 summary = "Terminal control libraries for console TUI tools"
 license = "X11"
 tier = "base"
@@ -257,6 +285,7 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
+sysroot_exclude = ["glibc"]
 configure_options = [
   "--libdir=/lib",
   "--with-shared",
@@ -324,7 +353,7 @@ system = "gnu"
 [[recipe]]
 name = "dbus"
 version = "1.14.10"
-release = 2
+release = 7
 summary = "System message bus"
 license = "AFL-2.1 OR GPL-2.0-or-later"
 tier = "base"
@@ -334,11 +363,27 @@ type = "url"
 url = "https://dbus.freedesktop.org/releases/dbus/dbus-1.14.10.tar.xz"
 sha256 = "ba1f21d2bd9d339da2d4aa8780c09df32fea87998b73da24f49ab9df1e36a50f"
 [recipe.dependencies]
-build = []
+build = ["expat"]
 runtime = ["glibc", "expat"]
 [recipe.build]
 system = "gnu"
-configure_options = ["--localstatedir=/var", "--runstatedir=/run", "--with-system-socket=/run/dbus/system_bus_socket"]
+sysroot_exclude = ["glibc"]
+configure_options = ["--sysconfdir=/etc", "--localstatedir=/var", "--runstatedir=/run", "--with-system-socket=/run/dbus/system_bus_socket", "--disable-static"]
+configure = [
+  "find ${KI2_SYSROOT}/usr/lib -type f -name '*.la' -delete",
+  "cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --runstatedir=/run --with-system-socket=/run/dbus/system_bus_socket --disable-static",
+  "sed -i 's/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=\"\"/' ${KI2_SOURCE_DIR}/libtool"
+]
+compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
+install = [
+  "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
+  "find ${KI2_DESTDIR}/usr/lib -name '*.la' -delete",
+  "find ${KI2_DESTDIR}/usr/bin ${KI2_DESTDIR}/usr/lib ${KI2_DESTDIR}/usr/libexec -type f -exec sh -c 'for binary do file \"${binary}\" | grep -q ELF && strip --strip-unneeded \"${binary}\" || true; done' sh {} +"
+]
+env.CPPFLAGS = "${KI2_SYSROOT_CPPFLAGS}"
+env.CFLAGS = "${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=${KI2_WORK}=/usr/src/dbus -fdebug-prefix-map=${KI2_WORK}=/usr/src/dbus -ffile-prefix-map=${KI2_SYSROOT}=/usr -fdebug-prefix-map=${KI2_SYSROOT}=/usr"
+env.LDFLAGS = "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+env.TMPDIR = "/tmp"
 
 [[recipe]]
 name = "systemd"
@@ -540,7 +585,7 @@ system = "gnu"
 [[recipe]]
 name = "xz"
 version = "5.6.2"
-release = 1
+release = 3
 summary = "XZ compression utilities and liblzma"
 license = "0BSD AND LGPL-2.1-or-later"
 tier = "archive"
@@ -554,6 +599,16 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
+sysroot_exclude = ["glibc"]
+configure_options = ["--disable-static"]
+configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --disable-static"]
+compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
+install = [
+  "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
+  "find ${KI2_DESTDIR}/usr/lib -name '*.la' -delete",
+  "find ${KI2_DESTDIR}/usr/lib -name '*.a' -delete",
+  "find ${KI2_DESTDIR}/usr/bin ${KI2_DESTDIR}/usr/lib -type f -exec sh -c 'for binary do file \"${binary}\" | grep -q ELF && strip --strip-unneeded \"${binary}\" || true; done' sh {} +"
+]
 
 [[recipe]]
 name = "zstd"
@@ -651,7 +706,7 @@ system = "cmake"
 [[recipe]]
 name = "python"
 version = "3.12.4"
-release = 1
+release = 5
 summary = "Python runtime for installer and agent tooling"
 license = "Python-2.0"
 tier = "runtime"
@@ -659,13 +714,34 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://www.python.org/ftp/python/3.12.4/Python-3.12.4.tgz"
-sha256 = "TODO"
+sha256 = "01b3c1c082196f3b33168d344a9c85fb07bfe0e7ecfe77fee4443420d1ce2ad9"
 [recipe.dependencies]
-build = []
-runtime = ["glibc", "expat", "openssl", "xz", "zlib"]
+build = ["libffi"]
+runtime = ["glibc", "expat", "libffi", "openssl", "xz", "zlib"]
 [recipe.build]
 system = "gnu"
-configure_options = ["--enable-optimizations", "--with-system-expat", "--with-openssl=/usr"]
+sysroot_exclude = ["glibc"]
+configure_options = ["--enable-shared", "--without-static-libpython", "--disable-test-modules", "--without-ensurepip", "--with-system-expat", "--with-openssl=/usr"]
+configure = [
+  "mkdir -p ${KI2_BUILD_DIR}/python",
+  "cd ${KI2_BUILD_DIR}/python && ../../source/Python-3.12.4/configure --prefix=/usr --enable-shared --without-static-libpython --disable-test-modules --without-ensurepip --with-system-expat --with-openssl=/usr"
+]
+compile = ["make -C ${KI2_BUILD_DIR}/python -j${KI2_JOBS}"]
+install = [
+  "make -C ${KI2_BUILD_DIR}/python DESTDIR=${KI2_DESTDIR} install",
+  "ln -sfn python3.12 ${KI2_DESTDIR}/usr/bin/python3",
+  "for metadata in ${KI2_DESTDIR}/usr/bin/python3.12-config ${KI2_DESTDIR}/usr/lib/python3.12/_sysconfigdata_*.py ${KI2_DESTDIR}/usr/lib/python3.12/config-*/Makefile ${KI2_DESTDIR}/usr/lib/python3.12/config-*/config.c ${KI2_DESTDIR}/usr/lib/python3.12/config-*/config.c.in; do test ! -f \"${metadata}\" || sed -i -e \"s#${KI2_WORK}#/usr/src/python#g\" -e \"s#${KI2_SYSROOT}##g\" \"${metadata}\"; done",
+  "find ${KI2_DESTDIR}/usr/lib/python3.12 -type f -name '*.pyc' -delete",
+  "find ${KI2_DESTDIR}/usr/lib/python3.12 -depth -type d -name '__pycache__' -empty -delete",
+  "find ${KI2_DESTDIR}/usr -type f -name '*.a' -delete",
+  "find ${KI2_DESTDIR}/usr/bin ${KI2_DESTDIR}/usr/lib -type f -exec sh -c 'for binary do file \"${binary}\" | grep -q ELF && strip --strip-unneeded \"${binary}\" || true; done' sh {} +"
+]
+[recipe.build.env]
+CPPFLAGS = "${KI2_SYSROOT_CPPFLAGS}"
+CFLAGS = "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=${KI2_WORK}=/usr/src/python -fdebug-prefix-map=${KI2_WORK}=/usr/src/python -ffile-prefix-map=${KI2_SYSROOT}=/usr -fdebug-prefix-map=${KI2_SYSROOT}=/usr"
+LDFLAGS = "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+LD_LIBRARY_PATH = "${KI2_BUILD_DIR}/python"
+PYTHONHASHSEED = "0"
 
 [[recipe]]
 name = "perl"
@@ -833,7 +909,7 @@ configure_options = ["--with-openssl", "--disable-ldap", "--disable-ldaps"]
 [[recipe]]
 name = "ki2ctl"
 version = "0.1.0"
-release = 6
+release = 7
 summary = "KIKI HTTP package manager"
 license = "GPL-3.0-or-later"
 tier = "kiki"
@@ -846,23 +922,49 @@ build = []
 runtime = ["python"]
 [recipe.build]
 system = "copy"
+skip_sysroot = true
 
 [[recipe]]
 name = "kiki-agent"
 version = "0.1.0"
-release = 4
-summary = "KIKI node registration, heartbeat, and Stage 1 validation tools"
+release = 5
+summary = "KIKI node registration, heartbeat, validation, and Stage 3 configuration defaults"
 license = "GPL-3.0-or-later"
 tier = "kiki"
 architectures = ["all"]
 [recipe.source]
 type = "local"
 path = "distro/sources/kiki-agent"
+inputs = [
+  "go.mod",
+  "go.sum",
+  "vendor",
+  "cmd/kiki-agent",
+  "internal/agent",
+  "internal/stage3"
+]
 [recipe.dependencies]
 build = []
 runtime = ["python", "systemd", "ca-certificates"]
 [recipe.build]
-system = "copy"
+system = "go"
+skip_sysroot = true
+compile = [
+  "mkdir -p ${KI2_BUILD_DIR}/source/cmd ${KI2_BUILD_DIR}/source/internal",
+  "cp ${KI2_REPO_ROOT}/go.mod ${KI2_REPO_ROOT}/go.sum ${KI2_BUILD_DIR}/source/",
+  "cp -a ${KI2_REPO_ROOT}/vendor ${KI2_BUILD_DIR}/source/vendor",
+  "cp -a ${KI2_REPO_ROOT}/cmd/kiki-agent ${KI2_BUILD_DIR}/source/cmd/kiki-agent",
+  "cp -a ${KI2_REPO_ROOT}/internal/agent ${KI2_BUILD_DIR}/source/internal/agent",
+  "cp -a ${KI2_REPO_ROOT}/internal/stage3 ${KI2_BUILD_DIR}/source/internal/stage3",
+  "cd ${KI2_BUILD_DIR}/source && GOTOOLCHAIN=local CGO_ENABLED=0 GOCACHE=${KI2_BUILD_DIR}/go-cache GOPATH=${KI2_BUILD_DIR}/gopath go build -mod=vendor -buildvcs=false -trimpath -o ${KI2_BUILD_DIR}/kiki-agent-stage3 ./cmd/kiki-agent"
+]
+install = [
+  "mkdir -p ${KI2_DESTDIR}/etc/systemd/system ${KI2_DESTDIR}/usr/bin ${KI2_DESTDIR}/usr/libexec ${KI2_DESTDIR}/usr/share",
+  "cp ${KI2_BUILD_DIR}/kiki-agent-stage3 ${KI2_DESTDIR}/usr/libexec/kiki-agent-stage3",
+  "cp ${KI2_SOURCE_DIR}/etc/systemd/system/kiki-agent.service ${KI2_DESTDIR}/etc/systemd/system/kiki-agent.service",
+  "cp ${KI2_SOURCE_DIR}/usr/bin/kiki-agent ${KI2_SOURCE_DIR}/usr/bin/kiki-stage1-check ${KI2_DESTDIR}/usr/bin/",
+  "cp -a ${KI2_SOURCE_DIR}/usr/share/kiki ${KI2_DESTDIR}/usr/share/kiki"
+]
 
 [[recipe]]
 name = "kiki-netconfig"

@@ -85,6 +85,7 @@ KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 
 
 ## 주요 도구
 
+- `tools/kiki_console.py`: ISO 사전 상태·검증·빌드를 통합한 대화형 관리 콘솔
 - `tools/ki2build.py`: `.ki2` 패키지 빌드, 의존성 계획, 루트 파일시스템 조립
 - `tools/ki2repo.py`: HTTP 패키지 저장소 인덱스, 메타데이터, 채널 파일 생성
 - `tools/ki2ci.py`: 명령줄 파이프라인과 빌드 웹 콘솔
@@ -102,12 +103,22 @@ KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 
 - [KIKI OS 2단계 V2 완료 문서](docs/kiki-stage2-v2-progress.ko.md)
 - [KIKI OS 3단계 V3 전환 계획](docs/kiki-stage3-v3-plan.ko.md)
 - [KIKI OS 3단계 V3 초안](docs/kiki-stage3-v3-draft.ko.md)
+- [KIKI OS 관리 콘솔](docs/kiki-management-console.ko.md)
 - [KIKI OS 홈페이지 콘텐츠 기준](docs/kiki-homepage-content.ko.md)
 - [KIKI OS 네트워크 설정 도구](docs/kiki-network-config.ko.md)
 - [KIKI 패키지 저장소 구성 가이드](docs/kiki-repository-setup.ko.md)
 - [KIKI OS 2단계 상세 작업 메모](docs/kiki-stage2-plan.ko.md)
 
 ## 빠른 시작
+
+ISO 사전 관리 콘솔:
+
+```bash
+python3 tools/kiki_console.py status
+python3 tools/kiki_console.py doctor
+python3 tools/kiki_console.py plan
+python3 tools/kiki_console.py build --dry-run
+```
 
 프로필 검증:
 

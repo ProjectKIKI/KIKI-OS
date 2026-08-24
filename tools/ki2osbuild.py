@@ -32,7 +32,7 @@ class OsBuildError(RuntimeError):
 class Step:
     name: str
     command: list[str]
-    skip_if_exists: Path | None = None
+    skip_if_exists: Path | tuple[Path, ...] | None = None
     skip_message: str = ""
 
 
@@ -172,6 +172,21 @@ def signing_key(ctx: BuildContext) -> Path:
     return resolve_path(ctx.repo_root, repository.get("signing_key"), default=ctx.repo_root / "build" / "ki2" / "keys" / "stage2-v2-repo.hmac")
 
 
+def signing_algorithm(ctx: BuildContext) -> str:
+    repository = ctx.plan.get("repository", {})
+    if not isinstance(repository, dict):
+        raise OsBuildError("repository section must be a mapping")
+    algorithm = str(repository.get("algorithm") or "hmac-sha256")
+    if algorithm not in {"hmac-sha256", "ed25519"}:
+        raise OsBuildError(f"unsupported repository signing algorithm: {algorithm}")
+    return algorithm
+
+
+def verification_key(ctx: BuildContext) -> Path:
+    key = signing_key(ctx)
+    return Path(str(key) + ".pub") if signing_algorithm(ctx) == "ed25519" else key
+
+
 def release_channel(ctx: BuildContext) -> str:
     release = ctx.plan.get("release", {})
     if not isinstance(release, dict):
@@ -212,16 +227,23 @@ def build_steps(ctx: BuildContext) -> list[Step]:
     sign = bool_value(repository, "sign", True)
     if sign:
         key = signing_key(ctx)
-        keygen = ki2repo_cmd(ctx, "keygen", "--output", str(key))
+        algorithm = signing_algorithm(ctx)
+        if algorithm == "ed25519":
+            keygen = ki2repo_cmd(ctx, "keygen-ed25519", "--private-key", str(key), "--public-key", str(verification_key(ctx)))
+        else:
+            keygen = ki2repo_cmd(ctx, "keygen", "--output", str(key))
         if ctx.force_key:
             keygen.append("--force")
-        steps.append(Step("Ensure repository signing key", keygen, skip_if_exists=None if ctx.force_key else key, skip_message=f"signing key exists: {key}"))
+        key_targets: Path | tuple[Path, ...] = (key, verification_key(ctx)) if algorithm == "ed25519" else key
+        steps.append(Step("Ensure repository signing key", keygen, skip_if_exists=None if ctx.force_key else key_targets, skip_message=f"signing key exists: {key}"))
         generate = ki2repo_cmd(ctx, "generate", "--channel", release_channel(ctx), "--sign-key", str(key))
+        if algorithm == "ed25519":
+            generate.extend(["--sign-algorithm", "ed25519"])
         base_url = str(repository.get("base_url") or "")
         if base_url:
             generate.extend(["--base-url", base_url])
         steps.append(Step("Generate signed repository metadata", generate))
-        steps.append(Step("Verify repository metadata signature", ki2repo_cmd(ctx, "verify", "--key", str(key))))
+        steps.append(Step("Verify repository metadata signature", ki2repo_cmd(ctx, "verify", "--key", str(verification_key(ctx)))))
     else:
         steps.append(Step("Generate unsigned repository metadata", ki2repo_cmd(ctx, "generate", "--channel", release_channel(ctx))))
 
@@ -236,6 +258,8 @@ def build_steps(ctx: BuildContext) -> list[Step]:
     if not ctx.skip_verify:
         strict = bool_value(verify, "strict_production", True)
         require_signed = bool_value(verify, "require_signed_metadata", True)
+        if bool_value(verify, "stage3_contract", False):
+            steps.append(Step("Verify Stage 3 platform contract", python_cmd("tools/ki2stage3.py", "verify")))
         if bool_value(verify, "stage2_kubernetes", True):
             command = ki2stage2_cmd(ctx, "verify-kubernetes")
             if require_signed:
@@ -347,7 +371,8 @@ def command_plan(args: argparse.Namespace) -> None:
     print(f"arch: {ctx.arch}")
     print(f"run-dir: {ctx.run_dir}")
     for index, step in enumerate(build_steps(ctx), start=1):
-        skip = f" [skip if exists: {step.skip_if_exists}]" if step.skip_if_exists else ""
+        targets = step.skip_if_exists if isinstance(step.skip_if_exists, tuple) else ((step.skip_if_exists,) if step.skip_if_exists else ())
+        skip = f" [skip if all exist: {', '.join(str(path) for path in targets)}]" if targets else ""
         print(f"{index:02d}. {step.name}{skip}")
         print(f"    {command_text(step.command)}")
 
@@ -361,12 +386,21 @@ def run_step(ctx: BuildContext, step: Step, index: int, dry_run: bool) -> dict[s
         "finished_at": None,
         "returncode": None,
     }
-    if step.skip_if_exists is not None and step.skip_if_exists.exists():
-        record["status"] = "skipped"
-        record["finished_at"] = now()
-        record["message"] = step.skip_message or f"exists: {step.skip_if_exists}"
-        print(f"[skip] {step.name}: {record['message']}")
-        return record
+    if step.skip_if_exists is not None:
+        targets = step.skip_if_exists if isinstance(step.skip_if_exists, tuple) else (step.skip_if_exists,)
+        present = [path.exists() for path in targets]
+        if all(present):
+            record["status"] = "skipped"
+            record["finished_at"] = now()
+            record["message"] = step.skip_message or "all required files exist"
+            print(f"[skip] {step.name}: {record['message']}")
+            return record
+        if any(present):
+            existing = ", ".join(str(path) for path, exists in zip(targets, present) if exists)
+            missing = ", ".join(str(path) for path, exists in zip(targets, present) if not exists)
+            raise OsBuildError(
+                f"incomplete signing key set; existing: {existing}; missing: {missing}; use --force-key to replace the pair"
+            )
     print(f"[run] {step.name}")
     print(f"      {command_text(step.command)}")
     if dry_run:

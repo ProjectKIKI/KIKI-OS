@@ -1,0 +1,42 @@
+schema: kiki-os-build-plan-v1
+name: stage3-server-core
+description: Stage 3 general-purpose KIKI OS server and installer ISO preparation plan.
+
+release:
+  channel: stage3-v3
+  arch: x86_64
+
+build:
+  profile: distro/profiles/server-core.toml
+  max_packages: 72
+  allow_unpinned: false
+
+repository:
+  sign: true
+  algorithm: ed25519
+  signing_key: build/ki2/keys/stage3-v3-repo.ed25519
+  base_url: ""
+
+rootfs:
+  enabled: true
+  profile: distro/profiles/server-core.toml
+  output: dist/rootfs/server-core
+  runtime: none
+  clean: true
+
+verify:
+  stage3_contract: true
+  stage2_kubernetes: false
+  network_userspace: true
+  binary_smoke: false
+  package_manager: true
+  installed_rootfs: false
+  strict_production: true
+  require_signed_metadata: true
+
+iso:
+  enabled: false
+  profile: bootstrap-stage1
+  mode: installer
+  release_name: stage3-v3
+  no_hyperv_vhdx: true

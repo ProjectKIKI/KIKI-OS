@@ -3,6 +3,10 @@
 `tools/ki2osbuild.py`는 KIKI OS 전체 빌드를 선언형 YAML 계획서로 실행하는
 오케스트레이터다. 기존 도구를 새로 대체하지 않고 다음 흐름을 하나로 묶는다.
 
+운영자가 ISO 전에 상태를 확인하고 이 오케스트레이터를 안전하게 제어하려면
+`tools/kiki_console.py`를 사용한다. 관리 콘솔의 Stage 3 기본 계획은
+`distro/build-plans/stage3-server-core.yaml`이며 Ed25519 저장소 서명을 사용한다.
+
 ```text
 빌드 계획 YAML
   -> ki2build validate/plan/build
@@ -24,6 +28,12 @@ distro/build-plans/stage2-kube-compute-containerd.yaml
 
 이 계획서는 2단계 containerd Kubernetes 컴퓨트 노드용 루트 파일시스템을 만든다. ISO 생성은
 기본값으로 꺼져 있다.
+
+Stage 3 서버와 설치 ISO 준비 계획은 다음 파일이다.
+
+```text
+distro/build-plans/stage3-server-core.yaml
+```
 
 ## 계획서 목록
 

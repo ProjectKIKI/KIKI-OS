@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+: "${KI2_SYSROOT:?KI2_SYSROOT is required}"
+: "${KI2_SYSROOT_LIBRARY_PATH:?KI2_SYSROOT_LIBRARY_PATH is required}"
+
+# Keep host build tools on the host ABI while allowing only the target Python
+# process (and extension probes launched by it) to resolve KIKI shared objects.
+export LD_LIBRARY_PATH="${KI2_SYSROOT_LIBRARY_PATH}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONHASHSEED=0
+
+exec "${KI2_SYSROOT}/usr/bin/python3.12" "$@"

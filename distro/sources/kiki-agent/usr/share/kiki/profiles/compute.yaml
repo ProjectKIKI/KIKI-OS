@@ -1,0 +1,5 @@
+kubernetes:
+  role: compute
+  kubeadm:
+    action: join
+    config_template: /etc/kubernetes/kiki/kubeadm-join-compute.yaml

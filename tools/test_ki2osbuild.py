@@ -51,6 +51,26 @@ class Ki2OsBuildTests(unittest.TestCase):
 
         self.assertTrue(any("tools/ki2bootiso.py" in command and "--mode installer" in command for command in commands))
 
+    def test_stage3_plan_uses_ed25519_and_stage3_verifier(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        args = ki2osbuild.build_parser().parse_args(
+            [
+                "plan",
+                "--repo-root",
+                str(repo_root),
+                "--build-plan",
+                "distro/build-plans/stage3-server-core.yaml",
+            ]
+        )
+        ctx = ki2osbuild.make_context(args)
+        commands = [" ".join(step.command) for step in ki2osbuild.build_steps(ctx)]
+
+        self.assertTrue(any("keygen-ed25519" in command and "stage3-v3-repo.ed25519.pub" in command for command in commands))
+        self.assertTrue(any("generate --channel stage3-v3" in command and "--sign-algorithm ed25519" in command for command in commands))
+        self.assertTrue(any("verify --key" in command and ".ed25519.pub" in command for command in commands))
+        self.assertTrue(any("tools/ki2stage3.py verify" in command for command in commands))
+        self.assertFalse(any("verify-kubernetes" in command for command in commands))
+
     def test_dry_run_writes_manifest_without_executing_steps(self):
         repo_root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as tmp:
@@ -77,6 +97,40 @@ class Ki2OsBuildTests(unittest.TestCase):
             self.assertTrue(manifest["dry_run"])
             self.assertTrue(manifest["steps"])
             self.assertTrue(all(step["status"] in {"dry-run", "skipped"} for step in manifest["steps"]))
+
+    def test_partial_ed25519_key_pair_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            private_key = root / "keys/repo.ed25519"
+            private_key.parent.mkdir(parents=True)
+            private_key.write_text("private\n", encoding="utf-8")
+            plan = {
+                "schema": ki2osbuild.SCHEMA,
+                "name": "partial-key-test",
+                "release": {"channel": "stage3-v3"},
+                "build": {"profile": "profile.toml"},
+                "repository": {"sign": True, "algorithm": "ed25519", "signing_key": str(private_key)},
+                "rootfs": {"enabled": False},
+                "verify": {},
+                "iso": {"enabled": False},
+            }
+            ctx = ki2osbuild.BuildContext(
+                repo_root=root,
+                plan_path=root / "plan.yaml",
+                plan=plan,
+                arch="x86_64",
+                jobs=2,
+                toolchain_id="test",
+                run_dir=root / "run",
+                include_iso=False,
+                skip_build=True,
+                skip_verify=True,
+                force_key=False,
+            )
+            key_step = next(step for step in ki2osbuild.build_steps(ctx) if step.name == "Ensure repository signing key")
+
+            with self.assertRaisesRegex(ki2osbuild.OsBuildError, "incomplete signing key set"):
+                ki2osbuild.run_step(ctx, key_step, 1, dry_run=True)
 
 
 if __name__ == "__main__":

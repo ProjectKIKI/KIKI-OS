@@ -71,6 +71,35 @@ class Ki2RepoTests(unittest.TestCase):
             (repo / "metadata.x86_64.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
             self.assertFalse(ki2repo.verify_metadata_file(repo / "metadata.x86_64.json", key))
 
+    def test_sign_and_verify_metadata_with_ed25519(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages = root / "dist/ki2/packages/x86_64"
+            repo = root / "dist/ki2/repo"
+            iso = root / "dist/iso"
+            private_key = root / "stage3-repo.ed25519"
+            public_key = root / "stage3-repo.ed25519.pub"
+            packages.mkdir(parents=True)
+            iso.mkdir(parents=True)
+            write_package(packages / "base-1-1.x86_64.ki2", name="base", tier="base", runtime=[])
+            ki2repo.run_openssl(["genpkey", "-algorithm", "ED25519", "-out", str(private_key)])
+            ki2repo.run_openssl(["pkey", "-in", str(private_key), "-pubout", "-out", str(public_key)])
+
+            args = fake_args(root=root, packages=packages, repo=repo, iso=iso)
+            args.sign_key = private_key
+            args.sign_algorithm = "ed25519"
+            ki2repo.generate(args)
+
+            metadata_path = repo / "metadata.x86_64.json"
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            self.assertEqual(metadata["security"]["algorithm"], "ed25519")
+            self.assertIn("signed-metadata-ed25519", metadata["capabilities"])
+            self.assertTrue(ki2repo.verify_metadata_file(metadata_path, public_key))
+
+            metadata["channel"] = "tampered"
+            metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+            self.assertFalse(ki2repo.verify_metadata_file(metadata_path, public_key))
+
 
 def fake_args(*, root: Path, packages: Path, repo: Path, iso: Path):
     class Args:

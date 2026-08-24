@@ -1,0 +1,4 @@
+kubernetes:
+  role: none
+  kubeadm:
+    action: none

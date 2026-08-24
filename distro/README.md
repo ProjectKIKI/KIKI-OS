@@ -286,6 +286,19 @@ python tools/ki2build.py repo-index
 
 ## 빌드 자동화 콘솔
 
+사람이 ISO 빌드 전에 현재 상태를 확인하고 Stage 3 검증·계획·빌드를 관리할 때는
+통합 콘솔을 사용한다. 인자 없이 실행하면 대화형 셸이 열리며, ISO 생성은 별도
+승인이 필요하다.
+
+```bash
+python3 tools/kiki_console.py
+python3 tools/kiki_console.py doctor --iso
+python3 tools/kiki_console.py plan --iso
+python3 tools/kiki_console.py iso --dry-run --yes
+```
+
+상세 사용법은 `docs/kiki-management-console.ko.md`에 정리되어 있다.
+
 `tools/ki2ci.py`는 빌드 서버 엔트리포인트다. 기본 작업 메타데이터와 로그는
 `build/ki2ci/` 아래에 저장한다.
 
