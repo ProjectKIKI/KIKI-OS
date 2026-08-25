@@ -11,29 +11,31 @@ import (
 )
 
 const (
-	appVersion       = "0.2.0"
+	appVersion       = "0.3.0"
 	defaultPlanPath  = "/run/kiki/install-plan.yaml"
 	defaultMediaRoot = "/run/install-media"
 )
 
 type InstallPlan struct {
-	Schema      string
-	APIVersion  string
-	Kind        string
-	GeneratedBy string
-	Mode        string
-	Source      SourcePlan
-	Target      TargetPlan
-	Identity    IdentityPlan
-	Network     NetworkPlan
-	Users       UsersPlan
-	Packages    PackagesPlan
-	Services    ServicesPlan
-	Boot        BootPlan
-	Runtime     RuntimePlan
-	Kubernetes  KubernetesPlan
-	Firewall    FirewallPlan
-	Artifacts   ArtifactsPlan
+	Schema       string
+	APIVersion   string
+	Kind         string
+	GeneratedBy  string
+	Mode         string
+	Source       SourcePlan
+	Target       TargetPlan
+	Identity     IdentityPlan
+	Localization LocalizationPlan
+	Network      NetworkPlan
+	Users        UsersPlan
+	Packages     PackagesPlan
+	Services     ServicesPlan
+	Boot         BootPlan
+	Runtime      RuntimePlan
+	AI           AIPlan
+	Kubernetes   KubernetesPlan
+	Firewall     FirewallPlan
+	Artifacts    ArtifactsPlan
 }
 
 type SourcePlan struct {
@@ -79,6 +81,12 @@ type SwapPlan struct {
 
 type IdentityPlan struct {
 	Hostname string
+}
+
+type LocalizationPlan struct {
+	Locale   string
+	Keymap   string
+	Timezone string
 }
 
 type NetworkPlan struct {
@@ -135,6 +143,14 @@ type RuntimePlan struct {
 	SwapPolicy       string
 }
 
+type AIPlan struct {
+	Mode            string
+	Endpoint        string
+	Model           string
+	ConsoleTTY      string
+	RequireApproval bool
+}
+
 type KubernetesPlan struct {
 	Role    string
 	Kubeadm KubeadmPlan
@@ -179,12 +195,68 @@ type TUI struct {
 func main() {
 	planPath := flag.String("plan", defaultPlanPath, "install plan path")
 	profile := flag.String("profile", "minimal-systemd", "initial profile")
+	mode := flag.String("mode", "guided", "install mode: guided or unattended")
+	disk := flag.String("disk", "/dev/sda", "target whole disk")
+	swapMode := flag.String("swap", "auto", "swap policy: auto, on, or off")
+	hostname := flag.String("hostname", "localhost.localdomain", "installed hostname")
+	adminUser := flag.String("user", "kiki", "administrator user")
+	locale := flag.String("locale", "ko_KR.UTF-8", "installed locale")
+	keymap := flag.String("keymap", "kr", "console keymap")
+	timezone := flag.String("timezone", "Asia/Seoul", "installed timezone")
+	runtimeName := flag.String("runtime", "", "container runtime override: none, crio, or containerd")
+	networkMode := flag.String("network", "dhcp", "network mode: dhcp, static, or off")
+	networkInterface := flag.String("network-interface", "en* eth*", "systemd-networkd interface match")
+	address := flag.String("address", "", "static address with prefix")
+	gateway := flag.String("gateway", "", "static gateway")
+	dns := flag.String("dns", "", "space-separated DNS servers")
+	sourceType := flag.String("source", "local", "package source: local, remote, or mirror")
+	sourceLocation := flag.String("source-location", defaultMediaRoot, "media root, repository URL, or mirror path")
+	verifyKey := flag.String("verify-key", "", "repository verification key")
+	aiMode := flag.String("ai", "local", "AI mode: local, remote, or off")
+	aiEndpoint := flag.String("ai-endpoint", "", "OpenAI-compatible endpoint override")
 	renderOnly := flag.Bool("render", false, "render dashboard and exit")
 	writeOnly := flag.Bool("write", false, "write install plan and exit")
 	flag.Usage = usage
 	flag.Parse()
+	if *mode != "guided" && *mode != "quick-vm" && *mode != "unattended" {
+		fatalFlag(fmt.Errorf("mode must be guided, quick-vm, or unattended"))
+	}
 
 	plan := NewDefaultPlan(*profile)
+	plan.Mode = *mode
+	if err := applyDisk(&plan, *disk); err != nil {
+		fatalFlag(err)
+	}
+	if *swapMode != "auto" {
+		if err := applySwap(&plan, *swapMode); err != nil {
+			fatalFlag(err)
+		}
+		if err := applyDisk(&plan, *disk); err != nil {
+			fatalFlag(err)
+		}
+	}
+	if !validUserName(*adminUser) {
+		fatalFlag(fmt.Errorf("invalid user name: %s", *adminUser))
+	}
+	plan.Users.Admin.Name = *adminUser
+	plan.Users.Admin.PrimaryGroup = *adminUser
+	plan.Identity.Hostname = *hostname
+	plan.Localization = LocalizationPlan{Locale: *locale, Keymap: *keymap, Timezone: *timezone}
+	if err := applyNetwork(&plan, *networkMode, *networkInterface, *address, *gateway, *dns); err != nil {
+		fatalFlag(err)
+	}
+	if err := applySource(&plan, *sourceType, *sourceLocation); err != nil {
+		fatalFlag(err)
+	}
+	plan.Source.VerifyKey = *verifyKey
+	if *runtimeName != "" {
+		if err := applyRuntime(&plan, *runtimeName); err != nil {
+			fatalFlag(err)
+		}
+	}
+	if err := applyAI(&plan, *aiMode, *aiEndpoint); err != nil {
+		fatalFlag(err)
+	}
 	plan.Artifacts.RuntimePlan = *planPath
 	tui := &TUI{
 		Plan:     plan,
@@ -198,6 +270,11 @@ func main() {
 		return
 	}
 	if *writeOnly {
+		for _, check := range PlanChecks(plan) {
+			if check.State == "BLOCK" {
+				fatalFlag(fmt.Errorf("%s: %s", check.Name, check.Summary))
+			}
+		}
 		plan.Artifacts.RuntimePlan = *planPath
 		if err := WritePlanFile(*planPath, plan); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
@@ -213,13 +290,19 @@ func main() {
 	}
 }
 
+func fatalFlag(err error) {
+	fmt.Fprintln(os.Stderr, "error:", err)
+	os.Exit(2)
+}
+
 func usage() {
 	fmt.Println("kiki-installer-tui - KIKI Stage 3 install plan TUI (v" + appVersion + ")")
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  kiki-installer-tui [--plan /run/kiki/install-plan.yaml] [--profile minimal-systemd|server-core|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute]")
 	fmt.Println("  kiki-installer-tui --render")
-	fmt.Println("  kiki-installer-tui --write --plan ./install-plan.yaml")
+	fmt.Println("  kiki-installer-tui --write --plan ./install-plan.yaml [--disk /dev/sda] [--locale ko_KR.UTF-8] [--timezone Asia/Seoul]")
+	fmt.Println("  kiki-installer-tui --write --mode unattended --profile server-core --ai local --source local")
 }
 
 func NewDefaultPlan(profile string) InstallPlan {
@@ -271,6 +354,11 @@ func NewDefaultPlan(profile string) InstallPlan {
 		Identity: IdentityPlan{
 			Hostname: "localhost.localdomain",
 		},
+		Localization: LocalizationPlan{
+			Locale:   "ko_KR.UTF-8",
+			Keymap:   "kr",
+			Timezone: "Asia/Seoul",
+		},
 		Network: NetworkPlan{
 			Manager:        "systemd-networkd",
 			Resolver:       "systemd-resolved",
@@ -310,6 +398,13 @@ func NewDefaultPlan(profile string) InstallPlan {
 			ContainerRuntime: "none",
 			CgroupDriver:     "systemd",
 			SwapPolicy:       "system",
+		},
+		AI: AIPlan{
+			Mode:            "local",
+			Endpoint:        "http://127.0.0.1:8080/v1/chat/completions",
+			Model:           "kiki-ops",
+			ConsoleTTY:      "tty1",
+			RequireApproval: true,
 		},
 		Kubernetes: KubernetesPlan{
 			Role: "none",
@@ -370,6 +465,8 @@ var minimalSystemdPackages = []string{
 	"curl",
 	"ki2ctl",
 	"kiki-agent",
+	"llama-cpp",
+	"kiki-ai-console",
 	"kiki-netconfig",
 	"kiki-installer-tui",
 }
@@ -381,6 +478,7 @@ var serverCorePackages = []string{
 	"firewalld",
 	"nftables",
 	"iptables",
+	"socat",
 	"ethtool",
 }
 
@@ -430,7 +528,9 @@ var containerdStandalonePackages = []string{
 var minimalSystemdServices = []string{
 	"dbus.service",
 	"kiki-boot-prepare.service",
-	"getty@tty1.service",
+	"kiki-llama-server.service",
+	"kiki-ai-console@tty1.service",
+	"getty@tty2.service",
 	"systemd-logind.service",
 	"systemd-networkd.service",
 	"systemd-resolved.service",
@@ -653,6 +753,143 @@ func localMediaRepoIndex(mediaRoot string) string {
 	return strings.TrimRight(mediaRoot, "/") + "/kiki/repo/index.x86_64.json"
 }
 
+func applyDisk(plan *InstallPlan, disk string) error {
+	disk = strings.TrimSpace(disk)
+	if disk == "" || !strings.HasPrefix(disk, "/dev/") || isPartitionPath(disk) {
+		return fmt.Errorf("target disk must be a whole /dev device, not %q", disk)
+	}
+	plan.Target.Disk = disk
+	plan.Target.Filesystems.ESP.Path = partitionPath(disk, 1)
+	if plan.Target.Filesystems.Swap.Enabled {
+		plan.Target.Filesystems.Swap.Path = partitionPath(disk, 2)
+		plan.Target.Filesystems.Root.Path = partitionPath(disk, 3)
+	} else {
+		plan.Target.Filesystems.Swap.Path = ""
+		plan.Target.Filesystems.Root.Path = partitionPath(disk, 2)
+	}
+	plan.Boot.Root = plan.Target.Filesystems.Root.Path
+	return nil
+}
+
+func applySwap(plan *InstallPlan, mode string) error {
+	if mode != "on" && mode != "off" {
+		return fmt.Errorf("swap must be auto, on, or off")
+	}
+	plan.Target.Filesystems.Swap.Enabled = mode == "on"
+	if mode == "on" {
+		plan.Target.Filesystems.Swap.Policy = "system"
+		plan.Runtime.SwapPolicy = "system"
+	} else if isKubernetesProfile(plan.Packages.Profile) {
+		plan.Target.Filesystems.Swap.Policy = "kubernetes-off"
+		plan.Runtime.SwapPolicy = "kubernetes-off"
+	} else {
+		plan.Target.Filesystems.Swap.Policy = "disabled"
+		plan.Runtime.SwapPolicy = "disabled"
+	}
+	return nil
+}
+
+func applyNetwork(plan *InstallPlan, mode, interfaceMatch, address, gateway, dns string) error {
+	if mode != "dhcp" && mode != "static" && mode != "off" {
+		return fmt.Errorf("network must be dhcp, static, or off")
+	}
+	if mode == "static" && strings.TrimSpace(address) == "" {
+		return fmt.Errorf("static network requires --address")
+	}
+	plan.Network.Mode = mode
+	plan.Network.InterfaceMatch = strings.TrimSpace(interfaceMatch)
+	plan.Network.DHCP4 = mode == "dhcp"
+	plan.Network.IPv6AcceptRA = mode == "dhcp"
+	plan.Network.Address = ""
+	plan.Network.Gateway = ""
+	plan.Network.DNS = ""
+	if mode == "static" {
+		plan.Network.Address = strings.TrimSpace(address)
+		plan.Network.Gateway = strings.TrimSpace(gateway)
+		plan.Network.DNS = strings.TrimSpace(dns)
+	}
+	return nil
+}
+
+func applySource(plan *InstallPlan, sourceType, location string) error {
+	switch strings.TrimSpace(sourceType) {
+	case "local":
+		setLocalSource(plan, location)
+		return nil
+	case "remote":
+		return setRemoteSource(plan, location)
+	case "mirror":
+		return setMirrorSource(plan, location)
+	default:
+		return fmt.Errorf("source must be local, remote, or mirror")
+	}
+}
+
+func applyRuntime(plan *InstallPlan, runtime string) error {
+	runtime = strings.TrimSpace(runtime)
+	if runtime == "cri-o" {
+		runtime = "crio"
+	}
+	if runtime != "none" && runtime != "crio" && runtime != "containerd" {
+		return fmt.Errorf("runtime must be none, crio, or containerd")
+	}
+	if runtime == "none" {
+		if isKubernetesProfile(plan.Packages.Profile) {
+			return fmt.Errorf("Kubernetes profiles require crio or containerd")
+		}
+		plan.Runtime.ContainerRuntime = "none"
+		plan.Packages.Selected = removeItems(plan.Packages.Selected, append(append(append([]string{}, kubernetesCommonPackages...), crioRuntimePackages...), append(containerdRuntimePackages, containerdStandalonePackages...)...)...)
+		plan.Services.Enable = removeItems(plan.Services.Enable, append(append([]string{}, kubeNodeServices...), containerdServices...)...)
+		return nil
+	}
+	if runtime == "crio" {
+		applyContainerRuntime(plan, "cri-o")
+	} else {
+		applyContainerRuntime(plan, runtime)
+	}
+	return nil
+}
+
+func applyAI(plan *InstallPlan, mode, endpoint string) error {
+	mode = strings.TrimSpace(mode)
+	if mode != "local" && mode != "remote" && mode != "off" {
+		return fmt.Errorf("AI mode must be local, remote, or off")
+	}
+	plan.AI.Mode = mode
+	plan.AI.RequireApproval = true
+	plan.AI.ConsoleTTY = "tty1"
+	if mode == "local" {
+		plan.AI.Endpoint = "http://127.0.0.1:8080/v1/chat/completions"
+		plan.AI.Model = "kiki-ops"
+		plan.Packages.Selected = appendUnique(plan.Packages.Selected, "llama-cpp", "kiki-ai-console")
+		plan.Services.Enable = appendUnique(plan.Services.Enable, "kiki-llama-server.service", "kiki-ai-console@tty1.service", "getty@tty2.service")
+		plan.Services.Enable = removeItems(plan.Services.Enable, "getty@tty1.service")
+	} else if mode == "remote" {
+		if strings.TrimSpace(endpoint) == "" {
+			return fmt.Errorf("remote AI mode requires --ai-endpoint or: ai remote <endpoint>")
+		}
+		if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+			return fmt.Errorf("remote AI endpoint must use http:// or https://")
+		}
+		plan.AI.Endpoint = endpoint
+		plan.AI.Model = "kiki-ops"
+		plan.Packages.Selected = appendUnique(plan.Packages.Selected, "kiki-ai-console")
+		plan.Packages.Selected = removeItems(plan.Packages.Selected, "llama-cpp")
+		plan.Services.Enable = removeItems(plan.Services.Enable, "kiki-llama-server.service", "getty@tty1.service")
+		plan.Services.Enable = appendUnique(plan.Services.Enable, "kiki-ai-console@tty1.service", "getty@tty2.service")
+	} else {
+		plan.AI.Endpoint = ""
+		plan.AI.Model = ""
+		plan.Packages.Selected = removeItems(plan.Packages.Selected, "llama-cpp", "kiki-ai-console")
+		plan.Services.Enable = removeItems(plan.Services.Enable, "kiki-llama-server.service", "kiki-ai-console@tty1.service")
+		plan.Services.Enable = appendUnique(plan.Services.Enable, "getty@tty1.service", "getty@tty2.service")
+	}
+	if endpoint != "" && mode == "local" {
+		plan.AI.Endpoint = endpoint
+	}
+	return nil
+}
+
 func (t *TUI) Run() error {
 	if t.In == nil {
 		t.In = os.Stdin
@@ -694,22 +931,31 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 	case "q", "quit", "exit":
 		return true, nil
 	case "1":
+		fmt.Fprintln(t.Out, "Language:", dashboardLocalizationSummary(t.Plan))
+		fmt.Fprintln(t.Out, "Use: locale ko_KR.UTF-8, keymap kr, timezone Asia/Seoul")
+	case "2":
 		fmt.Fprintln(t.Out, "Disk:", dashboardDiskSummary(t.Plan))
 		fmt.Fprintln(t.Out, "Use: disk /dev/sda")
-	case "2":
+	case "3":
 		fmt.Fprintln(t.Out, "Network:", dashboardNetworkSummary(t.Plan))
 		fmt.Fprintln(t.Out, "Use: network dhcp [en* eth*], network static 192.168.122.50/24 192.168.122.1 1.1.1.1 [en* eth*], or network off")
-	case "3":
+	case "4":
 		fmt.Fprintln(t.Out, "Account:", dashboardAccountSummary(t.Plan))
 		fmt.Fprintln(t.Out, "Use: user kiki and hostname localhost.localdomain")
-	case "4":
+	case "5":
+		fmt.Fprintln(t.Out, "Source:", dashboardSourceSummary(t.Plan))
+		fmt.Fprintln(t.Out, "Use: source local|remote|mirror ... and verify-key /path/to/key")
+	case "6":
 		fmt.Fprintln(t.Out, "Profile:", t.Plan.Packages.Profile)
 		fmt.Fprintln(t.Out, "Use: profile minimal-systemd|server-core|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
 		fmt.Fprintln(t.Out, "     add -containerd to a Kubernetes profile to use containerd by default")
-	case "5":
+	case "7":
 		fmt.Fprintln(t.Out, "Runtime:", t.Plan.Runtime.ContainerRuntime)
 		fmt.Fprintln(t.Out, "Use: runtime none, runtime crio, or runtime containerd")
-	case "6":
+	case "8":
+		fmt.Fprintln(t.Out, "AI:", dashboardAISummary(t.Plan))
+		fmt.Fprintln(t.Out, "Use: ai local, ai remote https://endpoint/v1/chat/completions, or ai off")
+	case "9":
 		t.Reviewed = true
 		t.Render()
 		fmt.Fprintln(t.Out)
@@ -718,7 +964,7 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		} else {
 			fmt.Fprintln(t.Out, "Review: blocked. Fix BLOCK items before install.")
 		}
-	case "7", "start", "install":
+	case "10", "start", "install":
 		t.Reviewed = true
 		t.Render()
 		fmt.Fprintln(t.Out)
@@ -746,42 +992,32 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		if isPartitionPath(fields[1]) {
 			return false, fmt.Errorf("target disk must be a whole disk, not %s", fields[1])
 		}
-		t.Plan.Target.Disk = fields[1]
-		base := fields[1]
-		t.Plan.Target.Filesystems.ESP.Path = partitionPath(base, 1)
-		if t.Plan.Target.Filesystems.Swap.Enabled {
-			t.Plan.Target.Filesystems.Swap.Path = partitionPath(base, 2)
-			t.Plan.Target.Filesystems.Root.Path = partitionPath(base, 3)
-			t.Plan.Boot.Root = partitionPath(base, 3)
-		} else {
-			t.Plan.Target.Filesystems.Root.Path = partitionPath(base, 2)
-			t.Plan.Boot.Root = partitionPath(base, 2)
+		if err := applyDisk(&t.Plan, fields[1]); err != nil {
+			return false, err
+		}
+		t.Render()
+	case "locale", "keymap", "timezone":
+		if len(fields) != 2 {
+			return false, fmt.Errorf("usage: %s <value>", fields[0])
+		}
+		switch fields[0] {
+		case "locale":
+			t.Plan.Localization.Locale = fields[1]
+		case "keymap":
+			t.Plan.Localization.Keymap = fields[1]
+		case "timezone":
+			t.Plan.Localization.Timezone = fields[1]
 		}
 		t.Render()
 	case "swap":
 		if len(fields) != 2 || (fields[1] != "on" && fields[1] != "off") {
 			return false, fmt.Errorf("usage: swap on|off")
 		}
-		t.Plan.Target.Filesystems.Swap.Enabled = fields[1] == "on"
-		if t.Plan.Target.Filesystems.Swap.Enabled {
-			t.Plan.Target.Filesystems.Swap.Policy = "system"
-			t.Plan.Runtime.SwapPolicy = "system"
-			if t.Plan.Target.Filesystems.Swap.Path == "" {
-				if needsPartitionP(t.Plan.Target.Disk) {
-					t.Plan.Target.Filesystems.Swap.Path = t.Plan.Target.Disk + "p2"
-				} else {
-					t.Plan.Target.Filesystems.Swap.Path = t.Plan.Target.Disk + "2"
-				}
-			}
-		} else {
-			t.Plan.Target.Filesystems.Swap.Path = ""
-			if isKubernetesProfile(t.Plan.Packages.Profile) {
-				t.Plan.Target.Filesystems.Swap.Policy = "kubernetes-off"
-				t.Plan.Runtime.SwapPolicy = "kubernetes-off"
-			} else {
-				t.Plan.Target.Filesystems.Swap.Policy = "disabled"
-				t.Plan.Runtime.SwapPolicy = "disabled"
-			}
+		if err := applySwap(&t.Plan, fields[1]); err != nil {
+			return false, err
+		}
+		if err := applyDisk(&t.Plan, t.Plan.Target.Disk); err != nil {
+			return false, err
 		}
 		t.Render()
 	case "network":
@@ -852,6 +1088,18 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 			}
 		}
 		t.Render()
+	case "ai":
+		if len(fields) < 2 || len(fields) > 3 {
+			return false, fmt.Errorf("usage: ai local|off | ai remote <endpoint>")
+		}
+		endpoint := ""
+		if len(fields) == 3 {
+			endpoint = fields[2]
+		}
+		if err := applyAI(&t.Plan, fields[1], endpoint); err != nil {
+			return false, err
+		}
+		t.Render()
 	case "verify-key":
 		if len(fields) != 2 {
 			return false, fmt.Errorf("usage: verify-key /etc/ki2/trust/stage2-v2-repo.hmac")
@@ -878,24 +1126,8 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		if len(fields) != 2 || (fields[1] != "none" && fields[1] != "crio" && fields[1] != "cri-o" && fields[1] != "containerd") {
 			return false, fmt.Errorf("usage: runtime none|crio|containerd")
 		}
-		if fields[1] == "none" {
-			if isKubernetesProfile(t.Plan.Packages.Profile) {
-				return false, fmt.Errorf("Kubernetes profiles require a CRI runtime; use runtime crio or runtime containerd")
-			}
-			t.Plan.Runtime.ContainerRuntime = "none"
-			runtimePackages := append([]string{}, kubernetesCommonPackages...)
-			runtimePackages = append(runtimePackages, crioRuntimePackages...)
-			runtimePackages = append(runtimePackages, containerdRuntimePackages...)
-			runtimePackages = append(runtimePackages, containerdStandalonePackages...)
-			t.Plan.Packages.Selected = removeItems(t.Plan.Packages.Selected, runtimePackages...)
-			t.Plan.Services.Enable = removeItems(t.Plan.Services.Enable, kubeNodeServices...)
-			t.Plan.Services.Enable = removeItems(t.Plan.Services.Enable, containerdServices...)
-		} else {
-			if fields[1] == "containerd" {
-				applyContainerRuntime(&t.Plan, "containerd")
-			} else {
-				applyContainerRuntime(&t.Plan, "cri-o")
-			}
+		if err := applyRuntime(&t.Plan, fields[1]); err != nil {
+			return false, err
 		}
 		t.Render()
 	case "firewalld":
@@ -954,18 +1186,23 @@ func (t *TUI) Render() {
 		fmt.Fprintf(t.Out, "[%s] %-10s %s\n", dashboardToken(check.State), check.Name, check.Summary)
 	}
 	fmt.Fprintln(t.Out)
-	fmt.Fprintln(t.Out, "1) Disk")
-	fmt.Fprintln(t.Out, "2) Network")
-	fmt.Fprintln(t.Out, "3) Account")
-	fmt.Fprintln(t.Out, "4) Profile")
-	fmt.Fprintln(t.Out, "5) Runtime")
-	fmt.Fprintln(t.Out, "6) Review install plan")
-	fmt.Fprintln(t.Out, "7) Start install")
+	fmt.Fprintln(t.Out, "1) Language, keyboard, and timezone")
+	fmt.Fprintln(t.Out, "2) Disk")
+	fmt.Fprintln(t.Out, "3) Network")
+	fmt.Fprintln(t.Out, "4) Account")
+	fmt.Fprintln(t.Out, "5) Package source and trust")
+	fmt.Fprintln(t.Out, "6) Profile")
+	fmt.Fprintln(t.Out, "7) Runtime")
+	fmt.Fprintln(t.Out, "8) AI agent")
+	fmt.Fprintln(t.Out, "9) Review install plan")
+	fmt.Fprintln(t.Out, "10) Start install")
 	fmt.Fprintln(t.Out, "s) Shell")
 	fmt.Fprintln(t.Out, "q) Power off")
 }
 
 func (t *TUI) dashboardRows() []Check {
+	localization := checkLocalization(t.Plan)
+	localization.Summary = dashboardLocalizationSummary(t.Plan)
 	disk := checkDisk(t.Plan)
 	disk.Summary = dashboardDiskSummary(t.Plan)
 	if disk.State == "OK" && t.Plan.Target.Partitioning == "auto-whole-disk" {
@@ -975,6 +1212,8 @@ func (t *TUI) dashboardRows() []Check {
 	network.Summary = dashboardNetworkSummary(t.Plan)
 	account := checkAccount(t.Plan)
 	account.Summary = dashboardAccountSummary(t.Plan)
+	source := checkSource(t.Plan)
+	source.Summary = dashboardSourceSummary(t.Plan)
 	profile := Check{Name: "Profile", State: "PENDING", Summary: "minimal-systemd"}
 	if t.Plan.Packages.Profile != "" {
 		profile.Summary = t.Plan.Packages.Profile
@@ -987,6 +1226,8 @@ func (t *TUI) dashboardRows() []Check {
 		runtime.State = "OK"
 		runtime.Summary = t.Plan.Runtime.ContainerRuntime
 	}
+	ai := checkAI(t.Plan)
+	ai.Summary = dashboardAISummary(t.Plan)
 	review := Check{Name: "Review", State: "PENDING", Summary: "not ready"}
 	if t.Reviewed || t.PlanWritten {
 		if ReviewReady(t.Plan) {
@@ -998,7 +1239,26 @@ func (t *TUI) dashboardRows() []Check {
 		}
 	}
 	init := Check{Name: "Init", State: "OK", Summary: "initramfs /init mounts root and execs /usr/lib/systemd/systemd"}
-	return []Check{disk, network, account, profile, runtime, init, review}
+	return []Check{localization, disk, network, account, source, profile, runtime, ai, init, review}
+}
+
+func dashboardLocalizationSummary(plan InstallPlan) string {
+	return fmt.Sprintf("%s, keymap %s, %s", plan.Localization.Locale, plan.Localization.Keymap, plan.Localization.Timezone)
+}
+
+func dashboardSourceSummary(plan InstallPlan) string {
+	trust := "unsigned"
+	if plan.Source.VerifyKey != "" {
+		trust = "signature required"
+	}
+	return fmt.Sprintf("%s, %s", plan.Source.Type, trust)
+}
+
+func dashboardAISummary(plan InstallPlan) string {
+	if plan.AI.Mode == "off" {
+		return "disabled"
+	}
+	return fmt.Sprintf("%s, %s on %s, approval required", plan.AI.Mode, plan.AI.Model, plan.AI.ConsoleTTY)
 }
 
 func dashboardToken(state string) string {
@@ -1057,6 +1317,9 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  profile kiki-kube-bootstrap-containerd|kiki-kube-control-containerd|kiki-kube-compute-containerd")
 	fmt.Fprintln(w, "    legacy aliases: kiki-kube-controller -> kiki-kube-control, kiki-kube-node -> kiki-kube-compute")
 	fmt.Fprintln(w, "  disk /dev/sda")
+	fmt.Fprintln(w, "  locale ko_KR.UTF-8")
+	fmt.Fprintln(w, "  keymap kr")
+	fmt.Fprintln(w, "  timezone Asia/Seoul")
 	fmt.Fprintln(w, "  swap on|off")
 	fmt.Fprintln(w, "  network dhcp|off [en* eth*]")
 	fmt.Fprintln(w, "  network static <address/prefix> <gateway|none> <dns|none> [en* eth*]")
@@ -1067,6 +1330,8 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "  user kiki")
 	fmt.Fprintln(w, "  hostname localhost.localdomain")
 	fmt.Fprintln(w, "  runtime none|crio|containerd")
+	fmt.Fprintln(w, "  ai local|off")
+	fmt.Fprintln(w, "  ai remote https://endpoint.example/v1/chat/completions")
 	fmt.Fprintln(w, "  firewalld on|off")
 	fmt.Fprintln(w, "  review")
 	fmt.Fprintln(w, "  write [path]")
@@ -1075,11 +1340,14 @@ func printHelp(w io.Writer) {
 
 func PlanChecks(plan InstallPlan) []Check {
 	checks := []Check{
+		checkLocalization(plan),
 		checkDisk(plan),
 		checkNetwork(plan),
 		checkAccount(plan),
+		checkSource(plan),
 		checkProfile(plan),
 		checkRuntime(plan),
+		checkAI(plan),
 		checkInit(plan),
 	}
 	state := "OK"
@@ -1097,6 +1365,39 @@ func PlanChecks(plan InstallPlan) []Check {
 	}
 	checks = append(checks, Check{Name: "Review", State: state, Summary: summary})
 	return checks
+}
+
+func checkLocalization(plan InstallPlan) Check {
+	if plan.Localization.Locale == "" || plan.Localization.Keymap == "" || plan.Localization.Timezone == "" {
+		return Check{Name: "Language", State: "BLOCK", Summary: "locale, keymap, and timezone are required"}
+	}
+	if strings.ContainsAny(plan.Localization.Locale+plan.Localization.Keymap+plan.Localization.Timezone, "\r\n\x00") {
+		return Check{Name: "Language", State: "BLOCK", Summary: "localization values contain invalid characters"}
+	}
+	if strings.HasPrefix(plan.Localization.Timezone, "/") || strings.Contains(plan.Localization.Timezone, "..") {
+		return Check{Name: "Language", State: "BLOCK", Summary: "timezone must be a relative IANA name"}
+	}
+	return Check{Name: "Language", State: "OK", Summary: dashboardLocalizationSummary(plan)}
+}
+
+func checkSource(plan InstallPlan) Check {
+	if plan.Source.RepoIndex == "" {
+		return Check{Name: "Source", State: "BLOCK", Summary: "repository index is required"}
+	}
+	if (plan.Source.Type == "remote-repository" || (plan.Source.Type == "mirror" && strings.HasPrefix(plan.Source.RepoURL, "http"))) && plan.Source.VerifyKey == "" {
+		return Check{Name: "Source", State: "BLOCK", Summary: "remote repository requires a verification key"}
+	}
+	return Check{Name: "Source", State: "OK", Summary: dashboardSourceSummary(plan)}
+}
+
+func checkAI(plan InstallPlan) Check {
+	if plan.AI.Mode != "local" && plan.AI.Mode != "remote" && plan.AI.Mode != "off" {
+		return Check{Name: "AI", State: "BLOCK", Summary: "AI mode must be local, remote, or off"}
+	}
+	if plan.AI.Mode != "off" && (!plan.AI.RequireApproval || plan.AI.Endpoint == "" || plan.AI.ConsoleTTY == "") {
+		return Check{Name: "AI", State: "BLOCK", Summary: "AI endpoint, console TTY, and command approval are required"}
+	}
+	return Check{Name: "AI", State: "OK", Summary: dashboardAISummary(plan)}
 }
 
 func checkInit(plan InstallPlan) Check {
@@ -1238,6 +1539,10 @@ func WritePlanYAML(w io.Writer, plan InstallPlan) error {
 	writeFS("root", plan.Target.Filesystems.Root)
 	line("  identity:")
 	line("    hostname: %s", quoteYAML(plan.Identity.Hostname))
+	line("  localization:")
+	line("    locale: %s", quoteYAML(plan.Localization.Locale))
+	line("    keymap: %s", quoteYAML(plan.Localization.Keymap))
+	line("    timezone: %s", quoteYAML(plan.Localization.Timezone))
 	line("  network:")
 	line("    manager: %s", quoteYAML(plan.Network.Manager))
 	line("    resolver: %s", quoteYAML(plan.Network.Resolver))
@@ -1277,6 +1582,12 @@ func WritePlanYAML(w io.Writer, plan InstallPlan) error {
 	line("    container_runtime: %s", quoteYAML(plan.Runtime.ContainerRuntime))
 	line("    cgroup_driver: %s", quoteYAML(plan.Runtime.CgroupDriver))
 	line("    swap_policy: %s", quoteYAML(plan.Runtime.SwapPolicy))
+	line("  ai:")
+	line("    mode: %s", quoteYAML(plan.AI.Mode))
+	line("    endpoint: %s", quoteYAML(plan.AI.Endpoint))
+	line("    model: %s", quoteYAML(plan.AI.Model))
+	line("    console_tty: %s", quoteYAML(plan.AI.ConsoleTTY))
+	line("    require_approval: %t", plan.AI.RequireApproval)
 	line("  kubernetes:")
 	line("    role: %s", quoteYAML(plan.Kubernetes.Role))
 	line("    kubeadm:")

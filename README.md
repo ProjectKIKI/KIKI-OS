@@ -63,6 +63,7 @@ KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 
 | 레시피 + 프로필 | `.ki2` 패키지와 OS 이미지를 재현 가능하게 만듭니다. |
 | VM / 베어메탈 | 같은 부팅 미디어를 여러 환경에서 테스트하고 설치합니다. |
 | TUI 설치기 | 디스크 파티셔닝, 패키지 선택, 사용자 생성, 네트워크 기본값을 적용합니다. |
+| CLI/TUI/GTK 설치 화면 | 지역화, 디스크, 네트워크, 소스 신뢰, 프로필, 런타임과 AI 설정을 하나의 InstallPlan으로 작성합니다. |
 | systemd 기반 런타임 | `dbus`, `logind`, `networkd`, `resolved`, `sshd`, `sudo`를 운영 기본값으로 구성합니다. |
 | Go TUI 미리보기 | 선언형 설치 계획서를 상태판 형태로 렌더링하고 2단계 설치기 전환을 검증합니다. |
 | KIKI 에이전트 | 첫 부팅 자동화, 노드 프로필 적용, 클러스터 조인, 상태 보고를 담당할 예정입니다. |
@@ -86,6 +87,7 @@ KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 
 ## 주요 도구
 
 - `tools/kiki_console.py`: ISO 사전 상태·검증·빌드를 통합한 대화형 관리 콘솔
+- `cmd/kiki-ai-console`: 설치 후 `tty1`에서 명령 확인을 거치는 한국어 AI 관리 콘솔 (`tty2`는 독립 복구 셸)
 - `tools/ki2build.py`: `.ki2` 패키지 빌드, 의존성 계획, 루트 파일시스템 조립
 - `tools/ki2repo.py`: HTTP 패키지 저장소 인덱스, 메타데이터, 채널 파일 생성
 - `tools/ki2ci.py`: 명령줄 파이프라인과 빌드 웹 콘솔
@@ -93,6 +95,7 @@ KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 
 - `tools/ki2bootiso.py`: BIOS/UEFI 부팅 ISO, 1단계 TUI 설치 ISO 생성
 - `tools/ki2publish.py`: 패키지, 저장소, ISO, 디스크 이미지를 정적 배포 트리로 복사
 - `cmd/kiki-installer-tui`: Go 기반 선언형 설치 계획서 TUI
+- `cmd/kiki-installer-gtk`: 같은 InstallPlan 생성기를 호출하는 GTK 4 설치 GUI
 - `bosctl`, `cpmctl`, `bosbuild`: 초기 BOS/CPM 실험용 Go 도구
 
 ## 주요 문서
@@ -104,6 +107,8 @@ KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 
 - [KIKI OS 3단계 V3 전환 계획](docs/kiki-stage3-v3-plan.ko.md)
 - [KIKI OS 3단계 V3 초안](docs/kiki-stage3-v3-draft.ko.md)
 - [KIKI OS 관리 콘솔](docs/kiki-management-console.ko.md)
+- [KIKI OS CLI/TUI/GTK 설치 프런트엔드](docs/kiki-installer-frontends.ko.md)
+- [KIKI OS 온디바이스 AI 관리 콘솔](docs/kiki-ai-console.ko.md)
 - [KIKI OS 홈페이지 콘텐츠 기준](docs/kiki-homepage-content.ko.md)
 - [KIKI OS 네트워크 설정 도구](docs/kiki-network-config.ko.md)
 - [KIKI 패키지 저장소 구성 가이드](docs/kiki-repository-setup.ko.md)

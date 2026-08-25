@@ -44,6 +44,9 @@ class Ki2Stage3Tests(unittest.TestCase):
         )
         self.assertEqual(result["host_file_recipes"], [])
         self.assertEqual(result["management_console"], "tools/kiki_console.py")
+        self.assertEqual(result["on_device_ai_console"], "tty1")
+        self.assertEqual(result["bundled_model"], "Qwen2.5-1.5B-Instruct-Q4_K_M")
+        self.assertEqual(result["recovery_shell"], "tty2")
 
 
 if __name__ == "__main__":

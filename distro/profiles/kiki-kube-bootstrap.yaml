@@ -15,7 +15,6 @@ profile:
     - attr
     - ncurses
     - util-linux
-    - cfdisk
     - kmod
     - dbus
     - systemd
@@ -40,8 +39,9 @@ profile:
     - curl
     - ki2ctl
     - kiki-agent
+    - llama-cpp
+    - kiki-ai-console
     - kiki-netconfig
-    - kiki-installer-tui
     - cri-o
     - conmon
     - crun
@@ -69,7 +69,9 @@ profile:
   services:
     enable:
       - dbus.service
-      - getty@tty1.service
+      - kiki-llama-server.service
+      - kiki-ai-console@tty1.service
+      - getty@tty2.service
       - systemd-logind.service
       - systemd-networkd.service
       - systemd-resolved.service

@@ -443,7 +443,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://busybox.net/downloads/busybox-1.36.1.tar.bz2"
-sha256 = "TODO"
+sha256 = "b8cc24c9574d809e7279c3be349795c5d5ceb6fdf19ca709f80cde50e47de314"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -467,7 +467,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://ftp.gnu.org/gnu/coreutils/coreutils-9.5.tar.xz"
-sha256 = "TODO"
+sha256 = "cd328edeac92f6a665de9f323c93b712af1858bc2e0d88f3f7100469470a1b8a"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -485,7 +485,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://ftp.gnu.org/gnu/findutils/findutils-4.10.0.tar.xz"
-sha256 = "TODO"
+sha256 = "1387e0b67ff247d2abde998f90dfbf70c1491391a59ddfecb8ae698789f0a4f5"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -503,7 +503,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://ftp.gnu.org/gnu/grep/grep-3.11.tar.xz"
-sha256 = "TODO"
+sha256 = "1db2aedde89d0dea42b16d9528f894c8d15dae4e190b59aecc78f5a951276eab"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -521,7 +521,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://ftp.gnu.org/gnu/sed/sed-4.9.tar.xz"
-sha256 = "TODO"
+sha256 = "6e226b732e1cd739464ad6862bd1a1aba42d7982922da7a53519631d24975181"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -539,7 +539,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://ftp.gnu.org/gnu/gawk/gawk-5.3.0.tar.xz"
-sha256 = "TODO"
+sha256 = "ca9c16d3d11d0ff8c69d79dc0b47267e1329a69b39b799895604ed447d3ca90b"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -557,7 +557,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz"
-sha256 = "TODO"
+sha256 = "4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -575,7 +575,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://ftp.gnu.org/gnu/gzip/gzip-1.13.tar.xz"
-sha256 = "TODO"
+sha256 = "7454eb6935db17c6655576c2e1b0fabefd38b4d0936e0f87f48cd062ce91a057"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -641,7 +641,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz"
-sha256 = "TODO"
+sha256 = "dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -659,7 +659,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://distfiles.ariadne.space/pkgconf/pkgconf-2.2.0.tar.xz"
-sha256 = "TODO"
+sha256 = "b06ff63a83536aa8c2f6422fa80ad45e4833f590266feb14eaddfe1d4c853c69"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -677,7 +677,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://github.com/mesonbuild/meson/releases/download/1.4.1/meson-1.4.1.tar.gz"
-sha256 = "TODO"
+sha256 = "1b8aad738a5f6ae64294cc8eaba9a82988c1c420204484ac02ef782e5bba5f49"
 [recipe.dependencies]
 build = []
 runtime = ["python", "ninja"]
@@ -696,7 +696,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://github.com/ninja-build/ninja/archive/refs/tags/v1.12.1.tar.gz"
-sha256 = "TODO"
+sha256 = "821bdff48a3f683bc4bb3b6f0b5fe7b2d647cf65d52aeb63328c91a6c6df285a"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -754,7 +754,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://www.cpan.org/src/5.0/perl-5.40.0.tar.xz"
-sha256 = "TODO"
+sha256 = "d5325300ad267624cb0b7d512cfdfcd74fa7fe00c455c5b51a6bd53e5e199ef9"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -773,7 +773,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://mirrors.edge.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v1.47.1/e2fsprogs-1.47.1.tar.xz"
-sha256 = "TODO"
+sha256 = "5a33dc047fd47284bca4bb10c13cfe7896377ae3d01cb81a05d406025d99e0d1"
 [recipe.dependencies]
 build = []
 runtime = ["glibc", "util-linux"]
@@ -791,7 +791,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://github.com/shadow-maint/shadow/releases/download/4.15.1/shadow-4.15.1.tar.xz"
-sha256 = "TODO"
+sha256 = "bb5f70639a0581f9d626f227ce45b31ac137daa7c451c0f672ce14f2731a96ee"
 [recipe.dependencies]
 build = []
 runtime = ["glibc", "acl", "libxcrypt"]
@@ -810,7 +810,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://www.sudo.ws/dist/sudo-1.9.15p5.tar.gz"
-sha256 = "TODO"
+sha256 = "558d10b9a1991fb3b9fa7fa7b07ec4405b7aefb5b3cb0b0871dbc81e3a88e558"
 [recipe.dependencies]
 build = []
 runtime = ["glibc", "libxcrypt", "zlib"]
@@ -839,7 +839,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://www.kernel.org/pub/linux/utils/net/iproute2/iproute2-6.9.0.tar.xz"
-sha256 = "TODO"
+sha256 = "2f643d09ea11a4a2a043c92e2b469b5f73228cbf241ae806760296ed0ec413d0"
 [recipe.dependencies]
 build = []
 runtime = ["glibc"]
@@ -879,7 +879,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-9.8p1.tar.gz"
-sha256 = "TODO"
+sha256 = "dd8bd002a379b5d499dfb050dd1fa9af8029e80461f4bb6c523c49973f5a39f3"
 [recipe.dependencies]
 build = []
 runtime = ["glibc", "openssl", "zlib"]
@@ -898,7 +898,7 @@ architectures = ["x86_64"]
 [recipe.source]
 type = "url"
 url = "https://curl.se/download/curl-8.8.0.tar.xz"
-sha256 = "TODO"
+sha256 = "0f58bb95fc330c8a46eeb3df5701b0d90c9d9bfcc42bd1cd08791d12551d4400"
 [recipe.dependencies]
 build = []
 runtime = ["glibc", "openssl", "zlib", "ca-certificates"]

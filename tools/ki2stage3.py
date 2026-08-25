@@ -330,6 +330,71 @@ def verify_contract(repo_root: Path) -> dict[str, Any]:
 
     management_console = repo_root / "tools/kiki_console.py"
     require(management_console.is_file(), "Stage 3 management console is missing")
+    ai_recipe = recipes.get("kiki-ai-console")
+    llama_recipe = recipes.get("llama-cpp")
+    libstdcxx_recipe = recipes.get("libstdcxx")
+    model_recipe = recipes.get("kiki-ops-model")
+    require(ai_recipe is not None, "on-device AI console recipe is missing")
+    require(llama_recipe is not None, "llama.cpp runtime recipe is missing")
+    require(libstdcxx_recipe is not None, "KIKI C++ runtime recipe is missing")
+    require(model_recipe is not None, "bundled GGUF model recipe is missing")
+    require(
+        model_recipe.source.get("sha256") == "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+        "bundled GGUF model digest is not pinned",
+    )
+    model_extras = model_recipe.source.get("extra", [])
+    require(
+        len(model_extras) == 1
+        and model_extras[0].get("sha256") == "832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e",
+        "bundled GGUF model license digest is not pinned",
+    )
+    require(
+        libstdcxx_recipe.source.get("sha256") == "a6e21868ead545cf87f0c01f84276e4b5281d672098591c1c896241f09363478",
+        "GNU C++ runtime source digest is not pinned",
+    )
+    libstdcxx_commands = "\n".join(
+        str(command)
+        for phase in ("configure", "compile", "install")
+        for command in libstdcxx_recipe.build.get(phase, [])
+    )
+    require("-lgcc -lgcc_eh" in libstdcxx_commands, "GNU C++ runtime must not require an unowned host libgcc_s")
+    require(
+        llama_recipe.source.get("sha256") == "bd13fa381488aa59ae4081aca24d368a956ad6e393c54931510a94d240590e33",
+        "llama.cpp source digest is not pinned",
+    )
+    require(llama_recipe.build.get("system") == "cmake", "llama.cpp must be built from source")
+    llama_commands = "\n".join(
+        str(command)
+        for phase in ("configure", "compile", "install")
+        for command in llama_recipe.build.get(phase, [])
+    )
+    require("LLAMA_USE_PREBUILT_UI=OFF" in llama_commands, "llama.cpp build must not fetch UI assets")
+    require("libstdc++.so.6.0.29" in llama_commands, "llama.cpp package must carry its source-built C++ runtime")
+    require("kiki-ops-model" in llama_recipe.dependencies.get("build", []), "llama.cpp must build against the verified GGUF model package")
+    require(
+        "llama-cpp" not in ai_recipe.dependencies.get("runtime", []),
+        "AI console must allow remote mode without forcing the local llama.cpp runtime",
+    )
+    require("/var/lib/kiki/models/kiki-ops.gguf" in llama_commands, "llama.cpp package must carry the verified GGUF model")
+    require(
+        set(ai_recipe.source.get("inputs", [])) >= {"go.mod", "vendor", "cmd/kiki-ai-console", "internal/aiconsole"},
+        "AI console reproducible Go inputs are incomplete",
+    )
+    for required in (
+        "distro/sources/kiki-ai-console/etc/systemd/system/kiki-ai-console@.service",
+        "distro/sources/kiki-ai-console/etc/systemd/system/kiki-llama-server.service",
+        "distro/sources/kiki-ai-console/etc/kiki/ai-console.json",
+    ):
+        require((repo_root / required).is_file(), f"AI console asset is missing: {required}")
+    profile_paths = [repo_root / "distro/profiles/server-core.toml", *sorted((repo_root / "distro/profiles").glob("kiki-kube-*.yaml"))]
+    for profile_path in profile_paths:
+        profile = ki2build.load_profile(profile_path)
+        services = set(profile.get("services", {}).get("enable", []))
+        require("kiki-ai-console" in profile.get("packages", []), f"{profile_path.name}: AI console package is missing")
+        require("llama-cpp" in profile.get("packages", []), f"{profile_path.name}: local llama.cpp runtime is missing")
+        require("kiki-ai-console@tty1.service" in services, f"{profile_path.name}: tty1 AI console is missing")
+        require("getty@tty2.service" in services, f"{profile_path.name}: tty2 recovery shell is missing")
+        require("getty@tty1.service" not in services, f"{profile_path.name}: tty1 getty conflicts with the AI console")
     os_build_plan = load_yaml(repo_root / "distro/build-plans/stage3-server-core.yaml")
     require(os_build_plan.get("schema") == "kiki-os-build-plan-v1", "Stage 3 OS build plan schema is invalid")
     require(os_build_plan.get("name") == "stage3-server-core", "Stage 3 OS build plan name is invalid")
@@ -350,6 +415,9 @@ def verify_contract(repo_root: Path) -> dict[str, Any]:
         "firewall_runtime_sources": sorted(firewall_runtime_sources),
         "hardened_foundation_releases": hardened_foundation_releases,
         "management_console": "tools/kiki_console.py",
+        "on_device_ai_console": "tty1",
+        "bundled_model": "Qwen2.5-1.5B-Instruct-Q4_K_M",
+        "recovery_shell": "tty2",
         "host_file_recipes": host_file_recipes,
     }
 
@@ -487,7 +555,7 @@ def verify(repo_root: Path) -> dict[str, Any]:
     smoke = smoke_reconcile(repo_root)
     repository_signature = smoke_repository_signature(repo_root)
     run([sys.executable, "tools/ki2build.py", "validate", "--profile", "distro/profiles/server-core.toml", "--max-packages", "72"], cwd=repo_root)
-    run(["go", "test", "-mod=vendor", "./internal/stage3", "./cmd/kiki-agent"], cwd=repo_root, env={"GOCACHE": str(Path(tempfile.gettempdir()) / "kiki-stage3-verify-go-cache")})
+    run(["go", "test", "-mod=vendor", "./internal/stage3", "./cmd/kiki-agent", "./internal/aiconsole", "./cmd/kiki-ai-console"], cwd=repo_root, env={"GOCACHE": str(Path(tempfile.gettempdir()) / "kiki-stage3-verify-go-cache")})
     return {"contract": contract, "smoke": smoke, "repository_signature": repository_signature}
 
 

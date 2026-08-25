@@ -1,0 +1,127 @@
+recipes:
+  - name: kiki-ops-model
+    version: "2.5-1.5B-Q4_K_M"
+    release: 1
+    summary: Korean-capable Qwen2.5 1.5B Instruct GGUF model for KIKI OS
+    license: Apache-2.0
+    tier: build
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/a615a81362316d7b9f5a7a9c4313adfdf9b54588/qwen2.5-1.5b-instruct-q4_k_m.gguf
+      file: qwen2.5-1.5b-instruct-q4_k_m.gguf
+      sha256: 6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e
+      extra:
+        - url: https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/a615a81362316d7b9f5a7a9c4313adfdf9b54588/LICENSE
+          file: Qwen2.5-1.5B-Instruct-LICENSE
+          sha256: 832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e
+    depends:
+      build: []
+      runtime: []
+    build:
+      system: copy
+      install:
+        - install -Dm644 "${KI2_SOURCE_DIR}/qwen2.5-1.5b-instruct-q4_k_m.gguf" "${KI2_DESTDIR}/usr/share/kiki/models/kiki-ops.gguf"
+        - install -Dm644 "${KI2_SOURCE_DIR}/Qwen2.5-1.5B-Instruct-LICENSE" "${KI2_DESTDIR}/usr/share/licenses/kiki-ops-model/LICENSE"
+
+  - name: libstdcxx
+    version: "11.5.0"
+    release: 1
+    summary: GNU C++ standard library runtime built for KIKI OS
+    license: GPL-3.0-or-later WITH GCC-exception-3.1
+    tier: base
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://ftp.gnu.org/gnu/gcc/gcc-11.5.0/gcc-11.5.0.tar.xz
+      file: gcc-11.5.0.tar.xz
+      sha256: a6e21868ead545cf87f0c01f84276e4b5281d672098591c1c896241f09363478
+    depends:
+      build: []
+      runtime: [glibc]
+    build:
+      system: gnu
+      sysroot_exclude: [glibc]
+      configure:
+        - cd "${KI2_BUILD_DIR}" && "${KI2_SOURCE_DIR}/libstdc++-v3/configure" --prefix=/usr --libdir=/usr/lib --disable-multilib --disable-nls --disable-libstdcxx-pch --enable-shared --disable-static
+        - sed -i 's/-lgcc_s/-lgcc -lgcc_eh/g' "${KI2_BUILD_DIR}/libtool"
+      compile:
+        - make -C "${KI2_BUILD_DIR}" -j "${KI2_JOBS}"
+      install:
+        - install -Dm755 "${KI2_BUILD_DIR}/src/.libs/libstdc++.so.6.0.29" "${KI2_DESTDIR}/usr/lib/libstdc++.so.6.0.29"
+        - ln -s libstdc++.so.6.0.29 "${KI2_DESTDIR}/usr/lib/libstdc++.so.6"
+        - ln -s libstdc++.so.6 "${KI2_DESTDIR}/usr/lib/libstdc++.so"
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        CXXFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "-Wl,-z,relro,-z,now"
+
+  - name: llama-cpp
+    version: "b10516"
+    release: 1
+    summary: CPU-first local GGUF inference server for KIKI OS
+    license: MIT
+    tier: runtime
+    architectures: [x86_64]
+    source:
+      type: url
+      url: https://github.com/ggml-org/llama.cpp/archive/refs/tags/b10516.tar.gz
+      file: llama.cpp-b10516.tar.gz
+      sha256: bd13fa381488aa59ae4081aca24d368a956ad6e393c54931510a94d240590e33
+    depends:
+      build: [libstdcxx, kiki-ops-model]
+      runtime: [glibc]
+    build:
+      system: cmake
+      sysroot_exclude: [glibc]
+      configure:
+        - cmake -S "${KI2_SOURCE_DIR}" -B "${KI2_BUILD_DIR}/llama" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DLLAMA_OPENSSL=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_APP=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_UI=OFF -DLLAMA_USE_PREBUILT_UI=OFF -DLLAMA_SUBPROCESS=OFF -DCMAKE_EXE_LINKER_FLAGS=-static-libgcc
+      compile:
+        - cmake --build "${KI2_BUILD_DIR}/llama" --target llama-server -j "${KI2_JOBS}"
+      install:
+        - install -Dm755 "${KI2_BUILD_DIR}/llama/bin/llama-server" "${KI2_DESTDIR}/usr/bin/llama-server"
+        - install -Dm755 "${KI2_SYSROOT}/usr/lib/libstdc++.so.6.0.29" "${KI2_DESTDIR}/usr/lib/libstdc++.so.6.0.29"
+        - ln -s libstdc++.so.6.0.29 "${KI2_DESTDIR}/usr/lib/libstdc++.so.6"
+        - install -Dm640 "${KI2_SYSROOT}/usr/share/kiki/models/kiki-ops.gguf" "${KI2_DESTDIR}/var/lib/kiki/models/kiki-ops.gguf"
+        - install -Dm644 "${KI2_SYSROOT}/usr/share/licenses/kiki-ops-model/LICENSE" "${KI2_DESTDIR}/usr/share/licenses/kiki-ops-model/LICENSE"
+      env:
+        CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        CXXFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        LDFLAGS: "-Wl,-z,relro,-z,now"
+
+  - name: kiki-ai-console
+    version: "0.1.0"
+    release: 1
+    summary: Korean approval-gated AI system management console
+    license: GPL-3.0-or-later
+    tier: kiki
+    architectures: [x86_64]
+    source:
+      type: local
+      path: distro/sources/kiki-ai-console
+      inputs:
+        - go.mod
+        - go.sum
+        - vendor
+        - cmd/kiki-ai-console
+        - internal/aiconsole
+    depends:
+      build: []
+      runtime: [glibc, systemd, iproute2, util-linux]
+    build:
+      system: go
+      skip_sysroot: true
+      compile:
+        - mkdir -p "${KI2_BUILD_DIR}/source/cmd" "${KI2_BUILD_DIR}/source/internal"
+        - cp "${KI2_REPO_ROOT}/go.mod" "${KI2_REPO_ROOT}/go.sum" "${KI2_BUILD_DIR}/source/"
+        - cp -a "${KI2_REPO_ROOT}/vendor" "${KI2_BUILD_DIR}/source/vendor"
+        - cp -a "${KI2_REPO_ROOT}/cmd/kiki-ai-console" "${KI2_BUILD_DIR}/source/cmd/kiki-ai-console"
+        - cp -a "${KI2_REPO_ROOT}/internal/aiconsole" "${KI2_BUILD_DIR}/source/internal/aiconsole"
+        - cd "${KI2_BUILD_DIR}/source" && GOTOOLCHAIN=local CGO_ENABLED=0 GOCACHE="${KI2_BUILD_DIR}/go-cache" GOPATH="${KI2_BUILD_DIR}/gopath" go build -mod=vendor -buildvcs=false -trimpath -o "${KI2_BUILD_DIR}/kiki-ai-console" ./cmd/kiki-ai-console
+      install:
+        - install -Dm755 "${KI2_BUILD_DIR}/kiki-ai-console" "${KI2_DESTDIR}/usr/bin/kiki-ai-console"
+        - install -Dm640 "${KI2_SOURCE_DIR}/etc/kiki/ai-console.json" "${KI2_DESTDIR}/etc/kiki/ai-console.json"
+        - install -Dm644 "${KI2_SOURCE_DIR}/etc/systemd/system/kiki-ai-console@.service" "${KI2_DESTDIR}/etc/systemd/system/kiki-ai-console@.service"
+        - install -Dm644 "${KI2_SOURCE_DIR}/etc/systemd/system/kiki-llama-server.service" "${KI2_DESTDIR}/etc/systemd/system/kiki-llama-server.service"
+        - install -Dm644 "${KI2_SOURCE_DIR}/usr/lib/tmpfiles.d/kiki-ai-console.conf" "${KI2_DESTDIR}/usr/lib/tmpfiles.d/kiki-ai-console.conf"
+        - install -Dm644 "${KI2_SOURCE_DIR}/usr/share/doc/kiki-ai-console/README.ko.md" "${KI2_DESTDIR}/usr/share/doc/kiki-ai-console/README.ko.md"

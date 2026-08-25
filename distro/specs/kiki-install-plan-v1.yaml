@@ -1,7 +1,7 @@
 schema: kiki-install-plan-spec-v1
 name: kiki-install-plan-v1
 status: stage2-v2
-description: stage-1 TUI 설치기와 향후 웹 설치기가 공유할 선언형 설치 계획서 계약.
+description: Stage-1 TUI와 CLI/TUI/GTK 설치 프런트엔드가 공유하는 선언형 설치 계획서 계약.
 
 document:
   root: install_plan
@@ -27,21 +27,23 @@ required:
   - firewall
   - artifacts
 
-optional: []
+optional:
+  - localization
+  - ai
 
 fields:
   schema: kiki-install-plan-v1이어야 한다.
   api_version: 설치기 API 버전. 현재 값은 kiki.io/v1alpha1이다.
   kind: InstallPlan이어야 한다.
-  generated_by: 계획서를 만든 도구. 예: kiki-stage1-tui, kiki-installer-tui.
-  mode: guided 또는 quick-vm.
+  generated_by: "계획서를 만든 도구. 예: kiki-stage1-tui, kiki-installer-tui."
+  mode: guided, quick-vm, unattended 중 하나.
 
 source:
   type: local-installer-media, remote-repository, mirror 중 하나.
   media_root: disconnected 설치에서 사용하는 설치 미디어 mount root.
   repo_index: 설치기가 사용할 패키지 저장소 인덱스.
   repo_url: 원격 저장소를 사용할 때의 base URL.
-  channel: 저장소 release channel. 예: stage2-v2, testing, stable.
+  channel: "저장소 release channel. 예: stage2-v2, testing, stable."
   verify_key: 서명된 저장소 metadata 검증에 사용할 로컬 key 경로.
   disconnected_install: 네트워크 없이 계획을 완료할 수 있는지 여부.
 
@@ -70,6 +72,11 @@ target:
 identity:
   hostname: 대상 시스템 hostname. 기본값은 localhost.localdomain이다.
 
+localization:
+  locale: 시스템 언어 로케일. 한국어 기본값은 ko_KR.UTF-8이다.
+  keymap: Linux 가상 콘솔 키맵. 한국어 키보드 기본값은 kr이다.
+  timezone: IANA 시간대. 기본값은 Asia/Seoul이다.
+
 network:
   manager: 네트워크 관리 구성요소. 기본값은 systemd-networkd이다.
   resolver: DNS resolver 구성요소. 기본값은 systemd-resolved이다.
@@ -77,7 +84,7 @@ network:
   interface_match: systemd-networkd Match Name 값. 기본값은 en* eth*이다.
   dhcp4: DHCPv4 사용 여부.
   ipv6_accept_ra: IPv6 Router Advertisement 수락 여부.
-  address: static 모드에서 사용할 CIDR 표기 IPv4 주소. 예: 192.168.122.50/24.
+  address: "static 모드에서 사용할 CIDR 표기 IPv4 주소. 예: 192.168.122.50/24."
   gateway: static 모드에서 사용할 기본 게이트웨이. 없으면 빈 문자열.
   dns: static 모드에서 사용할 DNS 서버 목록. 공백 구분 문자열.
   ntp: static 모드에서 사용할 NTP 서버 목록. 공백 구분 문자열.
@@ -92,6 +99,13 @@ users:
   root:
     locked: root 직접 로그인을 비활성화할지 여부.
     password: disabled 또는 런타임 전용 placeholder.
+
+ai:
+  mode: local, remote, off 중 하나. 기본값은 local이다.
+  endpoint: OpenAI 호환 chat completions 엔드포인트. local 기본값은 http://127.0.0.1:8080/v1/chat/completions이다.
+  model: 요청에 사용할 모델 별칭. 로컬 기본값은 kiki-ops이다.
+  console_tty: AI 관리 콘솔을 연결할 TTY. 기본값은 tty1이다.
+  require_approval: AI가 제안한 명령을 실행하기 전에 운영자의 명시적 확인을 요구해야 하며 기본값은 true이다.
 
 packages:
   profile: TUI가 사용하는 프로파일 이름.
@@ -144,3 +158,6 @@ safety:
     - CRI-O 프로파일은 cri_socket을 unix:///var/run/crio/crio.sock으로 기록해야 한다.
     - 무인 설치는 kiki.autoinstall=erase 또는 kiki.autoinstall=quick-vm이 명시된 경우에만 콘솔 확인을 생략할 수 있다.
     - 무인 설치의 kiki.target 값도 /dev/sda 같은 전체 디스크여야 하며 파티션 경로는 거부해야 한다.
+    - remote source는 verify_key 없이 실행할 수 없다.
+    - AI 관리 콘솔이 활성화되면 tty1은 AI 콘솔, tty2는 독립 복구 셸이어야 한다.
+    - AI가 제안한 명령은 require_approval=true일 때 운영자 확인 없이 실행할 수 없다.

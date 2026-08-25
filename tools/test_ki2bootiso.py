@@ -30,6 +30,17 @@ class Ki2BootIsoTests(unittest.TestCase):
 
         self.assertEqual(output, root / "dist/iso/kiki-stage2-v2-installer-x86_64-20260526-rev42.iso")
 
+    def test_dirty_iso_build_stamp_can_be_made_unique(self):
+        stamp = f"{ki2bootiso.format_iso_build_stamp('2026-08-25', '20')}-dirty-a6b3a3e"
+        output = ki2bootiso.default_iso_output(
+            Path("/repo"), "stage3-v3", "installer", "x86_64", {"stamp": stamp}
+        )
+
+        self.assertEqual(
+            output,
+            Path("/repo/dist/iso/kiki-stage3-v3-installer-x86_64-20260825-rev20-dirty-a6b3a3e.iso"),
+        )
+
     def test_iso_release_name_prefers_repository_channel(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
@@ -223,8 +234,10 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn("unique package names", ki2bootiso.INIT_C)
         self.assertIn("KIKI OS installer TUI", ki2bootiso.INIT_C)
         self.assertIn("KIKI OS Installer", ki2bootiso.INIT_C)
-        self.assertIn("1) Disk", ki2bootiso.INIT_C)
-        self.assertIn("7) Start install", ki2bootiso.INIT_C)
+        self.assertIn("1) Language / keyboard / timezone", ki2bootiso.INIT_C)
+        self.assertIn("5) Package source / trust", ki2bootiso.INIT_C)
+        self.assertIn("8) AI management console", ki2bootiso.INIT_C)
+        self.assertIn("10) Start install", ki2bootiso.INIT_C)
         self.assertIn("s) Shell", ki2bootiso.INIT_C)
         self.assertIn("q) Power off", ki2bootiso.INIT_C)
         self.assertIn("Review install plan", ki2bootiso.INIT_C)
@@ -243,6 +256,11 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn("unix:///var/run/crio/crio.sock", ki2bootiso.INIT_C)
         self.assertIn("runtime-input-not-written-to-plan", ki2bootiso.INIT_C)
         self.assertIn("dependency_resolution", ki2bootiso.INIT_C)
+        self.assertIn('"  localization:\\n"', ki2bootiso.INIT_C)
+        self.assertIn('"require_approval"', ki2bootiso.INIT_C)
+        self.assertIn("kiki-ai-console@tty1.service", ki2bootiso.INIT_C)
+        self.assertIn("getty@tty2.service", ki2bootiso.INIT_C)
+        self.assertIn("ensure_selected_ai_packages", ki2bootiso.INIT_C)
         self.assertIn("Network setup", ki2bootiso.INIT_C)
         self.assertIn("systemd-networkd DHCP", ki2bootiso.INIT_C)
         self.assertIn("interface_match", ki2bootiso.INIT_C)
@@ -256,6 +274,9 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn("kiki.runtime", ki2bootiso.INIT_C)
         self.assertIn("kiki.target", ki2bootiso.INIT_C)
         self.assertIn("kiki.hostname", ki2bootiso.INIT_C)
+        self.assertIn("kiki.locale", ki2bootiso.INIT_C)
+        self.assertIn("kiki.timezone", ki2bootiso.INIT_C)
+        self.assertIn("kiki.ai-endpoint", ki2bootiso.INIT_C)
         self.assertIn("maybe_run_cmdline_autoinstall", ki2bootiso.INIT_C)
         self.assertIn("run_guided_package_installer(1, 1)", ki2bootiso.INIT_C)
         self.assertIn("select_named_package_profile", ki2bootiso.INIT_C)

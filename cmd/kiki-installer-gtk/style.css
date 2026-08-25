@@ -1,0 +1,45 @@
+window {
+  background: #f7f9fc;
+  color: #172033;
+}
+
+headerbar {
+  background: #10233f;
+  color: #ffffff;
+  min-height: 52px;
+}
+
+.kiki-sidebar {
+  background: #e9eef6;
+  border-right: 1px solid #cad4e3;
+  min-width: 220px;
+}
+
+.kiki-page {
+  padding: 28px 34px;
+}
+
+.dim-label {
+  color: #58677c;
+  margin-bottom: 12px;
+}
+
+entry, dropdown, textview {
+  border-radius: 8px;
+}
+
+button.suggested-action {
+  background: #2563eb;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 8px 16px;
+}
+
+button.suggested-action:hover {
+  background: #1d4ed8;
+}
+
+.error {
+  color: #b42318;
+  font-weight: 700;
+}

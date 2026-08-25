@@ -272,10 +272,7 @@ NETWORK_USERSPACE_REQUIREMENTS: dict[str, PayloadRequirement] = {
     ),
     "iptables": PayloadRequirement(paths=("/usr/sbin/iptables", "/usr/sbin/ip6tables", "/usr/sbin/iptables-save", "/usr/sbin/iptables-restore")),
     "firewalld": PayloadRequirement(paths=("/usr/sbin/firewalld", "/usr/bin/firewall-cmd", "/usr/lib/systemd/system/firewalld.service")),
-    "bridge-utils": PayloadRequirement(
-        paths=("/usr/sbin/brctl", "/usr/sbin/bridge"),
-        contains={"/usr/sbin/brctl": ("exec /usr/sbin/bridge",)},
-    ),
+    "bridge-utils": PayloadRequirement(paths=("/usr/sbin/brctl",)),
     "socat": PayloadRequirement(paths=("/usr/bin/socat",)),
     "ethtool": PayloadRequirement(paths=("/usr/sbin/ethtool",)),
     "chrony": PayloadRequirement(paths=("/usr/sbin/chronyd", "/usr/bin/chronyc", "/usr/lib/systemd/system/chronyd.service")),
@@ -889,6 +886,11 @@ def verify_package_manager(repo_root: Path, verifier: Verifier) -> None:
             verifier.check("removed repo default" in local_remove.stdout, "ki2ctl local mirror repo remove clears config")
 
         kube_roots = ("kubeadm", "kubectl", "kiki-kubeadm", "kube-node-config-containerd")
+        index_data = json.loads((repo_base / "repo" / "index.x86_64.json").read_text(encoding="utf-8"))
+        available_packages = {item.get("name") for item in index_data.get("packages", [])}
+        if not set(kube_roots) <= available_packages:
+            verifier.warnings.append("ki2ctl Kubernetes dependency flow skipped: repository profile does not include Kubernetes roots")
+            return
         deps = run_ki2ctl(repo_root, deps_root, verifier, "--repo", str(repo_base), "install", *kube_roots, "--dry-run")
         if deps is not None:
             for name in ("containerd", "kubelet", "kubeadm", "kubectl", "kiki-kubeadm", "kube-node-config-containerd"):

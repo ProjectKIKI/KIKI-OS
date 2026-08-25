@@ -26,6 +26,12 @@ func TestDefaultPlanUsesStageOneDefaults(t *testing.T) {
 	if !contains(plan.Packages.Selected, "kiki-installer-tui") {
 		t.Fatal("minimal-systemd should include kiki-installer-tui preview package")
 	}
+	if !contains(plan.Packages.Selected, "llama-cpp") || !contains(plan.Packages.Selected, "kiki-ai-console") || !contains(plan.Services.Enable, "kiki-ai-console@tty1.service") || !contains(plan.Services.Enable, "getty@tty2.service") {
+		t.Fatal("installer plan should reserve tty1 for AI and tty2 for recovery")
+	}
+	if contains(plan.Services.Enable, "getty@tty1.service") {
+		t.Fatal("tty1 getty conflicts with the AI console")
+	}
 	if checkInit(plan).State != "OK" {
 		t.Fatalf("default plan should be ready for systemd handoff init: %#v", checkInit(plan))
 	}
@@ -43,7 +49,7 @@ func TestServerCoreProfileAddsGeneralServerPackages(t *testing.T) {
 	if plan.Runtime.ContainerRuntime != "none" || plan.Kubernetes.Role != "none" {
 		t.Fatalf("server-core should not enable container runtime or Kubernetes: runtime=%q role=%q", plan.Runtime.ContainerRuntime, plan.Kubernetes.Role)
 	}
-	for _, name := range []string{"nftables", "iptables", "conntrack-tools", "firewalld", "bridge-utils", "ethtool", "chrony", "kiki-netconfig"} {
+	for _, name := range []string{"nftables", "iptables", "conntrack-tools", "firewalld", "bridge-utils", "socat", "ethtool", "chrony", "kiki-netconfig"} {
 		if !contains(plan.Packages.Selected, name) {
 			t.Fatalf("server-core missing package %q", name)
 		}
@@ -216,20 +222,95 @@ func TestRenderDashboardShowsPlanStatus(t *testing.T) {
 		"KIKI OS Installer",
 		"Stage 3 plan authoring",
 		"Install Plan: /run/kiki/install-plan.yaml",
+		"[OK] Language",
 		"[!] Disk",
 		"[OK] Network",
 		"[OK] Account",
+		"[OK] Source",
 		"[ ] Profile",
 		"[ ] Runtime",
+		"[OK] AI",
 		"[OK] Init",
 		"[ ] Review",
-		"7) Start install",
+		"10) Start install",
 		"s) Shell",
 		"q) Power off",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("dashboard missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestLocalizationAndAICommandsWritePlan(t *testing.T) {
+	plan := NewDefaultPlan("server-core")
+	tui := TUI{Plan: plan}
+	for _, command := range []string{
+		"locale en_US.UTF-8",
+		"keymap us",
+		"timezone UTC",
+		"ai remote https://ai.example/v1/chat/completions",
+	} {
+		if _, err := tui.ApplyCommand(command); err != nil {
+			t.Fatalf("ApplyCommand(%q): %v", command, err)
+		}
+	}
+	if tui.Plan.Localization.Locale != "en_US.UTF-8" || tui.Plan.Localization.Keymap != "us" || tui.Plan.Localization.Timezone != "UTC" {
+		t.Fatalf("localization = %#v", tui.Plan.Localization)
+	}
+	if tui.Plan.AI.Mode != "remote" || tui.Plan.AI.Endpoint != "https://ai.example/v1/chat/completions" {
+		t.Fatalf("AI = %#v", tui.Plan.AI)
+	}
+	if contains(tui.Plan.Services.Enable, "kiki-llama-server.service") {
+		t.Fatal("remote AI must not enable the local llama server")
+	}
+	if contains(tui.Plan.Packages.Selected, "llama-cpp") {
+		t.Fatal("remote AI must not retain the local llama.cpp runtime")
+	}
+	var output bytes.Buffer
+	if err := WritePlanYAML(&output, tui.Plan); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`localization:`,
+		`locale: "en_US.UTF-8"`,
+		`timezone: "UTC"`,
+		`ai:`,
+		`mode: "remote"`,
+		`require_approval: true`,
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("plan missing %q:\n%s", want, output.String())
+		}
+	}
+}
+
+func TestRemoteSourceAndAIMustBeConfigured(t *testing.T) {
+	plan := NewDefaultPlan("server-core")
+	if err := applySource(&plan, "remote", "file:///tmp/repo"); err == nil {
+		t.Fatal("remote source accepted a non-HTTP URL")
+	}
+	if err := applyAI(&plan, "remote", ""); err == nil {
+		t.Fatal("remote AI accepted an empty endpoint")
+	}
+	if err := applySource(&plan, "remote", "https://repo.example/kiki"); err != nil {
+		t.Fatal(err)
+	}
+	if checkSource(plan).State != "BLOCK" {
+		t.Fatalf("unsigned remote source should be blocked: %#v", checkSource(plan))
+	}
+	plan.Source.VerifyKey = "/etc/ki2/trust/repository.pub"
+	if checkSource(plan).State != "OK" {
+		t.Fatalf("signed remote source should be accepted: %#v", checkSource(plan))
+	}
+	if err := applyAI(&plan, "off", ""); err != nil {
+		t.Fatal(err)
+	}
+	if contains(plan.Packages.Selected, "kiki-ai-console") || contains(plan.Services.Enable, "kiki-ai-console@tty1.service") {
+		t.Fatal("AI off retained console package or service")
+	}
+	if !contains(plan.Services.Enable, "getty@tty1.service") {
+		t.Fatal("AI off must restore tty1 getty")
 	}
 }
 

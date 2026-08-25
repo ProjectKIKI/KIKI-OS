@@ -44,6 +44,8 @@ install_plan:
       - curl
       - ki2ctl
       - kiki-agent
+      - llama-cpp
+      - kiki-ai-console
       - kiki-netconfig
       - kiki-installer-tui
     network_security:
@@ -52,6 +54,7 @@ install_plan:
       - conntrack-tools
       - firewalld
       - bridge-utils
+      - socat
       - ethtool
       - chrony
   prompts:
@@ -64,7 +67,9 @@ install_plan:
   post_install:
     enable_services:
       - dbus.service
-      - getty@tty1.service
+      - kiki-llama-server.service
+      - kiki-ai-console@tty1.service
+      - getty@tty2.service
       - systemd-logind.service
       - systemd-networkd.service
       - systemd-resolved.service

@@ -314,6 +314,8 @@ def build_steps(ctx: BuildContext) -> list[Step]:
             "--release-name",
             str(iso.get("release_name") or release_channel(ctx)),
         )
+        if bool_value(rootfs, "enabled", True):
+            command.extend(["--rootfs-dir", str(rootfs_output(ctx))])
         if bool_value(iso, "no_hyperv_vhdx", True):
             command.append("--no-hyperv-vhdx")
         steps.append(Step("Build bootable ISO", command))

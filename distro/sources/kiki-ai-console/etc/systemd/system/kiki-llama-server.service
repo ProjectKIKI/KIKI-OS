@@ -1,0 +1,21 @@
+[Unit]
+Description=KIKI OS local llama.cpp inference runtime
+Documentation=file:/usr/share/doc/kiki-ai-console/README.ko.md
+After=local-fs.target
+ConditionPathExists=/var/lib/kiki/models/kiki-ops.gguf
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/llama-server --model /var/lib/kiki/models/kiki-ops.gguf --alias kiki-ops --host 127.0.0.1 --port 8080 --ctx-size 4096
+Restart=on-failure
+RestartSec=3
+Environment=HOME=/var/lib/kiki
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/kiki
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

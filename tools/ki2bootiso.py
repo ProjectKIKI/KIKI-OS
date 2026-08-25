@@ -1437,6 +1437,12 @@ static char selected_packages[MAX_SELECTED_PACKAGES][PACKAGE_NAME_LEN];
 static int selected_package_count = 0;
 static char selected_package_profile[PACKAGE_NAME_LEN] = "minimal-systemd";
 static char selected_container_runtime[32] = "none";
+static char selected_locale[64] = "ko_KR.UTF-8";
+static char selected_keymap[32] = "kr";
+static char selected_timezone[64] = "Asia/Seoul";
+static char selected_ai_mode[16] = "local";
+static char selected_ai_endpoint[256] = "http://127.0.0.1:8080/v1/chat/completions";
+static char selected_ai_model[64] = "kiki-ops";
 
 static int read_small_file_raw(const char *path, char *buffer, size_t size, long *out_len) {
     if (size == 0) {
@@ -1738,6 +1744,20 @@ static int selected_remove(const char *name) {
     return removed;
 }
 
+static void apply_ai_to_selected_packages(void) {
+    if (kstrcmp(selected_ai_mode, "off") == 0) {
+        selected_remove("kiki-ai-console");
+        selected_remove("llama-cpp");
+        return;
+    }
+    selected_add("kiki-ai-console");
+    if (kstrcmp(selected_ai_mode, "local") == 0) {
+        selected_add("llama-cpp");
+    } else {
+        selected_remove("llama-cpp");
+    }
+}
+
 static void show_selected_packages(void) {
     char line[128];
     if (selected_package_count == 0) {
@@ -1820,6 +1840,7 @@ static int select_package_set(const char *index_path, const char *profile, const
             }
         }
     }
+    apply_ai_to_selected_packages();
     char line[128];
     size_t out = 0;
     out = append_string(line, sizeof(line), out, label);
@@ -2043,6 +2064,25 @@ static int ensure_selected_profile_packages(const char *index_path) {
     return 1;
 }
 
+static int ensure_selected_ai_packages(const char *index_path) {
+    if (kstrcmp(selected_ai_mode, "off") == 0) {
+        return 1;
+    }
+    const char *const local_packages[] = {"kiki-ai-console", "llama-cpp", NULL};
+    const char *const remote_packages[] = {"kiki-ai-console", NULL};
+    const char *const *required = kstrcmp(selected_ai_mode, "local") == 0 ? local_packages : remote_packages;
+    for (int i = 0; required[i]; i++) {
+        if (!package_exists_in_index(index_path, required[i])) {
+            say("Required AI package missing from repository index: ");
+            say(required[i]);
+            say("\n");
+            return 0;
+        }
+        selected_add(required[i]);
+    }
+    return 1;
+}
+
 static void apply_runtime_to_selected_packages(const char *runtime) {
     if (!selected_profile_is_kubernetes()) {
         selected_set_runtime("none");
@@ -2070,6 +2110,7 @@ static void apply_runtime_to_selected_packages(const char *runtime) {
 }
 
 static void show_runtime_status(void);
+static void show_package_media(void);
 
 static void runtime_menu(void) {
     char choice[16];
@@ -2096,6 +2137,85 @@ static void runtime_menu(void) {
         apply_runtime_to_selected_packages("containerd");
         say("Runtime set to containerd.\n");
     }
+    tui_wait();
+}
+
+static void localization_menu(void) {
+    char value[96];
+    tui_header("Language / keyboard / timezone");
+    say("Locale [");
+    say(selected_locale);
+    say("]: ");
+    if (read_line(value, sizeof(value)) == 0 && value[0]) {
+        copy_string(selected_locale, sizeof(selected_locale), value);
+    }
+    say("Keyboard map [");
+    say(selected_keymap);
+    say("]: ");
+    if (read_line(value, sizeof(value)) == 0 && value[0]) {
+        copy_string(selected_keymap, sizeof(selected_keymap), value);
+    }
+    say("Timezone [");
+    say(selected_timezone);
+    say("]: ");
+    if (read_line(value, sizeof(value)) == 0 && value[0]) {
+        if (value[0] == '/' || contains(value, "..")) {
+            say("Timezone must be a relative IANA name such as Asia/Seoul.\n");
+        } else {
+            copy_string(selected_timezone, sizeof(selected_timezone), value);
+        }
+    }
+    say("Localization settings saved for this installer session.\n");
+    tui_wait();
+}
+
+static void source_trust_menu(void) {
+    tui_header("Package source / trust");
+    show_package_media();
+    say("\nStage-1 installs only from the attached, verified local media.\n");
+    say("Remote repository plans can be authored by the CLI or GTK frontend and must include a verification key.\n");
+    tui_wait();
+}
+
+static void ai_menu(void) {
+    char choice[16];
+    char endpoint[256];
+    tui_header("AI management console");
+    say("1) Local CPU llama.cpp model (tty1 AI, tty2 recovery shell)\n");
+    say("2) Remote OpenAI-compatible endpoint (tty1 AI, tty2 recovery shell)\n");
+    say("3) Disable AI console (tty1 and tty2 login shells)\n");
+    say("\nSelect [1]: ");
+    if (read_line(choice, sizeof(choice)) != 0) {
+        return;
+    }
+    if (!choice[0] || kstrcmp(choice, "1") == 0) {
+        copy_string(selected_ai_mode, sizeof(selected_ai_mode), "local");
+        copy_string(selected_ai_endpoint, sizeof(selected_ai_endpoint), "http://127.0.0.1:8080/v1/chat/completions");
+        copy_string(selected_ai_model, sizeof(selected_ai_model), "kiki-ops");
+    } else if (kstrcmp(choice, "2") == 0) {
+        say("Endpoint (http:// or https://): ");
+        if (read_line(endpoint, sizeof(endpoint)) != 0 || contains(endpoint, "\"") || contains(endpoint, "\\") ||
+            !(starts_with(endpoint, "http://") || starts_with(endpoint, "https://"))) {
+            say("A valid HTTP(S) endpoint is required.\n");
+            tui_wait();
+            return;
+        }
+        copy_string(selected_ai_mode, sizeof(selected_ai_mode), "remote");
+        copy_string(selected_ai_endpoint, sizeof(selected_ai_endpoint), endpoint);
+        copy_string(selected_ai_model, sizeof(selected_ai_model), "kiki-ops");
+    } else if (kstrcmp(choice, "3") == 0) {
+        copy_string(selected_ai_mode, sizeof(selected_ai_mode), "off");
+        selected_ai_endpoint[0] = 0;
+        selected_ai_model[0] = 0;
+    } else {
+        say("Unknown selection.\n");
+        tui_wait();
+        return;
+    }
+    apply_ai_to_selected_packages();
+    say("AI mode set to: ");
+    say(selected_ai_mode);
+    say("\nCommands always require explicit operator approval before execution.\n");
     tui_wait();
 }
 
@@ -2157,6 +2277,7 @@ static void package_selection_menu(void) {
             selected_set_profile("world");
             selected_set_runtime("none");
             int added = select_all_packages_from_index(index_path);
+            apply_ai_to_selected_packages();
             out = 0;
             out = append_string(line, sizeof(line), out, "selected unique packages from media: ");
             out = append_u64(line, sizeof(line), out, (u64)added);
@@ -2525,7 +2646,15 @@ static void enable_default_systemd_units(void) {
     mkdir_p("/mnt/target/etc/systemd/system/sockets.target.wants", 0755);
     mkdir_p("/mnt/target/etc/systemd/system/sysinit.target.wants", 0755);
     make_symlink("/usr/lib/systemd/system/dbus.service", "/mnt/target/etc/systemd/system/basic.target.wants/dbus.service");
-    make_symlink("/usr/lib/systemd/system/getty@.service", "/mnt/target/etc/systemd/system/getty.target.wants/getty@tty1.service");
+    if (kstrcmp(selected_ai_mode, "off") == 0) {
+        make_symlink("/usr/lib/systemd/system/getty@.service", "/mnt/target/etc/systemd/system/getty.target.wants/getty@tty1.service");
+    } else {
+        make_symlink("/etc/systemd/system/kiki-ai-console@.service", "/mnt/target/etc/systemd/system/getty.target.wants/kiki-ai-console@tty1.service");
+        if (kstrcmp(selected_ai_mode, "local") == 0) {
+            make_symlink("/etc/systemd/system/kiki-llama-server.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/kiki-llama-server.service");
+        }
+    }
+    make_symlink("/usr/lib/systemd/system/getty@.service", "/mnt/target/etc/systemd/system/getty.target.wants/getty@tty2.service");
     make_symlink("/usr/lib/systemd/system/systemd-logind.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/systemd-logind.service");
     make_symlink("/usr/lib/systemd/system/systemd-networkd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/systemd-networkd.service");
     make_symlink("/usr/lib/systemd/system/systemd-networkd.socket", "/mnt/target/etc/systemd/system/sockets.target.wants/systemd-networkd.socket");
@@ -2839,6 +2968,7 @@ struct network_setup {
 
 struct install_plan {
     int quick_mode;
+    int unattended_mode;
     int auto_layout;
     int has_swap;
     char media_root[256];
@@ -3394,8 +3524,9 @@ static size_t append_yaml_kv_u64(char *yaml, size_t yaml_size, size_t out, const
     return append_string(yaml, yaml_size, out, "\n");
 }
 
-static void build_install_plan(struct install_plan *plan, int quick_mode, int auto_layout, int has_swap, const char *media_root, const char *index_path, const char *target, const char *esp_part, const char *swap_part, const char *root_part, const char *hostname, u64 disk_mib, u64 mem_mib, u64 esp_mib, u64 swap_mib, u64 root_mib, const struct account_setup *account, const struct network_setup *network) {
+static void build_install_plan(struct install_plan *plan, int quick_mode, int unattended_mode, int auto_layout, int has_swap, const char *media_root, const char *index_path, const char *target, const char *esp_part, const char *swap_part, const char *root_part, const char *hostname, u64 disk_mib, u64 mem_mib, u64 esp_mib, u64 swap_mib, u64 root_mib, const struct account_setup *account, const struct network_setup *network) {
     plan->quick_mode = quick_mode;
+    plan->unattended_mode = unattended_mode;
     plan->auto_layout = auto_layout;
     plan->has_swap = has_swap;
     plan->disk_mib = disk_mib;
@@ -3433,7 +3564,7 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "  ", "api_version", "kiki.io/v1alpha1");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "  ", "kind", "InstallPlan");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "  ", "generated_by", "kiki-stage1-tui");
-    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "  ", "mode", plan->quick_mode ? "quick-vm" : "guided");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "  ", "mode", plan->unattended_mode ? "unattended" : plan->quick_mode ? "quick-vm" : "guided");
     out = append_string(yaml, sizeof(yaml), out, "  source:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "type", "local-installer-media");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "media_root", plan->media_root);
@@ -3464,6 +3595,10 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_yaml_kv_u64(yaml, sizeof(yaml), out, "        ", "size_mib", plan->root_mib);
     out = append_string(yaml, sizeof(yaml), out, "  identity:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "hostname", plan->hostname);
+    out = append_string(yaml, sizeof(yaml), out, "  localization:\n");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "locale", selected_locale);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "keymap", selected_keymap);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "timezone", selected_timezone);
     out = append_string(yaml, sizeof(yaml), out, "  network:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "manager", "systemd-networkd");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "resolver", "systemd-resolved");
@@ -3486,6 +3621,12 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_string(yaml, sizeof(yaml), out, "    root:\n");
     out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "      ", "locked", plan->account.lock_root);
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "      ", "password", plan->account.lock_root ? "disabled" : "runtime-input-not-written-to-plan");
+    out = append_string(yaml, sizeof(yaml), out, "  ai:\n");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "mode", selected_ai_mode);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "endpoint", selected_ai_endpoint);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "model", selected_ai_model);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "console_tty", "tty1");
+    out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "    ", "require_approval", 1);
     out = append_string(yaml, sizeof(yaml), out, "  packages:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "profile", selected_package_profile);
     out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "    ", "dependency_resolution", 0);
@@ -3502,7 +3643,15 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_string(yaml, sizeof(yaml), out, "  services:\n");
     out = append_string(yaml, sizeof(yaml), out, "    enable:\n");
     out = append_string(yaml, sizeof(yaml), out, "      - dbus.service\n");
-    out = append_string(yaml, sizeof(yaml), out, "      - getty@tty1.service\n");
+    if (kstrcmp(selected_ai_mode, "off") == 0) {
+        out = append_string(yaml, sizeof(yaml), out, "      - getty@tty1.service\n");
+    } else {
+        if (kstrcmp(selected_ai_mode, "local") == 0) {
+            out = append_string(yaml, sizeof(yaml), out, "      - kiki-llama-server.service\n");
+        }
+        out = append_string(yaml, sizeof(yaml), out, "      - kiki-ai-console@tty1.service\n");
+    }
+    out = append_string(yaml, sizeof(yaml), out, "      - getty@tty2.service\n");
     out = append_string(yaml, sizeof(yaml), out, "      - systemd-logind.service\n");
     out = append_string(yaml, sizeof(yaml), out, "      - systemd-networkd.service\n");
     out = append_string(yaml, sizeof(yaml), out, "      - systemd-resolved.service\n");
@@ -3580,6 +3729,54 @@ static void show_runtime_status(void) {
     say("Kubernetes profiles keep swap off; minimal-systemd keeps normal swap.\n");
 }
 
+static int write_target_localization_and_ai(void) {
+    char path[384];
+    char content[512];
+    size_t out = 0;
+    mkdir_p("/mnt/target/etc/kiki", 0755);
+
+    out = append_string(content, sizeof(content), out, "LANG=");
+    out = append_string(content, sizeof(content), out, selected_locale);
+    append_string(content, sizeof(content), out, "\n");
+    if (!write_text_file("/mnt/target/etc/locale.conf", content)) {
+        return 0;
+    }
+    out = 0;
+    out = append_string(content, sizeof(content), out, "KEYMAP=");
+    out = append_string(content, sizeof(content), out, selected_keymap);
+    append_string(content, sizeof(content), out, "\n");
+    if (!write_text_file("/mnt/target/etc/vconsole.conf", content)) {
+        return 0;
+    }
+    out = 0;
+    out = append_string(content, sizeof(content), out, selected_timezone);
+    append_string(content, sizeof(content), out, "\n");
+    if (!write_text_file("/mnt/target/etc/timezone", content)) {
+        return 0;
+    }
+    path3(path, sizeof(path), "/mnt/target/usr/share/zoneinfo/", selected_timezone, "");
+    if (file_exists(path)) {
+        char zone_source[160];
+        size_t zone_out = 0;
+        zone_out = append_string(zone_source, sizeof(zone_source), zone_out, "/usr/share/zoneinfo/");
+        append_string(zone_source, sizeof(zone_source), zone_out, selected_timezone);
+        make_symlink(zone_source, "/mnt/target/etc/localtime");
+    }
+
+    if (kstrcmp(selected_ai_mode, "off") != 0) {
+        out = 0;
+        out = append_string(content, sizeof(content), out, "{\n  \"endpoint\": \"");
+        out = append_string(content, sizeof(content), out, selected_ai_endpoint);
+        out = append_string(content, sizeof(content), out, "\",\n  \"model\": \"");
+        out = append_string(content, sizeof(content), out, selected_ai_model);
+        out = append_string(content, sizeof(content), out, "\",\n  \"audit_log\": \"/var/log/kiki/ai-console.jsonl\"\n}\n");
+        if (!write_text_file("/mnt/target/etc/kiki/ai-console.json", content)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static void run_installer_shell(void) {
     char *argv[] = {"/bin/sh", NULL};
     say("\nStarting installer shell. Type exit to return to the installer.\n\n");
@@ -3591,9 +3788,17 @@ static void show_installer_dashboard(void) {
     tui_clear();
     say("KIKI OS Installer\n\n");
     say("Install Plan: " INSTALL_PLAN_PATH "\n\n");
+    say("[OK] Locale      ");
+    say(selected_locale);
+    say(", ");
+    say(selected_keymap);
+    say(", ");
+    say(selected_timezone);
+    say("\n");
     say("[!] Disk        auto partition: target disk, ESP + root, swap policy\n");
     say("[OK] Network   DHCP default, static available, systemd-networkd\n");
     say("[OK] Account   user: kiki, sudo enabled, root locked\n");
+    say("[OK] Source    verified local installer media\n");
     if (selected_package_count > 0) {
         char line[96];
         size_t out = 0;
@@ -3614,6 +3819,9 @@ static void show_installer_dashboard(void) {
     } else {
         say("[ ] Runtime    none\n");
     }
+    say("[OK] AI         ");
+    say(selected_ai_mode);
+    say(kstrcmp(selected_ai_mode, "off") == 0 ? ", tty1/tty2 login shells\n" : ", tty1 AI + tty2 recovery shell, approval required\n");
     say(file_exists(INSTALL_PLAN_PATH) ? "[OK] Review     ready\n" : "[ ] Review     not ready\n");
     say("\n");
 }
@@ -3647,6 +3855,11 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     char cmdline_runtime[32];
     char cmdline_target[128];
     char cmdline_hostname[64];
+    char cmdline_locale[64];
+    char cmdline_keymap[32];
+    char cmdline_timezone[64];
+    char cmdline_ai[16];
+    char cmdline_ai_endpoint[256];
     struct account_setup account;
     struct network_setup network;
     int auto_layout = 1;
@@ -3671,6 +3884,11 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     cmdline_runtime[0] = 0;
     cmdline_target[0] = 0;
     cmdline_hostname[0] = 0;
+    cmdline_locale[0] = 0;
+    cmdline_keymap[0] = 0;
+    cmdline_timezone[0] = 0;
+    cmdline_ai[0] = 0;
+    cmdline_ai_endpoint[0] = 0;
 
     if (unattended_mode) {
         tui_header("Autoinstall");
@@ -3699,6 +3917,47 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     if (unattended_mode) {
         cmdline_value("kiki.profile", cmdline_profile, sizeof(cmdline_profile));
         cmdline_value("kiki.runtime", cmdline_runtime, sizeof(cmdline_runtime));
+        cmdline_value("kiki.locale", cmdline_locale, sizeof(cmdline_locale));
+        cmdline_value("kiki.keymap", cmdline_keymap, sizeof(cmdline_keymap));
+        cmdline_value("kiki.timezone", cmdline_timezone, sizeof(cmdline_timezone));
+        cmdline_value("kiki.ai", cmdline_ai, sizeof(cmdline_ai));
+        cmdline_value("kiki.ai-endpoint", cmdline_ai_endpoint, sizeof(cmdline_ai_endpoint));
+        if (cmdline_locale[0]) {
+            copy_string(selected_locale, sizeof(selected_locale), cmdline_locale);
+        }
+        if (cmdline_keymap[0]) {
+            copy_string(selected_keymap, sizeof(selected_keymap), cmdline_keymap);
+        }
+        if (cmdline_timezone[0]) {
+            if (cmdline_timezone[0] == '/' || contains(cmdline_timezone, "..")) {
+                say("Invalid kiki.timezone value. Use a relative IANA name such as Asia/Seoul.\n");
+                return;
+            }
+            copy_string(selected_timezone, sizeof(selected_timezone), cmdline_timezone);
+        }
+        if (cmdline_ai[0]) {
+            if (kstrcmp(cmdline_ai, "local") == 0) {
+                copy_string(selected_ai_mode, sizeof(selected_ai_mode), "local");
+                copy_string(selected_ai_endpoint, sizeof(selected_ai_endpoint), "http://127.0.0.1:8080/v1/chat/completions");
+                copy_string(selected_ai_model, sizeof(selected_ai_model), "kiki-ops");
+            } else if (kstrcmp(cmdline_ai, "remote") == 0) {
+                if (!(starts_with(cmdline_ai_endpoint, "http://") || starts_with(cmdline_ai_endpoint, "https://")) ||
+                    contains(cmdline_ai_endpoint, "\"") || contains(cmdline_ai_endpoint, "\\")) {
+                    say("kiki.ai=remote requires a safe HTTP(S) kiki.ai-endpoint value.\n");
+                    return;
+                }
+                copy_string(selected_ai_mode, sizeof(selected_ai_mode), "remote");
+                copy_string(selected_ai_endpoint, sizeof(selected_ai_endpoint), cmdline_ai_endpoint);
+                copy_string(selected_ai_model, sizeof(selected_ai_model), "kiki-ops");
+            } else if (kstrcmp(cmdline_ai, "off") == 0) {
+                copy_string(selected_ai_mode, sizeof(selected_ai_mode), "off");
+                selected_ai_endpoint[0] = 0;
+                selected_ai_model[0] = 0;
+            } else {
+                say("Invalid kiki.ai value. Use local, remote, or off.\n");
+                return;
+            }
+        }
         if (!select_named_package_profile(index_path, cmdline_profile[0] ? cmdline_profile : "minimal-systemd", cmdline_runtime)) {
             return;
         }
@@ -3835,12 +4094,12 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     }
     collect_network_setup(&network, quick_mode || unattended_mode);
     collect_account_setup(&account, quick_mode, unattended_mode);
-    if (!ensure_selected_profile_packages(index_path)) {
+    if (!ensure_selected_ai_packages(index_path) || !ensure_selected_profile_packages(index_path)) {
         return;
     }
 
     struct install_plan plan;
-    build_install_plan(&plan, quick_mode || unattended_mode, auto_layout, has_swap, media_root, index_path, target, esp_part, swap_part, root_part, hostname, disk_mib, mem_mib, esp_mib, swap_mib, root_mib, &account, &network);
+    build_install_plan(&plan, quick_mode, unattended_mode, auto_layout, has_swap, media_root, index_path, target, esp_part, swap_part, root_part, hostname, disk_mib, mem_mib, esp_mib, swap_mib, root_mib, &account, &network);
     if (!write_install_plan_yaml(INSTALL_PLAN_PATH, &plan)) {
         say("Failed to write declarative install plan.\n");
         return;
@@ -3927,6 +4186,9 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     }
     if (!write_target_network_config("/mnt/target", &network)) {
         say("Failed to write target network configuration.\n");
+    }
+    if (!write_target_localization_and_ai()) {
+        say("Failed to write target localization or AI configuration.\n");
     }
     if (!write_target_ld_so_config("/mnt/target")) {
         say("Failed to write target ld.so.conf.\n");
@@ -4113,13 +4375,16 @@ static void installer_menu(void) {
     char choice[16];
     for (;;) {
         show_installer_dashboard();
-        say("1) Disk\n");
-        say("2) Network\n");
-        say("3) Account\n");
-        say("4) Profile\n");
-        say("5) Runtime\n");
-        say("6) Review install plan\n");
-        say("7) Start install\n");
+        say("1) Language / keyboard / timezone\n");
+        say("2) Disk\n");
+        say("3) Network\n");
+        say("4) Account\n");
+        say("5) Package source / trust\n");
+        say("6) Profile\n");
+        say("7) Runtime\n");
+        say("8) AI management console\n");
+        say("9) Review install plan\n");
+        say("10) Start install\n");
         say("s) Shell\n");
         say("q) Power off\n");
         say("\nSelect: ");
@@ -4127,24 +4392,30 @@ static void installer_menu(void) {
             continue;
         }
         if (kstrcmp(choice, "1") == 0) {
-            disk_menu();
+            localization_menu();
         } else if (kstrcmp(choice, "2") == 0) {
+            disk_menu();
+        } else if (kstrcmp(choice, "3") == 0) {
             tui_header("Network");
             show_network_tools();
             tui_wait();
-        } else if (kstrcmp(choice, "3") == 0) {
+        } else if (kstrcmp(choice, "4") == 0) {
             tui_header("Account");
             show_account_status();
             tui_wait();
-        } else if (kstrcmp(choice, "4") == 0) {
-            package_selection_menu();
         } else if (kstrcmp(choice, "5") == 0) {
-            runtime_menu();
+            source_trust_menu();
         } else if (kstrcmp(choice, "6") == 0) {
+            package_selection_menu();
+        } else if (kstrcmp(choice, "7") == 0) {
+            runtime_menu();
+        } else if (kstrcmp(choice, "8") == 0) {
+            ai_menu();
+        } else if (kstrcmp(choice, "9") == 0) {
             tui_header("Install plan");
             show_saved_install_plan();
             tui_wait();
-        } else if (kstrcmp(choice, "7") == 0) {
+        } else if (kstrcmp(choice, "10") == 0) {
             run_guided_package_installer(0, 0);
             tui_wait();
         } else if (kstrcmp(choice, "s") == 0 || kstrcmp(choice, "S") == 0) {
@@ -4152,14 +4423,6 @@ static void installer_menu(void) {
             tui_wait();
         } else if (kstrcmp(choice, "q") == 0 || kstrcmp(choice, "Q") == 0 || kstrcmp(choice, "0") == 0) {
             poweroff_now();
-        } else if (kstrcmp(choice, "8") == 0) {
-            tui_header("System status");
-            smoke_status();
-            show_cmdline();
-            tui_wait();
-        } else if (kstrcmp(choice, "9") == 0) {
-            run_image_installer();
-            tui_wait();
         } else if (kstrcmp(choice, "x") == 0 || kstrcmp(choice, "X") == 0) {
             run_guided_package_installer(1, 0);
             tui_wait();
@@ -4301,6 +4564,8 @@ def iso_build_info(repo_root: Path) -> dict[str, Any]:
     commit = git_output(repo_root, "rev-parse", "--short", "HEAD") or "unknown"
     status = git_output(repo_root, "status", "--porcelain")
     stamp = format_iso_build_stamp(build_date, revision)
+    if status:
+        stamp = f"{stamp}-dirty-{safe_filename_component(commit)}"
     return {
         "date": build_date,
         "revision": f"rev{revision}" if not str(revision).startswith("rev") else str(revision),

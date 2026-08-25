@@ -41,6 +41,8 @@ packages = [
   "curl",
   "ki2ctl",
   "kiki-agent",
+  "llama-cpp",
+  "kiki-ai-console",
   "kiki-netconfig",
   "kiki-installer-tui",
   "nftables",
@@ -48,6 +50,7 @@ packages = [
   "conntrack-tools",
   "firewalld",
   "bridge-utils",
+  "socat",
   "ethtool",
   "chrony",
 ]
@@ -60,7 +63,9 @@ kernel = "/boot/vmlinuz-kiki"
 enable = [
   "dbus.service",
   "kiki-boot-prepare.service",
-  "getty@tty1.service",
+  "kiki-llama-server.service",
+  "kiki-ai-console@tty1.service",
+  "getty@tty2.service",
   "systemd-logind.service",
   "systemd-networkd.service",
   "systemd-resolved.service",

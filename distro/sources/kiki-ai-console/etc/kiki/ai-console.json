@@ -1,0 +1,5 @@
+{
+  "endpoint": "http://127.0.0.1:8080/v1/chat/completions",
+  "model": "kiki-ops",
+  "audit_log": "/var/log/kiki/ai-console.jsonl"
+}

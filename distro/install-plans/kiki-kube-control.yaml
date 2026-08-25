@@ -45,6 +45,9 @@ install_plan:
       - chrony
       - kiki-netconfig
       - kiki-installer-tui
+    management:
+      - llama-cpp
+      - kiki-ai-console
     optional_firewall:
       - firewalld
       - bridge-utils
@@ -62,7 +65,9 @@ install_plan:
   post_install:
     enable_services:
       - dbus.service
-      - getty@tty1.service
+      - kiki-llama-server.service
+      - kiki-ai-console@tty1.service
+      - getty@tty2.service
       - systemd-logind.service
       - systemd-networkd.service
       - systemd-resolved.service

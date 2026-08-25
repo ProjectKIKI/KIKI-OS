@@ -1,0 +1,23 @@
+[Unit]
+Description=KIKI OS Korean AI management console on %I
+Documentation=file:/usr/share/doc/kiki-ai-console/README.ko.md
+Conflicts=getty@%i.service
+After=systemd-user-sessions.service network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/kiki-ai-console --config /etc/kiki/ai-console.json
+Restart=always
+RestartSec=2
+TTYPath=/dev/%I
+StandardInput=tty-force
+StandardOutput=tty
+StandardError=tty
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+Environment=LANG=C.UTF-8
+KeyringMode=private
+
+[Install]
+WantedBy=getty.target
