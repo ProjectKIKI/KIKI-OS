@@ -49,6 +49,32 @@ class Ki2BootIsoTests(unittest.TestCase):
             self.assertEqual(ki2bootiso.iso_release_name(repo, "x86_64", "bootstrap-stage1"), "stage2-v2")
             self.assertEqual(ki2bootiso.iso_release_name(repo, "x86_64", "bootstrap-stage1", "testing"), "testing")
 
+    def test_find_kernel_prefers_repository_package_over_stale_rootfs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rootfs = root / "rootfs"
+            packages = root / "packages"
+            work = root / "work"
+            (rootfs / "boot").mkdir(parents=True)
+            packages.mkdir()
+            (rootfs / "boot/vmlinuz-kiki").write_bytes(b"stale-rootfs-kernel")
+
+            package = packages / "linux-6.9.9-3.x86_64.ki2"
+            with tarfile.open(package, "w:gz") as tar:
+                manifest = json.dumps({"name": "linux", "version": "6.9.9", "release": "3"}).encode()
+                manifest_info = tarfile.TarInfo("manifest.json")
+                manifest_info.size = len(manifest)
+                tar.addfile(manifest_info, io.BytesIO(manifest))
+                kernel = b"new-package-kernel"
+                kernel_info = tarfile.TarInfo("rootfs/boot/vmlinuz-kiki")
+                kernel_info.size = len(kernel)
+                tar.addfile(kernel_info, io.BytesIO(kernel))
+
+            selected = ki2bootiso.find_kernel(rootfs, packages, work)
+
+            self.assertEqual(selected.read_bytes(), b"new-package-kernel")
+            self.assertEqual(selected, work / "vmlinuz-kiki")
+
     def test_iso_release_name_uses_stage1_fallback_without_repository_channel(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

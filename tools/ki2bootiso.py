@@ -5102,6 +5102,16 @@ def find_kernel(rootfs_dir: Path, packages_dir: Path, work_dir: Path, requested:
             raise BootIsoError(f"kernel image not found: {requested}")
         return requested
 
+    # The assembled rootfs may lag behind the signed package repository during
+    # an installer-only rebuild.  Prefer the newest linux package so an ISO
+    # cannot silently boot an older kernel than the one it distributes.
+    if packages_dir.exists():
+        matches = sorted(packages_dir.glob("linux-*.ki2"), reverse=True)
+        for package in matches:
+            extracted = extract_kernel_from_package(package, work_dir / "vmlinuz-kiki")
+            if extracted:
+                return extracted
+
     direct = rootfs_dir / "boot" / "vmlinuz-kiki"
     if direct.exists():
         return direct
@@ -5111,12 +5121,6 @@ def find_kernel(rootfs_dir: Path, packages_dir: Path, work_dir: Path, requested:
         for candidate in sorted(boot_dir.glob("vmlinuz*")) + sorted(boot_dir.glob("bzImage*")):
             if candidate.is_file():
                 return candidate
-
-    if packages_dir.exists():
-        for package in sorted(packages_dir.glob("linux-*.ki2"), reverse=True):
-            extracted = extract_kernel_from_package(package, work_dir / "vmlinuz-kiki")
-            if extracted:
-                return extracted
 
     raise BootIsoError(
         f"kernel image not found in {rootfs_dir / 'boot'} or {packages_dir}; build the linux package first"
