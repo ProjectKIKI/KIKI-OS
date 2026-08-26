@@ -303,6 +303,63 @@ func TestRenderDashboardShowsPlanStatus(t *testing.T) {
 	}
 }
 
+func TestFullscreenProfileAndRuntimeSelectionsApplyValues(t *testing.T) {
+	plan := NewDefaultPlan("server-core")
+	var profileScreen bytes.Buffer
+	tui := TUI{
+		Plan:     plan,
+		PlanPath: "/run/kiki/install-plan.yaml",
+		In:       bytes.NewBufferString("j\r"),
+		Out:      &profileScreen,
+		ASCII:    true,
+	}
+
+	message, done, err := tui.editFullscreenItem(5)
+	if err != nil || done {
+		t.Fatalf("edit profile: message=%q done=%v err=%v", message, done, err)
+	}
+	if tui.Plan.Packages.Profile != "minimal-systemd" {
+		t.Fatalf("profile = %q, want minimal-systemd", tui.Plan.Packages.Profile)
+	}
+	if !strings.Contains(profileScreen.String(), "Installation profile") {
+		t.Fatalf("profile selection screen missing heading:\n%s", profileScreen.String())
+	}
+
+	var runtimeScreen bytes.Buffer
+	tui.In = bytes.NewBufferString("jj\r")
+	tui.Out = &runtimeScreen
+	message, done, err = tui.editFullscreenItem(6)
+	if err != nil || done {
+		t.Fatalf("edit runtime: message=%q done=%v err=%v", message, done, err)
+	}
+	if tui.Plan.Runtime.ContainerRuntime != "containerd" {
+		t.Fatalf("runtime = %q, want containerd", tui.Plan.Runtime.ContainerRuntime)
+	}
+}
+
+func TestFullscreenDiskPromptAppliesWholeDisk(t *testing.T) {
+	plan := NewDefaultPlan("server-core")
+	var screen bytes.Buffer
+	tui := TUI{
+		Plan:     plan,
+		PlanPath: "/run/kiki/install-plan.yaml",
+		In:       bytes.NewBufferString("/dev/vda\r"),
+		Out:      &screen,
+		ASCII:    true,
+	}
+
+	message, done, err := tui.editFullscreenItem(1)
+	if err != nil || done {
+		t.Fatalf("edit disk: message=%q done=%v err=%v", message, done, err)
+	}
+	if tui.Plan.Target.Disk != "/dev/vda" {
+		t.Fatalf("disk = %q, want /dev/vda", tui.Plan.Target.Disk)
+	}
+	if tui.Plan.Target.Filesystems.Root.Path != "/dev/vda3" {
+		t.Fatalf("root path = %q, want /dev/vda3", tui.Plan.Target.Filesystems.Root.Path)
+	}
+}
+
 func TestLocalizationAndAICommandsWritePlan(t *testing.T) {
 	plan := NewDefaultPlan("server-core")
 	tui := TUI{Plan: plan}

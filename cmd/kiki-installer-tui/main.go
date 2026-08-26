@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	appVersion       = "0.4.0"
+	appVersion       = "0.5.0"
 	defaultPlanPath  = "/run/kiki/install-plan.yaml"
 	defaultMediaRoot = "/run/install-media"
 )
@@ -1137,6 +1137,324 @@ func lastFullscreenMessage(output string, ascii bool) string {
 	return "설정이 반영되었습니다."
 }
 
+func optionIndex(options []string, current string) int {
+	for index, option := range options {
+		if option == current {
+			return index
+		}
+	}
+	return 0
+}
+
+func readFullscreenValue(reader io.Reader, writer io.Writer, label, current string) (string, bool, error) {
+	fmt.Fprintf(writer, "\r\n%s", label)
+	if current != "" {
+		fmt.Fprintf(writer, " [%s]", current)
+	}
+	fmt.Fprint(writer, ": ")
+	var value []byte
+	for {
+		var input [1]byte
+		if _, err := io.ReadFull(reader, input[:]); err != nil {
+			return "", false, err
+		}
+		switch input[0] {
+		case '\r', '\n':
+			fmt.Fprint(writer, "\r\n")
+			if len(value) == 0 {
+				return current, true, nil
+			}
+			return string(value), true, nil
+		case 0x1b, 0x03:
+			return "", false, nil
+		case 0x7f, 0x08:
+			if len(value) > 0 {
+				value = value[:len(value)-1]
+				fmt.Fprint(writer, "\b \b")
+			}
+		default:
+			if input[0] >= 0x20 {
+				value = append(value, input[0])
+				_, _ = writer.Write(input[:])
+			}
+		}
+	}
+}
+
+func chooseFullscreenOption(reader io.Reader, writer io.Writer, title string, options []string, current string) (string, bool, error) {
+	selected := optionIndex(options, current)
+	for {
+		fmt.Fprint(writer, "\x1b[2J\x1b[H")
+		fmt.Fprintf(writer, "%s\r\n", title)
+		fmt.Fprint(writer, "--------------------------------------------------------------------\r\n")
+		for index, option := range options {
+			prefix := "  "
+			suffix := ""
+			if index == selected {
+				prefix = "\x1b[7m> "
+				suffix = "\x1b[0m"
+			}
+			fmt.Fprintf(writer, "%s%2d. %s%s\r\n", prefix, index+1, option, suffix)
+		}
+		fmt.Fprint(writer, "\r\nUp/Down or j/k: move   Enter: apply   Esc: cancel\r\n")
+		key, err := readFullscreenKey(reader)
+		if err != nil {
+			return "", false, err
+		}
+		switch key {
+		case "up", "k", "K":
+			selected = (selected + len(options) - 1) % len(options)
+		case "down", "j", "J":
+			selected = (selected + 1) % len(options)
+		case "\r", "\n", "right", " ":
+			return options[selected], true, nil
+		case "escape", "c", "C", "q", "Q":
+			return "", false, nil
+		default:
+			if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
+				index := int(key[0] - '1')
+				if index < len(options) {
+					selected = index
+				}
+			}
+		}
+	}
+}
+
+var fullscreenProfiles = []string{
+	"server-core",
+	"minimal-systemd",
+	"kiki-kube-bootstrap",
+	"kiki-kube-bootstrap-containerd",
+	"kiki-kube-control",
+	"kiki-kube-control-containerd",
+	"kiki-kube-compute",
+	"kiki-kube-compute-containerd",
+}
+
+func (t *TUI) editFullscreenItem(selected int) (string, bool, error) {
+	cancelled := func() (string, bool, error) { return "Selection cancelled.", false, nil }
+	choose := func(title string, options []string, current string) (string, bool, error) {
+		return chooseFullscreenOption(t.In, t.Out, title, options, current)
+	}
+	prompt := func(label, current string) (string, bool, error) {
+		return readFullscreenValue(t.In, t.Out, label, current)
+	}
+
+	switch selected {
+	case 0:
+		preset, accepted, err := choose("Language / keymap / timezone", []string{"Korean (ko_KR.UTF-8 / kr / Asia/Seoul)", "English (en_US.UTF-8 / us / UTC)"}, "Korean (ko_KR.UTF-8 / kr / Asia/Seoul)")
+		if err != nil || !accepted {
+			if err != nil {
+				return "", false, err
+			}
+			return cancelled()
+		}
+		if strings.HasPrefix(preset, "English") {
+			t.Plan.Localization = LocalizationPlan{Locale: "en_US.UTF-8", Keymap: "us", Timezone: "UTC"}
+		} else {
+			t.Plan.Localization = LocalizationPlan{Locale: "ko_KR.UTF-8", Keymap: "kr", Timezone: "Asia/Seoul"}
+		}
+		return "Localization updated.", false, nil
+	case 1:
+		disk, accepted, err := prompt("Whole installation disk", t.Plan.Target.Disk)
+		if err != nil || !accepted {
+			if err != nil {
+				return "", false, err
+			}
+			return cancelled()
+		}
+		if err := applyDisk(&t.Plan, strings.TrimSpace(disk)); err != nil {
+			return "", false, err
+		}
+		return "Installation disk updated.", false, nil
+	case 2:
+		mode, accepted, err := choose("Network mode", []string{"dhcp", "static", "off"}, t.Plan.Network.Mode)
+		if err != nil || !accepted {
+			if err != nil {
+				return "", false, err
+			}
+			return cancelled()
+		}
+		t.Plan.Network.Mode = mode
+		t.Plan.Network.DHCP4 = mode == "dhcp"
+		t.Plan.Network.IPv6AcceptRA = mode == "dhcp"
+		if mode == "off" {
+			t.Plan.Network.Address, t.Plan.Network.Gateway, t.Plan.Network.DNS = "", "", ""
+			return "Network disabled.", false, nil
+		}
+		match, accepted, err := prompt("Interface match", t.Plan.Network.InterfaceMatch)
+		if err != nil || !accepted {
+			if err != nil {
+				return "", false, err
+			}
+			return cancelled()
+		}
+		t.Plan.Network.InterfaceMatch = strings.TrimSpace(match)
+		if mode == "static" {
+			address, ok, inputErr := prompt("Address/CIDR", t.Plan.Network.Address)
+			if inputErr != nil || !ok {
+				if inputErr != nil {
+					return "", false, inputErr
+				}
+				return cancelled()
+			}
+			if strings.TrimSpace(address) == "" {
+				return "", false, fmt.Errorf("static network requires an address/CIDR")
+			}
+			gateway, ok, inputErr := prompt("Gateway (blank for none)", t.Plan.Network.Gateway)
+			if inputErr != nil || !ok {
+				if inputErr != nil {
+					return "", false, inputErr
+				}
+				return cancelled()
+			}
+			dns, ok, inputErr := prompt("DNS servers", t.Plan.Network.DNS)
+			if inputErr != nil || !ok {
+				if inputErr != nil {
+					return "", false, inputErr
+				}
+				return cancelled()
+			}
+			t.Plan.Network.Address = strings.TrimSpace(address)
+			t.Plan.Network.Gateway = strings.TrimSpace(gateway)
+			t.Plan.Network.DNS = strings.ReplaceAll(strings.TrimSpace(dns), ",", " ")
+		} else {
+			t.Plan.Network.Address, t.Plan.Network.Gateway, t.Plan.Network.DNS = "", "", ""
+		}
+		return "Network settings updated.", false, nil
+	case 3:
+		user, accepted, err := prompt("Administrator user", t.Plan.Users.Admin.Name)
+		if err != nil || !accepted {
+			if err != nil {
+				return "", false, err
+			}
+			return cancelled()
+		}
+		if !validUserName(strings.TrimSpace(user)) {
+			return "", false, fmt.Errorf("invalid user name: %s", user)
+		}
+		hostname, accepted, err := prompt("Hostname", t.Plan.Identity.Hostname)
+		if err != nil || !accepted {
+			if err != nil {
+				return "", false, err
+			}
+			return cancelled()
+		}
+		t.Plan.Users.Admin.Name = strings.TrimSpace(user)
+		t.Plan.Users.Admin.PrimaryGroup = strings.TrimSpace(user)
+		t.Plan.Identity.Hostname = strings.TrimSpace(hostname)
+		return "Administrator account updated.", false, nil
+	case 4:
+		sourceType, accepted, err := choose("Package source", []string{"local", "remote", "mirror"}, t.Plan.Source.Type)
+		if err != nil || !accepted {
+			if err != nil {
+				return "", false, err
+			}
+			return cancelled()
+		}
+		current := t.Plan.Source.MediaRoot
+		if sourceType == "remote" {
+			current = t.Plan.Source.RepoURL
+		}
+		location, accepted, err := prompt("Source location", current)
+		if err != nil || !accepted {
+			if err != nil {
+				return "", false, err
+			}
+			return cancelled()
+		}
+		switch sourceType {
+		case "local":
+			setLocalSource(&t.Plan, strings.TrimSpace(location))
+		case "remote":
+			if err := setRemoteSource(&t.Plan, strings.TrimSpace(location)); err != nil {
+				return "", false, err
+			}
+			key, ok, inputErr := prompt("Repository verification key", t.Plan.Source.VerifyKey)
+			if inputErr != nil || !ok {
+				if inputErr != nil {
+					return "", false, inputErr
+				}
+				return cancelled()
+			}
+			if strings.TrimSpace(key) == "" {
+				return "", false, fmt.Errorf("remote source requires a verification key")
+			}
+			t.Plan.Source.VerifyKey = strings.TrimSpace(key)
+		case "mirror":
+			if err := setMirrorSource(&t.Plan, strings.TrimSpace(location)); err != nil {
+				return "", false, err
+			}
+		}
+		return "Package source updated.", false, nil
+	case 5:
+		profile, accepted, err := choose("Installation profile", fullscreenProfiles, t.Plan.Packages.Profile)
+		if err != nil || !accepted {
+			if err != nil {
+				return "", false, err
+			}
+			return cancelled()
+		}
+		ApplyProfile(&t.Plan, profile)
+		return "Profile applied: " + profile, false, nil
+	case 6:
+		current := strings.ReplaceAll(t.Plan.Runtime.ContainerRuntime, "cri-o", "crio")
+		runtime, accepted, err := choose("Container runtime", []string{"none", "crio", "containerd"}, current)
+		if err != nil || !accepted {
+			if err != nil {
+				return "", false, err
+			}
+			return cancelled()
+		}
+		if err := applyRuntime(&t.Plan, runtime); err != nil {
+			return "", false, err
+		}
+		return "Container runtime updated: " + runtime, false, nil
+	case 7:
+		mode, accepted, err := choose("AI management console", []string{"local", "remote", "off"}, t.Plan.AI.Mode)
+		if err != nil || !accepted {
+			if err != nil {
+				return "", false, err
+			}
+			return cancelled()
+		}
+		endpoint := ""
+		if mode == "remote" {
+			endpoint, accepted, err = prompt("OpenAI-compatible endpoint", t.Plan.AI.Endpoint)
+			if err != nil || !accepted {
+				if err != nil {
+					return "", false, err
+				}
+				return cancelled()
+			}
+		}
+		if err := applyAI(&t.Plan, mode, strings.TrimSpace(endpoint)); err != nil {
+			return "", false, err
+		}
+		return "AI mode updated: " + mode, false, nil
+	case 8:
+		t.Reviewed = true
+		if ReviewReady(t.Plan) {
+			return "Review complete. The install plan is ready to save.", false, nil
+		}
+		return "Review blocked. Resolve the items marked BLOCK.", false, nil
+	case 9:
+		t.Reviewed = true
+		if !ReviewReady(t.Plan) {
+			return "Install plan is blocked and was not saved.", false, nil
+		}
+		t.Plan.Artifacts.RuntimePlan = t.PlanPath
+		if err := WritePlanFile(t.PlanPath, t.Plan); err != nil {
+			return "", false, err
+		}
+		t.PlanWritten = true
+		return "Install plan saved: " + t.PlanPath, false, nil
+	default:
+		return "", false, fmt.Errorf("unknown full-screen menu item %d", selected)
+	}
+}
+
 func (t *TUI) fullscreenRows() []Check {
 	dashboard := t.dashboardRows()
 	rows := append([]Check{}, dashboard[:8]...)
@@ -1261,18 +1579,14 @@ func (t *TUI) RunFullscreen() error {
 			} else {
 				message = lastFullscreenMessage(output.String(), t.ASCII)
 			}
-		case "\r", "\n":
-			var output bytes.Buffer
-			oldOut := t.Out
-			t.Out = &output
-			done, applyErr := t.ApplyCommand(fmt.Sprintf("%d", selected+1))
-			t.Out = oldOut
+		case "\r", "\n", "right", " ":
+			itemMessage, done, applyErr := t.editFullscreenItem(selected)
 			if applyErr != nil {
 				message = "Error: " + applyErr.Error()
 			} else if done {
 				return nil
 			} else {
-				message = lastFullscreenMessage(output.String(), t.ASCII)
+				message = itemMessage
 			}
 		case "?":
 			if t.ASCII {

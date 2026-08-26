@@ -297,6 +297,7 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn('"/usr/lib/systemd/systemd-udevd"', ki2bootiso.INIT_C)
         self.assertIn('"/usr/bin/udevadm"', ki2bootiso.INIT_C)
         self.assertIn('"/run/kiki/gui-installer.log"', ki2bootiso.INIT_C)
+        self.assertIn('"WLR_RENDERER_ALLOW_SOFTWARE=1"', ki2bootiso.INIT_C)
         self.assertIn('"--ascii"', ki2bootiso.INIT_C)
         self.assertIn('"LANG=C.UTF-8"', ki2bootiso.INIT_C)
         self.assertIn("run_guided_package_installer(1, 1)", ki2bootiso.INIT_C)

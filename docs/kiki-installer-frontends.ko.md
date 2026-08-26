@@ -109,6 +109,9 @@ Wayland 키오스크 세션에서 GTK 설치기를 시작한다. 구성요소가
 커널 VT는 한글 글리프를 직접 렌더링하지 못하므로 폴백 TUI만 ASCII 안전 모드를
 사용하고, GTK 화면에서는 Noto Sans CJK로 한국어를 표시한다. GUI 시작 실패의
 원문은 `/run/kiki/gui-installer.log`에 남고 폴백 전에 화면에도 출력된다.
+Hyper-V 2세대의 `hyperv_drm`처럼 가속 렌더 노드 없이 KMS 출력만 제공하는
+가상 GPU에서는 Mesa 소프트웨어 렌더러를 명시적으로 허용한다. Xorg는 이 경로에
+필요하지 않으며 ISO 그래픽 설치기는 Wayland/DRM을 직접 사용한다.
 
 GRUB의 1번 `KIKI OS full-screen TUI installer (...)`는 `kiki.ui=tui`를
 전달해 그래픽 초기화를 건너뛴다. 방향키 또는 j/k로 이동하고 Enter로 항목을

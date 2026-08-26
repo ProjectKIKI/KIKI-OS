@@ -987,7 +987,7 @@ system = "copy"
 [[recipe]]
 name = "kiki-installer-tui"
 version = "0.1.0"
-release = 7
+release = 8
 summary = "Go-based KIKI full-screen install plan TUI"
 license = "GPL-3.0-or-later"
 tier = "kiki"

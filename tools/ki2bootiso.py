@@ -474,6 +474,11 @@ static int run_graphical_program(const char *path, char **argv) {
         "LIBSEAT_BACKEND=builtin",
         "WLR_BACKENDS=drm,libinput",
         "WLR_RENDERER=gles2",
+        // Hyper-V exposes a KMS scanout device but no accelerated render node.
+        // Mesa therefore uses llvmpipe.  wlroots rejects software GLES2 unless
+        // this opt-in is present, which previously sent Gen-2 Hyper-V guests
+        // straight to the TUI even though hyperv_drm was working correctly.
+        "WLR_RENDERER_ALLOW_SOFTWARE=1",
         "XKB_DEFAULT_LAYOUT=kr",
         "FONTCONFIG_PATH=/etc/fonts",
         "KIKI_INSTALLER_TUI=/usr/bin/kiki-installer-tui",
