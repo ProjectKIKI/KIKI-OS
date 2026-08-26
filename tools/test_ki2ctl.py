@@ -94,6 +94,55 @@ class Ki2CtlTests(unittest.TestCase):
             self.assertEqual(last_tx["action"], "remove")
             self.assertEqual(last_tx["status"], "succeeded")
 
+    def test_group_install_upgrade_and_remove_preserves_explicit_packages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            target = base / "target"
+            group_file = base / "package-groups.json"
+            repo_packages = repo / "packages"
+            repo_index = repo / "repo"
+            repo_packages.mkdir(parents=True)
+            repo_index.mkdir(parents=True)
+
+            library = repo_packages / "library-1-1.x86_64.ki2"
+            app_v1 = repo_packages / "app-1-1.x86_64.ki2"
+            app_v2 = repo_packages / "app-2-1.x86_64.ki2"
+            write_ki2_package(library, name="library", dependencies=[], files={"rootfs/usr/lib/library": b"library\n"})
+            write_ki2_package(app_v1, name="app", version="1", dependencies=["library"], files={"rootfs/usr/bin/app": b"v1\n"})
+            write_index(repo_index / "index.x86_64.json", [library, app_v1])
+            write_group_catalog(group_file, "test-app", mandatory=["app"])
+
+            self.run_ki2ctl(target, "repo", "set", str(repo))
+            self.run_ki2ctl(target, "update")
+            self.run_ki2ctl(target, "install", "library")
+            installed = self.run_ki2ctl(
+                target, "--group-file", str(group_file), "group", "install", "test-app"
+            ).stdout
+            self.assertIn("group:test-app", installed)
+            db = json.loads((target / "var/lib/ki2/installed.json").read_text(encoding="utf-8"))
+            self.assertIn("explicit", db["packages"]["library"]["reasons"])
+            self.assertIn("group:test-app", db["packages"]["library"]["reasons"])
+            self.assertEqual(db["packages"]["app"]["reasons"], ["group:test-app"])
+            self.assertIn("test-app", db["groups"])
+
+            write_ki2_package(app_v2, name="app", version="2", dependencies=["library"], files={"rootfs/usr/bin/app": b"v2\n"})
+            write_index(repo_index / "index.x86_64.json", [library, app_v1, app_v2])
+            self.run_ki2ctl(target, "update")
+            self.run_ki2ctl(target, "--group-file", str(group_file), "group", "upgrade", "test-app")
+            self.assertEqual((target / "usr/bin/app").read_text(encoding="utf-8"), "v2\n")
+
+            removed = self.run_ki2ctl(
+                target, "--group-file", str(group_file), "group", "remove", "test-app"
+            ).stdout
+            self.assertIn("remove package app", removed)
+            self.assertIn("preserve package library", removed)
+            self.assertFalse((target / "usr/bin/app").exists())
+            self.assertTrue((target / "usr/lib/library").exists())
+            db = json.loads((target / "var/lib/ki2/installed.json").read_text(encoding="utf-8"))
+            self.assertNotIn("test-app", db["groups"])
+            self.assertEqual(db["packages"]["library"]["reasons"], ["explicit"])
+
     def test_upgrade_installed_package(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -502,6 +551,34 @@ def write_index(path: Path, packages: list[Path]) -> None:
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_group_catalog(
+    path: Path,
+    group_id: str,
+    *,
+    mandatory=None,
+    default=None,
+    optional=None,
+) -> None:
+    data = {
+        "schema": "ki2-package-groups-v1",
+        "groups": [
+            {
+                "id": group_id,
+                "name_ko": group_id,
+                "description_ko": "test group",
+                "requires": [],
+                "packages": {
+                    "mandatory": mandatory or [],
+                    "default": default or [],
+                    "optional": optional or [],
+                },
+                "services": {"enable": []},
+            }
+        ],
+    }
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def canonical_json_bytes(data: dict) -> bytes:

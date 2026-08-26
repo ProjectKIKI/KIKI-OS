@@ -1,0 +1,4 @@
+NAME="KIKI AI Runtime"
+ID=kiki-ai-runtime
+VERSION_ID="1"
+PRETTY_NAME="KIKI OS llama.cpp lightweight runtime"

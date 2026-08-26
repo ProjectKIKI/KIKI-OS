@@ -8,6 +8,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -68,6 +71,7 @@ func readAPIKey(path string) (string, error) {
 func main() {
 	configPath := flag.String("config", "/etc/kiki/ai-console.json", "설정 파일")
 	once := flag.String("once", "", "요청 하나를 계획만 하고 종료")
+	waitLocalRuntime := flag.Duration("wait-local-runtime", 0, "로컬 AI 런타임 준비 대기 시간")
 	flag.Parse()
 
 	cfg, err := loadConfig(*configPath)
@@ -80,6 +84,18 @@ func main() {
 		fmt.Fprintln(os.Stderr, "API 키 읽기 오류:", err)
 		os.Exit(1)
 	}
+	if *waitLocalRuntime > 0 && isLoopbackEndpoint(cfg.Endpoint) {
+		fmt.Fprintln(os.Stdout, "로컬 AI 런타임 준비를 기다리는 중입니다...")
+		waitContext, cancel := context.WithTimeout(context.Background(), *waitLocalRuntime)
+		err := waitForRuntime(waitContext, cfg.Endpoint)
+		cancel()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "경고: 로컬 AI 런타임이 준비되지 않았습니다:", err)
+			fmt.Fprintln(os.Stderr, "tty2에서 systemctl status kiki-llama-server.service 및 journalctl -u kiki-llama-server.service를 확인하십시오.")
+		} else {
+			fmt.Fprintln(os.Stdout, "로컬 AI 런타임이 준비되었습니다.")
+		}
+	}
 	console := newConsole(cfg, apiKey, os.Stdin, os.Stdout, os.Stderr)
 	if *once != "" {
 		if err := console.planOnly(context.Background(), *once); err != nil {
@@ -89,6 +105,69 @@ func main() {
 		return
 	}
 	console.run(context.Background())
+}
+
+func isLoopbackEndpoint(rawEndpoint string) bool {
+	parsed, err := url.Parse(rawEndpoint)
+	if err != nil {
+		return false
+	}
+	hostname := parsed.Hostname()
+	if hostname == "localhost" {
+		return true
+	}
+	address := net.ParseIP(hostname)
+	return address != nil && address.IsLoopback()
+}
+
+func runtimeHealthURL(rawEndpoint string) (string, error) {
+	parsed, err := url.Parse(rawEndpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", errors.New("유효하지 않은 AI 엔드포인트")
+	}
+	parsed.Path = "/health"
+	parsed.RawPath = ""
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String(), nil
+}
+
+func waitForRuntime(ctx context.Context, endpoint string) error {
+	return waitForRuntimeWithClient(ctx, endpoint, &http.Client{Timeout: 2 * time.Second}, time.Second)
+}
+
+func waitForRuntimeWithClient(ctx context.Context, endpoint string, client *http.Client, retryInterval time.Duration) error {
+	healthURL, err := runtimeHealthURL(endpoint)
+	if err != nil {
+		return err
+	}
+	ticker := time.NewTicker(retryInterval)
+	defer ticker.Stop()
+	var lastError error
+	for {
+		request, requestErr := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+		if requestErr != nil {
+			return requestErr
+		}
+		response, requestErr := client.Do(request)
+		if requestErr == nil {
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusServiceUnavailable && response.StatusCode < 500 {
+				return nil
+			}
+			lastError = fmt.Errorf("%s 응답: HTTP %d", healthURL, response.StatusCode)
+		} else {
+			lastError = requestErr
+		}
+		select {
+		case <-ctx.Done():
+			if lastError != nil {
+				return fmt.Errorf("%w (마지막 오류: %v)", ctx.Err(), lastError)
+			}
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 type planner interface {

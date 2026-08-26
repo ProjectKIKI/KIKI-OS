@@ -6,6 +6,9 @@
 `실행`이라고 입력하기 전에는 명령을 실행하지 않습니다.
 
 기본 런타임은 CPU용 `llama.cpp`이며 API는 `127.0.0.1:8080`에만 바인딩됩니다.
+서버는 기본적으로 `systemd-nspawn` 경량 머신에서 실행되고, 머신 실행이
+불가능하면 systemd 샌드박스 직접 실행으로 전환됩니다. tty1 콘솔은 서버의
+`/health` 응답을 최대 90초 기다립니다.
 기본 ISO에는 공식 `Qwen2.5-1.5B-Instruct-GGUF`의 `Q4_K_M` 모델이
 `/var/lib/kiki/models/kiki-ops.gguf`로 포함됩니다. 모델과 함께 Apache-2.0
 라이선스 전문을 설치하며, 빌드할 때 고정된 SHA-256을 검증합니다.
@@ -13,6 +16,13 @@
 모델을 승인한 다른 GGUF로 교체했다면 다음을 실행합니다.
 
     systemctl restart kiki-llama-server.service
+
+연결 오류 진단은 tty2에서 다음 순서로 수행합니다.
+
+    systemctl status kiki-llama-server.service
+    journalctl -b -u kiki-llama-server.service
+    machinectl status kiki-ai-runtime
+    curl http://127.0.0.1:8080/health
 
 교체 모델의 SHA-256과 배포 라이선스는 별도로 기록하고 배치 전에 검증하십시오.
 콘솔 감사 로그에는 승인된 명령이 그대로 기록되므로

@@ -1,0 +1,22 @@
+[[recipe]]
+name = "kiki-installer-gtk"
+version = "0.1.0"
+release = 2
+summary = "KIKI GTK4 installer with a pinned Cage Wayland kiosk runtime"
+license = "GPL-3.0-or-later AND LGPL-2.1-or-later AND MIT AND OFL-1.1"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "build/ki2/host-graphics/rootfs"
+inputs = [
+  "cmd/kiki-installer-gtk/main.c",
+  "cmd/kiki-installer-gtk/style.css",
+  "tools/ki2graphics.py",
+]
+[recipe.dependencies]
+build = []
+runtime = ["glibc", "kiki-installer-tui"]
+[recipe.build]
+system = "copy"
+skip_sysroot = true

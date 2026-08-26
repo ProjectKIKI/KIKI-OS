@@ -1,21 +1,31 @@
 [Unit]
 Description=KIKI OS local llama.cpp inference runtime
 Documentation=file:/usr/share/doc/kiki-ai-console/README.ko.md
-After=local-fs.target
+Wants=systemd-machined.service
+After=local-fs.target systemd-machined.service
+Before=kiki-ai-console@tty1.service
 ConditionPathExists=/var/lib/kiki/models/kiki-ops.gguf
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/llama-server --model /var/lib/kiki/models/kiki-ops.gguf --alias kiki-ops --host 127.0.0.1 --port 8080 --ctx-size 4096
+ExecStart=/usr/libexec/kiki-llama-runtime
 Restart=on-failure
 RestartSec=3
 Environment=HOME=/var/lib/kiki
+Delegate=yes
+KillMode=mixed
 NoNewPrivileges=yes
 PrivateTmp=yes
+PrivateDevices=yes
 ProtectHome=yes
 ProtectSystem=strict
 ReadWritePaths=/var/lib/kiki
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_CHROOT CAP_MKNOD
+LockPersonality=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 
 [Install]
 WantedBy=multi-user.target

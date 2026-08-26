@@ -159,8 +159,18 @@ class Ki2BootIsoTests(unittest.TestCase):
             self.assertIn("terminal_output console serial", grub)
             self.assertIn("set default=0", grub)
             self.assertIn("kiki.boot=installer", grub)
+            self.assertIn('menuentry "KIKI OS graphical installer (default)"', grub)
+            self.assertIn("kiki.ui=gui", grub)
+            self.assertIn('menuentry "KIKI OS full-screen TUI installer (x86_64)"', grub)
+            self.assertIn("kiki.ui=tui", grub)
+            self.assertIn('menuentry "KIKI OS CLI installer (x86_64, safe fallback)"', grub)
+            self.assertIn("kiki.ui=cli", grub)
+            self.assertLess(grub.index("kiki.ui=gui"), grub.index("kiki.ui=tui"))
+            self.assertLess(grub.index("kiki.ui=tui"), grub.index("kiki.ui=cli"))
+            self.assertEqual(manifest["installer"]["interface"], "gui-tui-cli")
+            self.assertEqual(manifest["installer"]["interface_order"], ["gtk4", "fullscreen-tui", "cli"])
             self.assertIn("quiet loglevel=3", grub)
-            self.assertIn("auto console", grub)
+            self.assertIn("graphical installer (default)", grub)
             self.assertIn("UEFI framebuffer", grub)
             self.assertIn("Hyper-V framebuffer", grub)
             self.assertIn("BIOS VGA text", grub)
@@ -278,6 +288,17 @@ class Ki2BootIsoTests(unittest.TestCase):
         self.assertIn("kiki.timezone", ki2bootiso.INIT_C)
         self.assertIn("kiki.ai-endpoint", ki2bootiso.INIT_C)
         self.assertIn("maybe_run_cmdline_autoinstall", ki2bootiso.INIT_C)
+        self.assertIn("try_graphical_installer", ki2bootiso.INIT_C)
+        self.assertIn("GTK installer is not present in this initramfs; falling back to the TUI", ki2bootiso.INIT_C)
+        self.assertIn('"/usr/bin/cage"', ki2bootiso.INIT_C)
+        self.assertIn('"XDG_RUNTIME_DIR=/run/kiki-wayland"', ki2bootiso.INIT_C)
+        self.assertIn('"GDK_BACKEND=wayland"', ki2bootiso.INIT_C)
+        self.assertIn('"LIBSEAT_BACKEND=builtin"', ki2bootiso.INIT_C)
+        self.assertIn('"/usr/lib/systemd/systemd-udevd"', ki2bootiso.INIT_C)
+        self.assertIn('"/usr/bin/udevadm"', ki2bootiso.INIT_C)
+        self.assertIn('"/run/kiki/gui-installer.log"', ki2bootiso.INIT_C)
+        self.assertIn('"--ascii"', ki2bootiso.INIT_C)
+        self.assertIn('"LANG=C.UTF-8"', ki2bootiso.INIT_C)
         self.assertIn("run_guided_package_installer(1, 1)", ki2bootiso.INIT_C)
         self.assertIn("select_named_package_profile", ki2bootiso.INIT_C)
         self.assertIn("Autoinstall target disk", ki2bootiso.INIT_C)
@@ -403,10 +424,30 @@ class Ki2BootIsoTests(unittest.TestCase):
                     "usr/share/terminfo/x/xterm": b"terminfo",
                 },
             )
+            self.write_fake_package(
+                packages / "kiki-installer-tui-0.1.0-5.x86_64.ki2",
+                {"usr/bin/kiki-installer-tui": b"static-tui"},
+            )
+            self.write_fake_package(
+                packages / "kiki-installer-gtk-0.1.0-1.x86_64.ki2",
+                {
+                    "usr/bin/cage": b"cage",
+                    "usr/bin/kiki-installer-gtk": b"gtk",
+                    "usr/lib64/libwlroots.so.11": b"wlroots",
+                    "usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc": b"font",
+                },
+            )
 
             runtime = ki2bootiso.add_installer_runtime(target, packages)
 
             self.assertEqual(runtime["packages"]["util-linux"], "util-linux-2.40-1.x86_64.ki2")
+            self.assertEqual(runtime["packages"]["kiki-installer-tui"], "kiki-installer-tui-0.1.0-5.x86_64.ki2")
+            self.assertEqual((target / "usr/bin/kiki-installer-tui").read_bytes(), b"static-tui")
+            self.assertIn("/usr/bin/kiki-installer-tui", runtime["tools"])
+            self.assertTrue(runtime["graphical"]["enabled"])
+            self.assertEqual((target / "usr/bin/cage").read_bytes(), b"cage")
+            self.assertEqual((target / "usr/bin/kiki-installer-gtk").read_bytes(), b"gtk")
+            self.assertTrue((target / "usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc").exists())
             self.assertTrue((target / "sbin/cfdisk").exists())
             self.assertTrue((target / "lib/libsmartcols.so.1").exists())
             self.assertTrue((target / "lib/libsmartcols.so.1.1.0").exists())

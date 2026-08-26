@@ -2,61 +2,8 @@
 name = "minimal-systemd"
 description = "First KIKI OS systemd boot target for x86_64 server nodes"
 arch = "x86_64"
-packages = [
-  "base-files",
-  "linux",
-  "glibc",
-  "libxcrypt",
-  "zlib",
-  "expat",
-  "openssl",
-  "libcap",
-  "libseccomp",
-  "acl",
-  "attr",
-  "ncurses",
-  "util-linux",
-  "cfdisk",
-  "kmod",
-  "dbus",
-  "systemd",
-  "bash",
-  "busybox",
-  "coreutils",
-  "findutils",
-  "grep",
-  "sed",
-  "gawk",
-  "tar",
-  "gzip",
-  "xz",
-  "zstd",
-  "python",
-  "e2fsprogs",
-  "shadow",
-  "sudo",
-  "iproute2",
-  "ca-certificates",
-  "openssh",
-  "curl",
-  "ki2ctl",
-  "kiki-agent",
-  "kiki-netconfig",
-  "kiki-installer-tui",
-]
+groups = ["minimal"]
 
 [profile.boot]
 init = "/usr/lib/systemd/systemd"
 kernel = "/boot/vmlinuz-kiki"
-
-[profile.services]
-enable = [
-  "dbus.service",
-  "kiki-boot-prepare.service",
-  "getty@tty1.service",
-  "systemd-logind.service",
-  "systemd-networkd.service",
-  "systemd-resolved.service",
-  "sshd.service",
-  "kiki-agent.service",
-]

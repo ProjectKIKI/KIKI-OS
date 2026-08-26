@@ -461,6 +461,62 @@ static int run_program(const char *path, char **argv) {
     return status == 0 ? 0 : 1;
 }
 
+static int run_graphical_program(const char *path, char **argv) {
+    static char *envp[] = {
+        "PATH=/bin:/sbin:/usr/bin:/usr/sbin",
+        "HOME=/root",
+        "TERM=xterm-256color",
+        "LANG=C.UTF-8",
+        "LC_ALL=C.UTF-8",
+        "XDG_RUNTIME_DIR=/run/kiki-wayland",
+        "GDK_BACKEND=wayland",
+        "GSK_RENDERER=cairo",
+        "LIBSEAT_BACKEND=builtin",
+        "WLR_BACKENDS=drm,libinput",
+        "WLR_RENDERER=gles2",
+        "XKB_DEFAULT_LAYOUT=kr",
+        "FONTCONFIG_PATH=/etc/fonts",
+        "KIKI_INSTALLER_TUI=/usr/bin/kiki-installer-tui",
+        NULL,
+    };
+    long pid = ksys(SYS_fork, 0, 0, 0, 0, 0, 0);
+    if (pid < 0) {
+        say("graphical installer fork failed\n");
+        return 1;
+    }
+    if (pid == 0) {
+        int log_fd = kopen_mode("/run/kiki/gui-installer.log", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (log_fd >= 0) {
+            ksys(SYS_dup2, log_fd, STDOUT_FILENO, 0, 0, 0, 0);
+            ksys(SYS_dup2, log_fd, STDERR_FILENO, 0, 0, 0, 0);
+            if (log_fd > STDERR_FILENO) {
+                ksys(SYS_close, log_fd, 0, 0, 0, 0, 0);
+            }
+        }
+        ksys(SYS_execve, (long)path, (long)argv, (long)envp, 0, 0, 0);
+        say("graphical installer exec failed: ");
+        say(path);
+        say("\n");
+        ksys(SYS_exit, 127, 0, 0, 0, 0, 0);
+        for (;;) {
+        }
+    }
+    int status = 0;
+    for (;;) {
+        long waited = ksys(SYS_wait4, pid, (long)&status, 0, 0, 0, 0);
+        if (waited >= 0) {
+            break;
+        }
+        if (waited != -EINTR) {
+            return 1;
+        }
+    }
+    if ((status & 0x7f) == 0) {
+        return (status >> 8) & 0xff;
+    }
+    return 128 + (status & 0x7f);
+}
+
 static int run_chroot_program_input(const char *root, const char *path, char **argv, const char *input) {
     static char *envp[] = {
         "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
@@ -3786,7 +3842,7 @@ static void run_installer_shell(void) {
 
 static void show_installer_dashboard(void) {
     tui_clear();
-    say("KIKI OS Installer\n\n");
+    say("KIKI OS Installer CLI (safe fallback)\n\n");
     say("Install Plan: " INSTALL_PLAN_PATH "\n\n");
     say("[OK] Locale      ");
     say(selected_locale);
@@ -4328,6 +4384,103 @@ static int maybe_run_cmdline_autoinstall(void) {
     return 0;
 }
 
+static int try_graphical_installer(void) {
+    char ui[16];
+    if (!cmdline_value("kiki.ui", ui, sizeof(ui)) || kstrcmp(ui, "gui") != 0) {
+        return 0;
+    }
+    say("Graphical installer requested by the bootloader.\n");
+    if (!file_exists("/usr/bin/kiki-installer-gtk")) {
+        say("GTK installer is not present in this initramfs; falling back to the TUI.\n");
+        return 0;
+    }
+    if (!file_exists("/usr/bin/kiki-installer-tui")) {
+        say("Shared InstallPlan generator is missing; falling back to the TUI.\n");
+        return 0;
+    }
+    if (!file_exists("/usr/bin/cage")) {
+        say("Wayland kiosk compositor is missing; falling back to the TUI.\n");
+        return 0;
+    }
+    mkdir_p("/run/kiki-wayland", 0700);
+    mkdir_p("/run/kiki", 0755);
+    mkdir_p("/run/udev", 0755);
+    mkdir_p("/root", 0700);
+    char *mdev_argv[] = {"/sbin/mdev", "-s", NULL};
+    run_program("/sbin/mdev", mdev_argv);
+    if (file_exists("/usr/lib/systemd/systemd-udevd") && file_exists("/usr/bin/udevadm")) {
+        char *udevd_argv[] = {
+            "/usr/lib/systemd/systemd-udevd",
+            "--daemon",
+            "--resolve-names=never",
+            NULL,
+        };
+        if (run_program("/usr/lib/systemd/systemd-udevd", udevd_argv) == 0) {
+            char *trigger_subsystems_argv[] = {
+                "/usr/bin/udevadm", "trigger", "--type=subsystems", "--action=add", NULL,
+            };
+            char *trigger_devices_argv[] = {
+                "/usr/bin/udevadm", "trigger", "--type=devices", "--action=add", NULL,
+            };
+            char *settle_argv[] = {"/usr/bin/udevadm", "settle", "--timeout=8", NULL};
+            run_program("/usr/bin/udevadm", trigger_subsystems_argv);
+            run_program("/usr/bin/udevadm", trigger_devices_argv);
+            run_program("/usr/bin/udevadm", settle_argv);
+        } else {
+            say("udevd could not start; Cage will use the existing device nodes.\n");
+        }
+    } else {
+        say("udev runtime is unavailable; Cage will use the existing device nodes.\n");
+    }
+    char *argv[] = {"/usr/bin/cage", "--", "/usr/bin/kiki-installer-gtk", NULL};
+    say("Starting GTK installer with the cage Wayland compositor.\n");
+    int status = run_graphical_program("/usr/bin/cage", argv);
+    say("Graphical installer exited with status ");
+    char status_line[32];
+    size_t out = 0;
+    out = append_u64(status_line, sizeof(status_line), out, (u64)status);
+    append_string(status_line, sizeof(status_line), out, "; returning to the TUI.\n");
+    say(status_line);
+    if (status != 0) {
+        show_file("GUI failure log", "/run/kiki/gui-installer.log");
+        say("The fallback TUI uses ASCII because the Linux kernel VT has no Korean glyph renderer.\n");
+        sleep_msec(2500);
+    }
+    return 1;
+}
+
+static int try_fullscreen_tui_installer(void) {
+    char ui[16];
+    if (!cmdline_value("kiki.ui", ui, sizeof(ui))) {
+        return 0;
+    }
+    if (kstrcmp(ui, "gui") != 0 && kstrcmp(ui, "tui") != 0) {
+        return 0;
+    }
+    if (!file_exists("/usr/bin/kiki-installer-tui")) {
+        say("Full-screen TUI is not present in this initramfs; falling back to the CLI.\n");
+        return 0;
+    }
+    char *argv[] = {
+        "/usr/bin/kiki-installer-tui",
+        "--fullscreen",
+        "--ascii",
+        "--plan",
+        "/run/kiki/install-plan.yaml",
+        NULL,
+    };
+    mkdir_p("/run/kiki", 0755);
+    say("Starting the full-screen installer TUI. Press c or q to enter the CLI fallback.\n");
+    int status = run_program("/usr/bin/kiki-installer-tui", argv);
+    say("Full-screen TUI exited with status ");
+    char status_line[32];
+    size_t out = 0;
+    out = append_u64(status_line, sizeof(status_line), out, (u64)status);
+    append_string(status_line, sizeof(status_line), out, "; entering the CLI fallback.\n");
+    say(status_line);
+    return 1;
+}
+
 static int handoff_to_installed_system(void) {
     char rootdev[160];
     if (!cmdline_value("root", rootdev, sizeof(rootdev))) {
@@ -4371,7 +4524,7 @@ static int handoff_to_installed_system(void) {
     return 0;
 }
 
-static void installer_menu(void) {
+static void installer_cli_menu(void) {
     char choice[16];
     for (;;) {
         show_installer_dashboard();
@@ -4496,7 +4649,9 @@ static int kmain(void) {
 
 #ifdef KIKI_ENABLE_INSTALLER
     if (!maybe_run_cmdline_autoinstall()) {
-        installer_menu();
+        try_graphical_installer();
+        try_fullscreen_tui_installer();
+        installer_cli_menu();
     }
 #elif defined(KIKI_INSTALLED_STAGE1)
     handoff_to_installed_system();
@@ -4782,6 +4937,7 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
         "tools": [
             "/bin/busybox",
             "/bin/tar",
+            "/usr/bin/kiki-installer-tui",
             "/sbin/mkfs.vfat",
             "/sbin/fdisk",
             "/sbin/cfdisk",
@@ -4796,6 +4952,11 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
     e2fsprogs = latest_package(packages_dir, "e2fsprogs")
     util_linux = latest_package(packages_dir, "util-linux")
     ncurses = latest_package(packages_dir, "ncurses")
+    installer_tui = latest_package(packages_dir, "kiki-installer-tui")
+    try:
+        installer_gtk = latest_package(packages_dir, "kiki-installer-gtk")
+    except BootIsoError:
+        installer_gtk = None
 
     runtime["packages"] = {
         "glibc": glibc.name,
@@ -4803,7 +4964,11 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
         "e2fsprogs": e2fsprogs.name,
         "util-linux": util_linux.name,
         "ncurses": ncurses.name,
+        "kiki-installer-tui": installer_tui.name,
     }
+    if installer_gtk is not None:
+        runtime["packages"]["kiki-installer-gtk"] = installer_gtk.name
+        runtime["tools"].extend(["/usr/bin/cage", "/usr/bin/kiki-installer-gtk"])
 
     extract_package_members(
         glibc,
@@ -4853,9 +5018,21 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
             "usr/sbin/mkfs.ext4",
         },
     )
+    extract_package_members(installer_tui, root, {"usr/bin/kiki-installer-tui"})
+    if installer_gtk is not None:
+        extract_package_members(installer_gtk, root, set(), prefixes=("",))
+        runtime["graphical"] = {
+            "enabled": True,
+            "frontend": "/usr/bin/kiki-installer-gtk",
+            "compositor": "/usr/bin/cage",
+            "locale": "C.UTF-8",
+            "font": "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+        }
+    else:
+        runtime["graphical"] = {"enabled": False, "fallback": "tui"}
     link_installer_runtime_lib64(root)
 
-    for dirname in ("bin", "sbin", "usr/sbin", "usr/etc", "install"):
+    for dirname in ("bin", "sbin", "usr/bin", "usr/sbin", "usr/etc", "install"):
         (root / dirname).mkdir(parents=True, exist_ok=True)
     applets = {
         root / "bin" / "sh": "busybox",
@@ -5122,13 +5299,16 @@ def build_initramfs(
 def grub_cfg(profile: str, arch: str, *, installer: bool = False, installed: bool = False) -> str:
     title = "installer" if installer else "installed systemd handoff" if installed else "boot smoke"
     boot_flag = "installer" if installer else "installed" if installed else "smoke"
-    auto_args = f"keep_bootcon loglevel=4 panic=-1 init=/init kiki.boot={boot_flag}"
+    ui_default = " kiki.ui=gui" if installer else ""
+    auto_args = f"keep_bootcon loglevel=4 panic=-1 init=/init kiki.boot={boot_flag}{ui_default}"
+    tui_args = f"keep_bootcon loglevel=4 panic=-1 init=/init kiki.boot={boot_flag} kiki.ui=tui"
+    cli_args = f"keep_bootcon loglevel=4 panic=-1 init=/init kiki.boot={boot_flag} kiki.ui=cli"
     uefi_args = f"{auto_args} video=efifb:1024x768"
     hyperv_args = f"{auto_args} video=hyperv_fb:1024x768 video=efifb:1024x768 fbcon=map:0"
-    bios_args = f"quiet loglevel=3 nomodeset vga=normal panic=-1 init=/init kiki.boot={boot_flag}"
+    bios_args = f"quiet loglevel=3 nomodeset vga=normal panic=-1 init=/init kiki.boot={boot_flag} kiki.ui=cli"
     debug_args = (
         f"keep_bootcon ignore_loglevel loglevel=7 panic=-1 init=/init kiki.boot={boot_flag} "
-        "video=hyperv_fb:1024x768 video=efifb:1024x768 fbcon=map:0 efi=debug"
+        "video=hyperv_fb:1024x768 video=efifb:1024x768 fbcon=map:0 efi=debug kiki.ui=cli"
     )
     return "\n".join(
         [
@@ -5149,12 +5329,30 @@ def grub_cfg(profile: str, arch: str, *, installer: bool = False, installed: boo
             "set timeout=4",
             "set default=0",
             "",
-            f'menuentry "KIKI OS {title} ({arch}, auto console)" {{',
+            f'menuentry "KIKI OS {"graphical installer (default)" if installer else title + " (" + arch + ", auto console)"}" {{',
             "    set gfxpayload=keep",
             f"    linux /boot/vmlinuz-kiki console=tty0 {auto_args}",
             "    initrd /boot/initramfs-kiki.img",
             "}",
             "",
+            *(
+                [
+                    f'menuentry "KIKI OS full-screen TUI installer ({arch})" {{',
+                    "    set gfxpayload=keep",
+                    f"    linux /boot/vmlinuz-kiki console=tty0 {tui_args}",
+                    "    initrd /boot/initramfs-kiki.img",
+                    "}",
+                    "",
+                    f'menuentry "KIKI OS CLI installer ({arch}, safe fallback)" {{',
+                    "    set gfxpayload=text",
+                    f"    linux /boot/vmlinuz-kiki console=tty0 {cli_args}",
+                    "    initrd /boot/initramfs-kiki.img",
+                    "}",
+                    "",
+                ]
+                if installer
+                else []
+            ),
             f'menuentry "KIKI OS {title} ({arch}, UEFI framebuffer)" {{',
             "    set gfxpayload=keep",
             f"    linux /boot/vmlinuz-kiki console=tty0 {uefi_args}",
@@ -5175,7 +5373,7 @@ def grub_cfg(profile: str, arch: str, *, installer: bool = False, installed: boo
             "",
             f'menuentry "KIKI OS {title} ({arch}, serial + VGA)" {{',
             "    set gfxpayload=keep",
-            f"    linux /boot/vmlinuz-kiki console=tty0 console=ttyS0,115200n8 {auto_args}",
+            f"    linux /boot/vmlinuz-kiki console=tty0 console=ttyS0,115200n8 {cli_args}",
             "    initrd /boot/initramfs-kiki.img",
             "}",
             "",
@@ -5308,7 +5506,8 @@ def prepare_boot_iso_tree(
         "boot_mode": boot_mode,
         "installer": {
             "enabled": installer,
-            "interface": "tui" if installer else None,
+            "interface": "gui-tui-cli" if installer else None,
+            "interface_order": ["gtk4", "fullscreen-tui", "cli"] if installer else [],
             "strategy": "guided-disk-partition-format-extract-selected-packages-uefi-boot" if installer else None,
             "confirmation": "INSTALL <target-disk>" if installer else None,
             "install_image": install_image_meta,
@@ -5320,7 +5519,7 @@ def prepare_boot_iso_tree(
         "package_media": package_media,
         "notes": [
             (
-                "This image includes a stage-1 TUI installer with guided disk partitioning, package extraction, and a bundled ki2 package payload."
+                "This image tries GTK 4 first, then the full-screen TUI, and finally the stage-1 CLI fallback."
                 if installer
                 else "This image is an installed systemd handoff boot target."
                 if installed
@@ -5348,7 +5547,7 @@ def prepare_boot_iso_tree(
                 "- Linux runs the generated /init program",
                 "",
                 (
-                    "The TUI installer can select packages, partition a disk, format ESP/root filesystems, extract selected packages, and install UEFI fallback boot files."
+                    "The GTK installer is the default boot choice and automatically falls back to the TUI; the shared installer can select packages, partition a disk, format ESP/root filesystems, extract selected packages, and install UEFI fallback boot files."
                     if installer
                     else "This is the installed systemd handoff boot target."
                     if installed

@@ -29,6 +29,7 @@ DEFAULT_ARCH = "x86_64"
 DEFAULT_REPO_NAME = "default"
 INSTALLED_SCHEMA = "ki2-installed-v1"
 TRANSACTION_SCHEMA = "ki2-transaction-v1"
+PACKAGE_GROUP_SCHEMA = "ki2-package-groups-v1"
 HMAC_SIGNATURE_ALGORITHM = "hmac-sha256"
 ED25519_SIGNATURE_ALGORITHM = "ed25519"
 SIGNATURE_ALGORITHM = HMAC_SIGNATURE_ALGORITHM
@@ -83,6 +84,12 @@ def installed_db_path(root: Path) -> Path:
     return state_dir(root) / "installed.json"
 
 
+def package_groups_path(root: Path, override: Path | None = None) -> Path:
+    if override is not None:
+        return override
+    return root_join(root, "usr", "share", "ki2", "package-groups.json")
+
+
 def transaction_dir(root: Path) -> Path:
     return state_dir(root) / "transactions"
 
@@ -123,6 +130,97 @@ def write_json(path: Path, data: dict[str, Any]) -> None:
 
 def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def string_array(value: Any, field: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        raise Ki2CtlError(f"{field} must be a list of non-empty strings")
+    return list(dict.fromkeys(value))
+
+
+def load_package_groups(root: Path, override: Path | None = None) -> dict[str, dict[str, Any]]:
+    path = package_groups_path(root, override)
+    if not path.is_file():
+        raise Ki2CtlError(f"package group catalog not found: {path}")
+    data = read_json(path)
+    if data.get("schema") != PACKAGE_GROUP_SCHEMA:
+        raise Ki2CtlError(f"unsupported package group schema in {path}")
+    raw_groups = data.get("groups")
+    if not isinstance(raw_groups, list):
+        raise Ki2CtlError(f"{path}: groups must be a list")
+    groups: dict[str, dict[str, Any]] = {}
+    for raw in raw_groups:
+        if not isinstance(raw, dict):
+            raise Ki2CtlError(f"{path}: group entries must be objects")
+        group_id = str(raw.get("id", ""))
+        if not valid_repo_name(group_id):
+            raise Ki2CtlError(f"{path}: invalid package group id: {group_id}")
+        if group_id in groups:
+            raise Ki2CtlError(f"{path}: duplicate package group id: {group_id}")
+        packages = raw.get("packages", {})
+        services = raw.get("services", {})
+        if not isinstance(packages, dict) or not isinstance(services, dict):
+            raise Ki2CtlError(f"{path}: group {group_id} packages and services must be objects")
+        normalized = dict(raw)
+        normalized["requires"] = string_array(raw.get("requires"), f"group {group_id}.requires")
+        normalized["packages"] = {
+            section: string_array(packages.get(section), f"group {group_id}.packages.{section}")
+            for section in ("mandatory", "default", "optional")
+        }
+        normalized["services"] = {
+            "enable": string_array(services.get("enable"), f"group {group_id}.services.enable"),
+            "disable": string_array(services.get("disable"), f"group {group_id}.services.disable"),
+        }
+        groups[group_id] = normalized
+    for group_id, group in groups.items():
+        for required in group["requires"]:
+            if required not in groups:
+                raise Ki2CtlError(f"group {group_id} requires unknown group {required}")
+    return groups
+
+
+def resolve_package_group(
+    groups: dict[str, dict[str, Any]], group_id: str, *, with_optional: bool = False
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    if group_id not in groups:
+        raise Ki2CtlError(f"package group not found: {group_id}")
+    ordered_groups: list[str] = []
+    packages: list[str] = []
+    services: list[str] = []
+    disabled_services: list[str] = []
+    visiting: set[str] = set()
+
+    def visit(current: str) -> None:
+        if current in ordered_groups:
+            return
+        if current in visiting:
+            raise Ki2CtlError(f"package group dependency cycle at {current}")
+        visiting.add(current)
+        group = groups[current]
+        for required in group["requires"]:
+            visit(required)
+        visiting.remove(current)
+        ordered_groups.append(current)
+        sections = ["mandatory", "default"] + (["optional"] if with_optional else [])
+        for section in sections:
+            for name in group["packages"][section]:
+                if name not in packages:
+                    packages.append(name)
+        for unit in group["services"]["enable"]:
+            if unit in disabled_services:
+                disabled_services.remove(unit)
+            if unit not in services:
+                services.append(unit)
+        for unit in group["services"]["disable"]:
+            if unit in services:
+                services.remove(unit)
+            if unit not in disabled_services:
+                disabled_services.append(unit)
+
+    visit(group_id)
+    return ordered_groups, packages, services, disabled_services
 
 
 def http_get(url: str) -> bytes:
@@ -632,8 +730,17 @@ def extract_package(package: Path, root: Path) -> list[str]:
 def load_installed(root: Path) -> dict[str, Any]:
     path = installed_db_path(root)
     if not path.exists():
-        return {"schema": INSTALLED_SCHEMA, "packages": {}}
-    return read_json(path)
+        return {"schema": INSTALLED_SCHEMA, "packages": {}, "groups": {}}
+    db = read_json(path)
+    db.setdefault("groups", {})
+    packages = db.setdefault("packages", {})
+    if isinstance(packages, dict):
+        for record in packages.values():
+            if isinstance(record, dict) and "reasons" not in record:
+                # Older databases did not track provenance. Preserve those packages
+                # conservatively as explicitly installed during the in-memory migration.
+                record["reasons"] = ["explicit"]
+    return db
 
 
 def save_installed(root: Path, db: dict[str, Any]) -> None:
@@ -705,9 +812,18 @@ def installed_matches(root: Path, pkg: dict[str, Any]) -> bool:
     return package_version_label(record) == package_version_label(pkg)
 
 
-def record_install(root: Path, repo: Repo, pkg: dict[str, Any], files: list[str]) -> None:
+def record_install(
+    root: Path,
+    repo: Repo,
+    pkg: dict[str, Any],
+    files: list[str],
+    reasons: list[str] | None = None,
+) -> None:
     db = load_installed(root)
     packages = db.setdefault("packages", {})
+    previous = packages.get(str(pkg["name"]), {})
+    previous_reasons = previous.get("reasons", []) if isinstance(previous, dict) else []
+    merged_reasons = sorted(set(string_array(previous_reasons, f"package {pkg['name']}.reasons")) | set(reasons or []))
     packages[str(pkg["name"])] = {
         "name": pkg["name"],
         "version": pkg.get("version", ""),
@@ -720,7 +836,20 @@ def record_install(root: Path, repo: Repo, pkg: dict[str, Any], files: list[str]
         "repository": {"name": repo.name, "url": repo.url},
         "installed_at": dt.datetime.now(UTC).isoformat(),
         "files": sorted(files),
+        "reasons": merged_reasons,
     }
+    save_installed(root, db)
+
+
+def add_install_reasons(root: Path, package_name: str, reasons: list[str]) -> None:
+    if not reasons:
+        return
+    db = load_installed(root)
+    record = db.get("packages", {}).get(package_name)
+    if not isinstance(record, dict):
+        return
+    current = string_array(record.get("reasons"), f"package {package_name}.reasons")
+    record["reasons"] = sorted(set(current) | set(reasons))
     save_installed(root, db)
 
 
@@ -924,15 +1053,38 @@ def install_plan(args: argparse.Namespace, names: list[str]) -> list[tuple[Repo,
     return resolve_packages(catalog, names)
 
 
-def execute_install_plan(args: argparse.Namespace, plan: list[tuple[Repo, dict[str, Any]]], *, skip_current: bool = True) -> None:
+def explicit_install_reasons(args: argparse.Namespace, names: list[str]) -> dict[str, list[str]]:
+    catalog = package_catalog(indexes_for_command(args))
+    reasons: dict[str, set[str]] = {}
+    for root_name in names:
+        for _repo, pkg in resolve_packages(catalog, [root_name]):
+            package_name = str(pkg.get("name", ""))
+            reason = "explicit" if package_name == root_name else f"dependency:{root_name}"
+            reasons.setdefault(package_name, set()).add(reason)
+    return {name: sorted(values) for name, values in reasons.items()}
+
+
+def execute_install_plan(
+    args: argparse.Namespace,
+    plan: list[tuple[Repo, dict[str, Any]]],
+    *,
+    skip_current: bool = True,
+    reasons_by_package: dict[str, list[str]] | None = None,
+) -> None:
     db_before = load_installed(args.root)
+    reasons_by_package = reasons_by_package or {}
     planned: list[tuple[Repo, dict[str, Any], Path]] = []
+    skipped_reasons: list[tuple[str, list[str]]] = []
     for repo, pkg in plan:
         if skip_current and not getattr(args, "reinstall", False) and installed_matches(args.root, pkg):
+            package_name = str(pkg.get("name", ""))
+            skipped_reasons.append((package_name, reasons_by_package.get(package_name, [])))
             print(f"already installed {pkg['name']} {package_version_label(pkg)}")
             continue
         planned.append((repo, pkg, fetch_package(repo, pkg, args.root, args.arch)))
     if not planned:
+        for package_name, reasons in skipped_reasons:
+            add_install_reasons(args.root, package_name, reasons)
         return
     conflicts = detect_file_conflicts(args.root, db_before, planned)
     if conflicts:
@@ -942,7 +1094,8 @@ def execute_install_plan(args: argparse.Namespace, plan: list[tuple[Repo, dict[s
         prepare_backups(args.root, tx, planned)
         for repo, pkg, package_path in planned:
             files = extract_package(package_path, args.root)
-            record_install(args.root, repo, pkg, files)
+            package_name = str(pkg.get("name", ""))
+            record_install(args.root, repo, pkg, files, reasons_by_package.get(package_name, []))
             record_pending_hooks(args.root, str(pkg.get("name", "")), files)
             tx.setdefault("events", []).append({"event": "installed", "package": pkg.get("name", ""), "files": len(files)})
             update_transaction(args.root, tx)
@@ -953,6 +1106,8 @@ def execute_install_plan(args: argparse.Namespace, plan: list[tuple[Repo, dict[s
         rollback_transaction(args.root, tx, db_before)
         raise
     finish_transaction(args.root, tx, "succeeded")
+    for package_name, reasons in skipped_reasons:
+        add_install_reasons(args.root, package_name, reasons)
 
 
 def command_repo_set(args: argparse.Namespace) -> None:
@@ -1059,13 +1214,198 @@ def command_info(args: argparse.Namespace) -> None:
     print(f"SHA256  : {pkg.get('sha256', '')}")
 
 
+def group_catalog_for_command(args: argparse.Namespace) -> dict[str, dict[str, Any]]:
+    return load_package_groups(args.root, getattr(args, "group_file", None))
+
+
+def command_group_list(args: argparse.Namespace) -> None:
+    groups = group_catalog_for_command(args)
+    installed_groups = load_installed(args.root).get("groups", {})
+    for group_id, group in groups.items():
+        status = "installed" if group_id in installed_groups else "available"
+        print(f"{group_id}\t{status}\t{group.get('name_ko', group_id)}")
+
+
+def command_group_info(args: argparse.Namespace) -> None:
+    groups = group_catalog_for_command(args)
+    if args.name not in groups:
+        raise Ki2CtlError(f"package group not found: {args.name}")
+    group = groups[args.name]
+    resolved_groups, resolved_packages, services, disabled_services = resolve_package_group(
+        groups, args.name, with_optional=True
+    )
+    installed = args.name in load_installed(args.root).get("groups", {})
+    print(f"ID          : {args.name}")
+    print(f"Name        : {group.get('name_ko', args.name)}")
+    print(f"Description : {group.get('description_ko', '')}")
+    print(f"Status      : {'installed' if installed else 'available'}")
+    print("Requires    :", ", ".join(group["requires"]) if group["requires"] else "-")
+    for section in ("mandatory", "default", "optional"):
+        values = group["packages"][section]
+        print(f"{section.capitalize():12}:", ", ".join(values) if values else "-")
+    print("Resolved    :", ", ".join(resolved_groups))
+    print("Packages    :", ", ".join(resolved_packages) if resolved_packages else "-")
+    print("Services    :", ", ".join(services) if services else "-")
+    print("Disable     :", ", ".join(disabled_services) if disabled_services else "-")
+
+
+def group_reason(group_id: str) -> str:
+    return f"group:{group_id}"
+
+
+def record_group_install(
+    root: Path,
+    group_id: str,
+    resolved_groups: list[str],
+    package_names: list[str],
+    services: list[str],
+    disabled_services: list[str],
+    *,
+    with_optional: bool,
+) -> None:
+    db = load_installed(root)
+    db.setdefault("groups", {})[group_id] = {
+        "id": group_id,
+        "installed_at": dt.datetime.now(UTC).isoformat(),
+        "resolved_groups": resolved_groups,
+        "packages": package_names,
+        "services": services,
+        "disabled_services": disabled_services,
+        "with_optional": with_optional,
+    }
+    save_installed(root, db)
+
+
+def command_group_install(args: argparse.Namespace) -> None:
+    groups = group_catalog_for_command(args)
+    resolved_groups, roots, services, disabled_services = resolve_package_group(
+        groups, args.name, with_optional=args.with_optional
+    )
+    plan = install_plan(args, roots)
+    resolved_package_names = [str(pkg.get("name", "")) for _repo, pkg in plan]
+    for _repo, pkg in plan:
+        print(f"{pkg['name']} {package_version_label(pkg)} [{group_reason(args.name)}]")
+    if services:
+        print("enable services:", ", ".join(services))
+    if disabled_services:
+        print("disable services:", ", ".join(disabled_services))
+    if args.dry_run:
+        return
+    reasons = {name: [group_reason(args.name)] for name in resolved_package_names}
+    execute_install_plan(args, plan, reasons_by_package=reasons)
+    record_group_install(
+        args.root,
+        args.name,
+        resolved_groups,
+        resolved_package_names,
+        services,
+        disabled_services,
+        with_optional=args.with_optional,
+    )
+
+
+def removable_group_packages(db: dict[str, Any], group_id: str, recorded: list[str]) -> tuple[set[str], set[str]]:
+    packages = db.get("packages", {})
+    reason = group_reason(group_id)
+    candidates: set[str] = set()
+    preserved: set[str] = set()
+    for name in recorded:
+        record = packages.get(name)
+        if not isinstance(record, dict):
+            continue
+        remaining_reasons = set(record.get("reasons", [])) - {reason}
+        if remaining_reasons:
+            preserved.add(name)
+        else:
+            candidates.add(name)
+
+    changed = True
+    while changed:
+        changed = False
+        for name, record in packages.items():
+            if name in candidates or not isinstance(record, dict):
+                continue
+            needed = set(runtime_deps(record)) & candidates
+            if needed:
+                candidates -= needed
+                preserved |= needed
+                changed = True
+    return candidates, preserved
+
+
+def command_group_remove(args: argparse.Namespace) -> None:
+    db = load_installed(args.root)
+    group_record = db.get("groups", {}).get(args.name)
+    if not isinstance(group_record, dict):
+        raise Ki2CtlError(f"package group is not installed: {args.name}")
+    recorded = string_array(group_record.get("packages"), f"installed group {args.name}.packages")
+    removing, preserved = removable_group_packages(db, args.name, recorded)
+    for name in sorted(removing):
+        print(f"remove package {name}")
+    for name in sorted(preserved):
+        print(f"preserve package {name} (another installation reason or dependency remains)")
+    if args.keep_packages:
+        removing.clear()
+    if args.dry_run:
+        return
+
+    if removing:
+        remove_args = copy.copy(args)
+        remove_args.command = "group-remove"
+        remove_args.names = sorted(removing)
+        remove_args.force = False
+        remove_args.dry_run = False
+        command_remove(remove_args)
+
+    db = load_installed(args.root)
+    reason = group_reason(args.name)
+    for name in recorded:
+        record = db.get("packages", {}).get(name)
+        if isinstance(record, dict):
+            record["reasons"] = sorted(set(record.get("reasons", [])) - {reason})
+    db.setdefault("groups", {}).pop(args.name, None)
+    save_installed(args.root, db)
+
+
+def command_group_upgrade(args: argparse.Namespace) -> None:
+    db = load_installed(args.root)
+    group_record = db.get("groups", {}).get(args.name)
+    if not isinstance(group_record, dict):
+        raise Ki2CtlError(f"package group is not installed: {args.name}")
+    groups = group_catalog_for_command(args)
+    with_optional = bool(group_record.get("with_optional", False))
+    resolved_groups, roots, services, disabled_services = resolve_package_group(
+        groups, args.name, with_optional=with_optional
+    )
+    plan = install_plan(args, roots)
+    package_names = [str(pkg.get("name", "")) for _repo, pkg in plan]
+    for _repo, pkg in plan:
+        print(f"{pkg['name']} {package_version_label(pkg)} [{group_reason(args.name)}]")
+    if args.dry_run:
+        return
+    execute_install_plan(
+        args,
+        plan,
+        reasons_by_package={name: [group_reason(args.name)] for name in package_names},
+    )
+    record_group_install(
+        args.root,
+        args.name,
+        resolved_groups,
+        package_names,
+        services,
+        disabled_services,
+        with_optional=with_optional,
+    )
+
+
 def command_install(args: argparse.Namespace) -> None:
     plan = install_plan(args, args.names)
     for _repo, pkg in plan:
         print(f"{pkg['name']} {package_version_label(pkg)}")
     if args.dry_run:
         return
-    execute_install_plan(args, plan)
+    execute_install_plan(args, plan, reasons_by_package=explicit_install_reasons(args, args.names))
 
 
 def command_installed_list(args: argparse.Namespace) -> None:
@@ -1076,7 +1416,8 @@ def command_installed_list(args: argparse.Namespace) -> None:
         return
     for name in sorted(packages):
         pkg = packages[name]
-        print(f"{name}\t{pkg.get('version')}-{pkg.get('release')}")
+        reasons = ",".join(pkg.get("reasons", [])) or "unknown"
+        print(f"{name}\t{pkg.get('version')}-{pkg.get('release')}\t{reasons}")
 
 
 def command_remove(args: argparse.Namespace) -> None:
@@ -1122,6 +1463,17 @@ def command_remove(args: argparse.Namespace) -> None:
             del packages[name]
             tx.setdefault("events", []).append({"event": "removed", "package": name, "files": len(files)})
             update_transaction(args.root, tx)
+        removed_dependency_reasons = {f"dependency:{name}" for name in args.names}
+        for record in packages.values():
+            if isinstance(record, dict):
+                record["reasons"] = sorted(set(record.get("reasons", [])) - removed_dependency_reasons)
+        for group_record in db.get("groups", {}).values():
+            if not isinstance(group_record, dict):
+                continue
+            group_packages = [name for name in group_record.get("packages", []) if name not in removing]
+            if len(group_packages) != len(group_record.get("packages", [])):
+                group_record["packages"] = group_packages
+                group_record["status"] = "partial"
         save_installed(args.root, db)
     except Exception as exc:
         tx.setdefault("events", []).append({"event": "error", "message": str(exc)})
@@ -1218,6 +1570,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", type=Path, default=Path("/"), help="target root, defaults to /")
     parser.add_argument("--arch", default=DEFAULT_ARCH)
     parser.add_argument("--repo", default="", help="temporary repository base URL or local path")
+    parser.add_argument("--group-file", type=Path, default=None, help="override the installed package group catalog")
     parser.add_argument("--version", action="version", version=f"ki2ctl {APP_VERSION}")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
@@ -1247,6 +1600,30 @@ def build_parser() -> argparse.ArgumentParser:
     info = subcommands.add_parser("info", help="show package metadata")
     info.add_argument("name")
     info.set_defaults(func=command_info)
+
+    group = subcommands.add_parser("group", help="manage declarative package groups")
+    group_sub = group.add_subparsers(dest="group_command", required=True)
+    group_list = group_sub.add_parser("list", help="list available and installed groups")
+    group_list.set_defaults(func=command_group_list)
+    group_info = group_sub.add_parser("info", help="show group packages and services")
+    group_info.add_argument("name")
+    group_info.set_defaults(func=command_group_info)
+    group_install = group_sub.add_parser("install", help="install a package group")
+    group_install.add_argument("name")
+    group_install.add_argument("--with-optional", action="store_true")
+    group_install.add_argument("--dry-run", action="store_true")
+    group_install.add_argument("--reinstall", action="store_true")
+    group_install.set_defaults(func=command_group_install)
+    group_remove = group_sub.add_parser("remove", help="remove packages owned only by a group")
+    group_remove.add_argument("name")
+    group_remove.add_argument("--dry-run", action="store_true")
+    group_remove.add_argument("--keep-packages", action="store_true", help="remove group ownership but retain packages")
+    group_remove.set_defaults(func=command_group_remove)
+    group_upgrade = group_sub.add_parser("upgrade", help="install missing packages and upgrade an installed group")
+    group_upgrade.add_argument("name")
+    group_upgrade.add_argument("--dry-run", action="store_true")
+    group_upgrade.add_argument("--reinstall", action="store_true")
+    group_upgrade.set_defaults(func=command_group_upgrade)
 
     install = subcommands.add_parser("install", help="install packages and runtime dependencies")
     install.add_argument("names", nargs="+")
@@ -1284,6 +1661,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     args.root = args.root.resolve()
+    if isinstance(getattr(args, "group_file", None), Path):
+        args.group_file = args.group_file.resolve()
     if isinstance(getattr(args, "verify_key", None), Path):
         args.verify_key = args.verify_key.resolve()
     try:

@@ -388,7 +388,7 @@ env.TMPDIR = "/tmp"
 [[recipe]]
 name = "systemd"
 version = "255.7"
-release = 2
+release = 3
 summary = "System and service manager for KIKI OS"
 license = "LGPL-2.1-or-later"
 tier = "base"
@@ -408,6 +408,7 @@ env.LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSR
 configure_options = [
   "-Ddefault-dnssec=no",
   "-Dfirstboot=false",
+  "-Dmachined=true",
   "-Dman=false",
   "-Dtests=false",
   "-Ddbus-interfaces-dir=no",
@@ -909,8 +910,8 @@ configure_options = ["--with-openssl", "--disable-ldap", "--disable-ldaps"]
 [[recipe]]
 name = "ki2ctl"
 version = "0.1.0"
-release = 7
-summary = "KIKI HTTP package manager"
+release = 8
+summary = "KIKI HTTP package and package-group manager"
 license = "GPL-3.0-or-later"
 tier = "kiki"
 architectures = ["all"]
@@ -986,8 +987,8 @@ system = "copy"
 [[recipe]]
 name = "kiki-installer-tui"
 version = "0.1.0"
-release = 4
-summary = "Go-based KIKI install plan TUI preview"
+release = 7
+summary = "Go-based KIKI full-screen install plan TUI"
 license = "GPL-3.0-or-later"
 tier = "kiki"
 architectures = ["x86_64"]

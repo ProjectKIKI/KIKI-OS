@@ -2,11 +2,11 @@
 Description=KIKI OS Korean AI management console on %I
 Documentation=file:/usr/share/doc/kiki-ai-console/README.ko.md
 Conflicts=getty@%i.service
-After=systemd-user-sessions.service network-online.target
+After=systemd-user-sessions.service network-online.target kiki-llama-server.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/kiki-ai-console --config /etc/kiki/ai-console.json
+ExecStart=/usr/bin/kiki-ai-console --config /etc/kiki/ai-console.json --wait-local-runtime=90s
 Restart=always
 RestartSec=2
 TTYPath=/dev/%I

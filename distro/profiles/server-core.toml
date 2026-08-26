@@ -2,76 +2,8 @@
 name = "server-core"
 description = "General-purpose KIKI OS server profile without Kubernetes node components"
 arch = "x86_64"
-packages = [
-  "base-files",
-  "linux",
-  "glibc",
-  "libxcrypt",
-  "zlib",
-  "expat",
-  "openssl",
-  "libcap",
-  "libseccomp",
-  "acl",
-  "attr",
-  "ncurses",
-  "util-linux",
-  "cfdisk",
-  "kmod",
-  "dbus",
-  "systemd",
-  "bash",
-  "busybox",
-  "coreutils",
-  "findutils",
-  "grep",
-  "sed",
-  "gawk",
-  "tar",
-  "gzip",
-  "xz",
-  "zstd",
-  "python",
-  "e2fsprogs",
-  "shadow",
-  "sudo",
-  "iproute2",
-  "ca-certificates",
-  "openssh",
-  "curl",
-  "ki2ctl",
-  "kiki-agent",
-  "llama-cpp",
-  "kiki-ai-console",
-  "kiki-netconfig",
-  "kiki-installer-tui",
-  "nftables",
-  "iptables",
-  "conntrack-tools",
-  "firewalld",
-  "bridge-utils",
-  "socat",
-  "ethtool",
-  "chrony",
-]
+groups = ["server", "ai-console", "installer-gui"]
 
 [profile.boot]
 init = "/usr/lib/systemd/systemd"
 kernel = "/boot/vmlinuz-kiki"
-
-[profile.services]
-enable = [
-  "dbus.service",
-  "kiki-boot-prepare.service",
-  "kiki-llama-server.service",
-  "kiki-ai-console@tty1.service",
-  "getty@tty2.service",
-  "systemd-logind.service",
-  "systemd-networkd.service",
-  "systemd-resolved.service",
-  "sshd.service",
-  "kiki-agent.service",
-  "nftables.service",
-  "firewalld.service",
-  "chronyd.service",
-]

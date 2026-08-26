@@ -69,6 +69,7 @@ class Ki2OsBuildTests(unittest.TestCase):
         self.assertTrue(any("generate --channel stage3-v3" in command and "--sign-algorithm ed25519" in command for command in commands))
         self.assertTrue(any("verify --key" in command and ".ed25519.pub" in command for command in commands))
         self.assertTrue(any("tools/ki2stage3.py verify" in command for command in commands))
+        self.assertTrue(any("tools/ki2graphics.py prepare" in command for command in commands))
         self.assertFalse(any("verify-kubernetes" in command for command in commands))
 
     def test_dry_run_writes_manifest_without_executing_steps(self):

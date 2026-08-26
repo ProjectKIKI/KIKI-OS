@@ -11,6 +11,10 @@ build:
   max_packages: 72
   allow_unpinned: false
 
+graphics:
+  enabled: true
+  output: build/ki2/host-graphics/rootfs
+
 repository:
   sign: true
   algorithm: ed25519

@@ -666,6 +666,108 @@ def load_recipes(recipe_dir: Path) -> dict[str, Recipe]:
     return recipes
 
 
+def profile_group_catalog_path(path: Path) -> Path:
+    override = os.environ.get("KI2_PACKAGE_GROUPS_FILE", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    distro_dir = path.parent.parent
+    return distro_dir / "sources" / "ki2ctl" / "usr" / "share" / "ki2" / "package-groups.json"
+
+
+def expand_profile_groups(path: Path, profile: dict[str, Any]) -> dict[str, Any]:
+    selected = profile.get("groups", [])
+    if not selected:
+        return profile
+    if not isinstance(selected, list) or not all(isinstance(item, str) and item for item in selected):
+        raise Ki2Error(f"{path}: profile.groups must be a list of package group ids")
+    catalog_path = profile_group_catalog_path(path)
+    if not catalog_path.is_file():
+        raise Ki2Error(f"{path}: package group catalog not found: {catalog_path}")
+    try:
+        catalog_data = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise Ki2Error(f"{catalog_path}: invalid package group catalog: {exc}") from exc
+    if catalog_data.get("schema") != "ki2-package-groups-v1":
+        raise Ki2Error(f"{catalog_path}: unsupported package group schema")
+    raw_groups = catalog_data.get("groups", [])
+    if not isinstance(raw_groups, list):
+        raise Ki2Error(f"{catalog_path}: groups must be a list")
+    groups = {
+        str(item.get("id", "")): item
+        for item in raw_groups
+        if isinstance(item, dict) and item.get("id")
+    }
+    packages: list[str] = []
+    enable_services: list[str] = []
+    disable_services: list[str] = []
+    resolved: list[str] = []
+    visiting: set[str] = set()
+
+    def add_unique(items: list[str], value: str) -> None:
+        if value not in items:
+            items.append(value)
+
+    def visit(group_id: str) -> None:
+        if group_id in resolved:
+            return
+        if group_id in visiting:
+            raise Ki2Error(f"{catalog_path}: package group dependency cycle at {group_id}")
+        group = groups.get(group_id)
+        if not isinstance(group, dict):
+            raise Ki2Error(f"{path}: unknown package group {group_id!r}")
+        visiting.add(group_id)
+        requires = group.get("requires", [])
+        if not isinstance(requires, list) or not all(isinstance(item, str) for item in requires):
+            raise Ki2Error(f"{catalog_path}: group {group_id}.requires must be a list")
+        for required in requires:
+            visit(required)
+        visiting.remove(group_id)
+        resolved.append(group_id)
+        package_sections = group.get("packages", {})
+        services = group.get("services", {})
+        if not isinstance(package_sections, dict) or not isinstance(services, dict):
+            raise Ki2Error(f"{catalog_path}: group {group_id} packages and services must be mappings")
+        for section in ("mandatory", "default"):
+            values = package_sections.get(section, [])
+            if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+                raise Ki2Error(f"{catalog_path}: group {group_id}.packages.{section} must be a list")
+            for package in values:
+                add_unique(packages, package)
+        for unit in services.get("enable", []):
+            if unit in disable_services:
+                disable_services.remove(unit)
+            add_unique(enable_services, unit)
+        for unit in services.get("disable", []):
+            if unit in enable_services:
+                enable_services.remove(unit)
+            add_unique(disable_services, unit)
+
+    for group_id in selected:
+        visit(group_id)
+
+    explicit_packages = profile.get("packages", [])
+    if explicit_packages and (not isinstance(explicit_packages, list) or not all(isinstance(item, str) for item in explicit_packages)):
+        raise Ki2Error(f"{path}: profile.packages must be a list of package names")
+    for package in explicit_packages:
+        add_unique(packages, package)
+    services = profile.setdefault("services", {})
+    if not isinstance(services, dict):
+        raise Ki2Error(f"{path}: profile.services must be a mapping")
+    for unit in services.get("enable", []):
+        if unit in disable_services:
+            disable_services.remove(unit)
+        add_unique(enable_services, unit)
+    for unit in services.get("disable", []):
+        if unit in enable_services:
+            enable_services.remove(unit)
+        add_unique(disable_services, unit)
+    profile["groups"] = list(selected)
+    profile["resolved_groups"] = resolved
+    profile["packages"] = packages
+    profile["services"] = {"enable": enable_services, "disable": disable_services}
+    return profile
+
+
 def load_profile(path: Path) -> dict[str, Any]:
     data = read_structured_file(path)
     if "profile" in data:
@@ -678,8 +780,9 @@ def load_profile(path: Path) -> dict[str, Any]:
         raise Ki2Error(f"{path}: profile must be a mapping")
     if not profile.get("name"):
         raise Ki2Error(f"{path}: profile.name is required")
+    profile = expand_profile_groups(path, dict(profile))
     if not profile.get("packages"):
-        raise Ki2Error(f"{path}: profile.packages is required")
+        raise Ki2Error(f"{path}: profile.packages or profile.groups is required")
     if not isinstance(profile["packages"], list) or not all(isinstance(item, str) for item in profile["packages"]):
         raise Ki2Error(f"{path}: profile.packages must be a list of package names")
     return profile

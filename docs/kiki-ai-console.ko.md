@@ -22,6 +22,24 @@ CPU 기반의 작은 단일 노드 ISO에는 GGUF 양자화 모델과 `llama.cpp
 기본 로컬 API는 OpenAI 호환 `http://127.0.0.1:8080/v1/chat/completions`이고,
 모델 별칭은 `kiki-ops`입니다.
 
+로컬 서버는 별도 Podman 이미지 없이 systemd에 포함된 `systemd-nspawn`으로
+실행됩니다. `/usr`, `/lib`, `/lib64`와 모델 디렉터리를 읽기 전용으로 바인드한
+`kiki-ai-runtime` 경량 머신이 호스트 네트워크의 loopback만 사용합니다.
+머신 실행이 불가능한 커널에서는 기존 systemd 샌드박스 직접 실행으로 자동
+전환합니다. `runc`는 OCI rootfs와 별도 수명 주기 관리자가 필요하므로 단독
+실행기로 사용하지 않으며, Podman은 기본 ISO 크기를 늘리므로 포함하지 않습니다.
+
+tty1 콘솔은 로컬 `/health` 응답을 최대 90초 기다린 뒤 시작합니다. 준비되지
+않더라도 tty1은 열리며 진단 명령을 안내합니다. tty2에서 다음 명령으로 상태를
+확인할 수 있습니다.
+
+```sh
+systemctl status kiki-llama-server.service
+journalctl -b -u kiki-llama-server.service
+machinectl status kiki-ai-runtime
+curl http://127.0.0.1:8080/health
+```
+
 기본 ISO에는 한국어를 지원하는 공식 `Qwen2.5-1.5B-Instruct-GGUF`의
 `Q4_K_M` 파일을 `/var/lib/kiki/models/kiki-ops.gguf`로 내장합니다. 모델
 저장소 커밋, 모델 SHA-256, Apache-2.0 라이선스 파일 SHA-256을 빌드 레시피에

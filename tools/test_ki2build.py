@@ -927,6 +927,49 @@ packages = ["runtime-demo"]
         self.assertIn('"WARN": "\\033[33m"', stage1_check)
         self.assertIn('"FAIL": "\\033[31m"', stage1_check)
 
+    def test_profile_expands_package_groups_and_service_overrides(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            profile_path = root / "distro/profiles/test.toml"
+            group_path = root / "distro/sources/ki2ctl/usr/share/ki2/package-groups.json"
+            profile_path.parent.mkdir(parents=True)
+            group_path.parent.mkdir(parents=True)
+            profile_path.write_text(
+                '[profile]\nname = "test"\ngroups = ["base", "console"]\n',
+                encoding="utf-8",
+            )
+            group_path.write_text(
+                json.dumps(
+                    {
+                        "schema": "ki2-package-groups-v1",
+                        "groups": [
+                            {
+                                "id": "base",
+                                "requires": [],
+                                "packages": {"mandatory": ["base"], "default": [], "optional": []},
+                                "services": {"enable": ["getty@tty1.service"]},
+                            },
+                            {
+                                "id": "console",
+                                "requires": ["base"],
+                                "packages": {"mandatory": ["console"], "default": ["model"], "optional": ["large-model"]},
+                                "services": {
+                                    "enable": ["console@tty1.service"],
+                                    "disable": ["getty@tty1.service"],
+                                },
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            profile = ki2build.load_profile(profile_path)
+            self.assertEqual(profile["packages"], ["base", "console", "model"])
+            self.assertEqual(profile["resolved_groups"], ["base", "console"])
+            self.assertEqual(profile["services"]["enable"], ["console@tty1.service"])
+            self.assertEqual(profile["services"]["disable"], ["getty@tty1.service"])
+
     def test_copy_source_to_dest_ignores_python_cache_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

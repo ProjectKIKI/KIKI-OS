@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+
+model=/var/lib/kiki/models/kiki-ops.gguf
+server_args="--model $model --alias kiki-ops --host 127.0.0.1 --port 8080 --ctx-size 4096"
+machine_root=/var/lib/machines/kiki-ai
+
+if [ -x /usr/bin/systemd-nspawn ] && [ -f "$machine_root/etc/os-release" ]; then
+    echo "KIKI AI: systemd-nspawn 경량 컨테이너로 llama.cpp를 시작합니다." >&2
+    if /usr/bin/systemd-nspawn \
+        --quiet \
+        --register=yes \
+        --keep-unit \
+        --as-pid2 \
+        --machine=kiki-ai-runtime \
+        --directory="$machine_root" \
+        --bind-ro=/usr \
+        --bind-ro=/lib \
+        --bind-ro=/lib64 \
+        --bind-ro=/var/lib/kiki/models \
+        --setenv=HOME=/var/lib/kiki \
+        --setenv=LD_LIBRARY_PATH=/usr/lib:/lib:/lib64 \
+        /usr/bin/llama-server $server_args; then
+        exit 0
+    fi
+    echo "KIKI AI: 경량 컨테이너 시작 실패, systemd 샌드박스 직접 실행으로 전환합니다." >&2
+fi
+
+exec /usr/bin/llama-server $server_args

@@ -16,6 +16,7 @@ typedef struct {
     GtkEntry *source_location;
     GtkEntry *verify_key;
     GtkEntry *ai_endpoint;
+    GtkEntry *package_groups;
     GtkDropDown *install_mode;
     GtkDropDown *swap_mode;
     GtkDropDown *network_mode;
@@ -110,6 +111,7 @@ static void update_review(InstallerUI *ui) {
         "계정: %s / %s\n"
         "패키지 소스: %s / %s\n"
         "프로필: %s\n"
+        "추가 패키지 그룹: %s\n"
         "컨테이너 런타임: %s\n"
         "AI 에이전트: %s / 명령 승인 필수\n"
         "계획 파일: %s\n\n"
@@ -124,7 +126,8 @@ static void update_review(InstallerUI *ui) {
         gtk_editable_get_text(GTK_EDITABLE(ui->admin_user)),
         gtk_editable_get_text(GTK_EDITABLE(ui->hostname)),
         source, gtk_editable_get_text(GTK_EDITABLE(ui->source_location)),
-        dropdown_text(ui->profile), dropdown_text(ui->runtime), ai,
+        dropdown_text(ui->profile), gtk_editable_get_text(GTK_EDITABLE(ui->package_groups)),
+        dropdown_text(ui->runtime), ai,
         gtk_editable_get_text(GTK_EDITABLE(ui->plan_path)));
     gtk_text_buffer_set_text(ui->review, text, -1);
 }
@@ -183,6 +186,8 @@ static void write_plan(GtkButton *button, gpointer data) {
     add_arg(args, "--plan", gtk_editable_get_text(GTK_EDITABLE(ui->plan_path)));
     add_arg(args, "--mode", dropdown_text(ui->install_mode));
     add_arg(args, "--profile", dropdown_text(ui->profile));
+    if (gtk_editable_get_text(GTK_EDITABLE(ui->package_groups))[0] != '\0')
+        add_arg(args, "--groups", gtk_editable_get_text(GTK_EDITABLE(ui->package_groups)));
     add_arg(args, "--disk", gtk_editable_get_text(GTK_EDITABLE(ui->disk)));
     add_arg(args, "--swap", dropdown_text(ui->swap_mode));
     add_arg(args, "--hostname", gtk_editable_get_text(GTK_EDITABLE(ui->hostname)));
@@ -326,6 +331,7 @@ static void activate(GtkApplication *application, gpointer data) {
     ui->runtime = form_dropdown(GTK_GRID(grid), 1, "런타임", runtimes);
     ui->ai_mode = form_dropdown(GTK_GRID(grid), 2, "AI", ai_modes);
     ui->ai_endpoint = form_entry(GTK_GRID(grid), 3, "AI 엔드포인트", "http://127.0.0.1:8080/v1/chat/completions");
+    ui->package_groups = form_entry(GTK_GRID(grid), 4, "추가 그룹(쉼표)", "");
     gtk_box_append(GTK_BOX(page), grid);
     stack_page(GTK_STACK(stack), page, "profile", "프로필 및 AI");
 

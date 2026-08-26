@@ -37,6 +37,67 @@ func TestDefaultPlanUsesStageOneDefaults(t *testing.T) {
 	}
 }
 
+func TestFullscreenTUIReadsArrowKeys(t *testing.T) {
+	key, err := readFullscreenKey(bytes.NewBuffer([]byte{'\x1b', '[', 'B'}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key != "down" {
+		t.Fatalf("key = %q, want down", key)
+	}
+}
+
+func TestFullscreenTUIRendersSelectionAndFallbackHelp(t *testing.T) {
+	var output bytes.Buffer
+	tui := TUI{
+		Plan:     NewDefaultPlan("minimal-systemd"),
+		PlanPath: "/run/kiki/install-plan.yaml",
+		Out:      &output,
+	}
+
+	tui.RenderFullscreen(2, "테스트 상태")
+	rendered := output.String()
+	for _, expected := range []string{
+		"전체 화면 TUI",
+		"네트워크",
+		"\x1b[7m>  3.",
+		"c/q: CLI로 전환",
+		"상태: 테스트 상태",
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("fullscreen output missing %q:\n%s", expected, rendered)
+		}
+	}
+}
+
+func TestFullscreenTUIASCIIHasNoKoreanGlyphDependency(t *testing.T) {
+	var output bytes.Buffer
+	tui := TUI{
+		Plan:     NewDefaultPlan("minimal-systemd"),
+		PlanPath: "/run/kiki/install-plan.yaml",
+		Out:      &output,
+		ASCII:    true,
+	}
+
+	tui.RenderFullscreen(0, "GUI fallback active")
+	rendered := output.String()
+	for _, expected := range []string{
+		"KIKI OS Installer - TUI fallback",
+		"Language / keymap / timezone",
+		"Up/Down or j/k",
+		"Status: GUI fallback active",
+	} {
+		if !strings.Contains(rendered, expected) {
+			t.Fatalf("ASCII full-screen output missing %q:\n%s", expected, rendered)
+		}
+	}
+	for _, forbidden := range []string{"설치기", "전체 화면", "상태:"} {
+		if strings.Contains(rendered, forbidden) {
+			t.Fatalf("ASCII full-screen output contains %q:\n%s", forbidden, rendered)
+		}
+	}
+}
+
 func TestServerCoreProfileAddsGeneralServerPackages(t *testing.T) {
 	plan := NewDefaultPlan("server-core")
 
@@ -219,8 +280,8 @@ func TestRenderDashboardShowsPlanStatus(t *testing.T) {
 	tui.Render()
 	text := out.String()
 	for _, want := range []string{
-		"KIKI OS Installer",
-		"Stage 3 plan authoring",
+		"KIKI OS Install Plan CLI",
+		"Line-command compatibility mode",
 		"Install Plan: /run/kiki/install-plan.yaml",
 		"[OK] Language",
 		"[!] Disk",
@@ -541,5 +602,38 @@ func TestNVMePartitionNaming(t *testing.T) {
 	}
 	if _, err := tui.ApplyCommand("disk /dev/nvme0n1p1"); err == nil {
 		t.Fatal("ApplyCommand(nvme partition) error = nil")
+	}
+}
+
+func TestPackageGroupsAreRecordedAndSelectable(t *testing.T) {
+	tui := TUI{Plan: NewDefaultPlan("minimal-systemd")}
+	for _, groupID := range []string{"minimal", "ai-console"} {
+		if !contains(tui.Plan.Packages.Groups, groupID) {
+			t.Fatalf("default plan missing group %q: %#v", groupID, tui.Plan.Packages.Groups)
+		}
+	}
+	if _, err := tui.ApplyCommand("group add development"); err != nil {
+		t.Fatalf("group add development error = %v", err)
+	}
+	if !contains(tui.Plan.Packages.Groups, "development") || !contains(tui.Plan.Packages.Selected, "make") {
+		t.Fatalf("development group not applied: groups=%#v packages=%#v", tui.Plan.Packages.Groups, tui.Plan.Packages.Selected)
+	}
+	if _, err := tui.ApplyCommand("group remove development"); err != nil {
+		t.Fatalf("group remove development error = %v", err)
+	}
+	if contains(tui.Plan.Packages.Groups, "development") || contains(tui.Plan.Packages.Selected, "make") {
+		t.Fatalf("development group not removed: groups=%#v packages=%#v", tui.Plan.Packages.Groups, tui.Plan.Packages.Selected)
+	}
+}
+
+func TestInstallPlanYAMLIncludesPackageGroups(t *testing.T) {
+	var output bytes.Buffer
+	if err := WritePlanYAML(&output, NewDefaultPlan("server-core")); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"    groups:", `      - "minimal"`, `      - "server"`, `      - "ai-console"`} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("install plan missing %q:\n%s", expected, output.String())
+		}
 	}
 }

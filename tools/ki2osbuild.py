@@ -215,6 +215,25 @@ def build_steps(ctx: BuildContext) -> list[Step]:
     max_packages = str(build.get("max_packages") or 72)
     allow_unpinned = bool_value(build, "allow_unpinned", True)
 
+    graphics = ctx.plan.get("graphics", {})
+    if graphics and not isinstance(graphics, dict):
+        raise OsBuildError("graphics section must be a mapping")
+    if isinstance(graphics, dict) and bool_value(graphics, "enabled", False) and not ctx.skip_build:
+        graphics_output = ctx.repo_root / str(graphics.get("output") or "build/ki2/host-graphics/rootfs")
+        steps.append(Step(
+            "Prepare GTK/Wayland installer runtime",
+            python_cmd(
+                "tools/ki2graphics.py",
+                "prepare",
+                "--repo-root",
+                str(ctx.repo_root),
+                "--output",
+                str(graphics_output),
+                "--jobs",
+                str(ctx.jobs),
+            ),
+        ))
+
     steps.append(Step("Validate package profile", ki2build_cmd(ctx, "validate", "--profile", rel(profile, ctx.repo_root), "--max-packages", max_packages)))
     steps.append(Step("Print package dependency plan", ki2build_cmd(ctx, "plan", "--profile", rel(profile, ctx.repo_root))))
     if not ctx.skip_build:

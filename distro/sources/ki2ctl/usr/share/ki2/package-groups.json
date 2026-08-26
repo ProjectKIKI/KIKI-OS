@@ -1,0 +1,150 @@
+{
+  "schema": "ki2-package-groups-v1",
+  "groups": [
+    {
+      "id": "minimal",
+      "name_ko": "최소 시스템",
+      "description_ko": "부팅, 네트워크, 원격 접속과 패키지 관리에 필요한 기본 시스템",
+      "requires": [],
+      "packages": {
+        "mandatory": [
+          "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
+          "libcap", "libseccomp", "acl", "attr", "ncurses", "util-linux", "cfdisk",
+          "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
+          "grep", "sed", "gawk", "tar", "gzip", "xz", "zstd", "python", "e2fsprogs",
+          "shadow", "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl",
+          "kiki-agent", "kiki-netconfig", "kiki-installer-tui"
+        ],
+        "default": [],
+        "optional": []
+      },
+      "services": {
+        "enable": [
+          "dbus.service", "kiki-boot-prepare.service", "getty@tty1.service",
+          "systemd-logind.service", "systemd-networkd.service", "systemd-resolved.service",
+          "sshd.service", "kiki-agent.service"
+        ]
+      }
+    },
+    {
+      "id": "ai-console",
+      "name_ko": "AI 관리 콘솔",
+      "description_ko": "tty1 한국어 AI 콘솔과 CPU 기반 GGUF llama.cpp 런타임",
+      "requires": [],
+      "packages": {
+        "mandatory": ["kiki-ai-console"],
+        "default": ["llama-cpp"],
+        "optional": []
+      },
+      "services": {
+        "enable": ["kiki-llama-server.service", "kiki-ai-console@tty1.service", "getty@tty2.service"],
+        "disable": ["getty@tty1.service"]
+      }
+    },
+    {
+      "id": "installer-gui",
+      "name_ko": "그래픽 설치 프로그램",
+      "description_ko": "GTK4 한국어 설치 화면과 Cage Wayland 키오스크 런타임",
+      "requires": [],
+      "packages": {
+        "mandatory": ["kiki-installer-gtk"],
+        "default": [],
+        "optional": []
+      },
+      "services": {
+        "enable": []
+      }
+    },
+    {
+      "id": "server",
+      "name_ko": "일반 서버",
+      "description_ko": "방화벽, 시간 동기화와 서버 네트워크 진단 도구",
+      "requires": ["minimal"],
+      "packages": {
+        "mandatory": [],
+        "default": [
+          "nftables", "iptables", "conntrack-tools", "firewalld", "bridge-utils",
+          "socat", "ethtool", "chrony"
+        ],
+        "optional": []
+      },
+      "services": {
+        "enable": ["nftables.service", "firewalld.service", "chronyd.service"]
+      }
+    },
+    {
+      "id": "ai-console-remote",
+      "name_ko": "원격 AI 관리 콘솔",
+      "description_ko": "원격 OpenAI 호환 API를 사용하는 tty1 한국어 AI 콘솔",
+      "requires": [],
+      "packages": {
+        "mandatory": ["kiki-ai-console"],
+        "default": [],
+        "optional": []
+      },
+      "services": {
+        "enable": ["kiki-ai-console@tty1.service", "getty@tty2.service"],
+        "disable": ["getty@tty1.service", "kiki-llama-server.service"]
+      }
+    },
+    {
+      "id": "container-containerd",
+      "name_ko": "컨테이너 런타임",
+      "description_ko": "containerd와 runc 기반 OCI 컨테이너 실행 환경",
+      "requires": [],
+      "packages": {
+        "mandatory": ["containerd", "runc"],
+        "default": ["cni-plugins", "cri-tools"],
+        "optional": []
+      },
+      "services": {
+        "enable": ["containerd.service"]
+      }
+    },
+    {
+      "id": "container-crio",
+      "name_ko": "CRI-O 런타임",
+      "description_ko": "Kubernetes용 CRI-O, conmon, crun 실행 환경",
+      "requires": [],
+      "packages": {
+        "mandatory": ["cri-o", "conmon", "crun", "kube-node-config"],
+        "default": [],
+        "optional": []
+      },
+      "services": {
+        "enable": ["crio.service"]
+      }
+    },
+    {
+      "id": "kubernetes-node",
+      "name_ko": "Kubernetes 노드",
+      "description_ko": "컨트롤 플레인과 워커 노드가 공유하는 Kubernetes 도구",
+      "requires": ["minimal"],
+      "packages": {
+        "mandatory": ["kubelet", "kubectl", "kubeadm", "kiki-kubeadm"],
+        "default": [
+          "bridge-utils", "cni-plugins", "cri-tools", "conntrack-tools", "firewalld",
+          "nftables", "iptables", "socat", "ethtool", "chrony"
+        ],
+        "optional": []
+      },
+      "services": {
+        "enable": ["kubelet.service", "chronyd.service"]
+      }
+    },
+    {
+      "id": "development",
+      "name_ko": "개발 도구",
+      "description_ko": "KIKI 패키지 및 소프트웨어 빌드를 위한 기본 도구",
+      "requires": ["minimal"],
+      "packages": {
+        "mandatory": ["make"],
+        "default": [],
+        "optional": []
+      },
+      "services": {
+        "enable": []
+      }
+    }
+  ]
+}

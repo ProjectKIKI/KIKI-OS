@@ -330,10 +330,39 @@ def verify_contract(repo_root: Path) -> dict[str, Any]:
 
     management_console = repo_root / "tools/kiki_console.py"
     require(management_console.is_file(), "Stage 3 management console is missing")
+    package_groups_path = repo_root / "distro/sources/ki2ctl/usr/share/ki2/package-groups.json"
+    require(package_groups_path.is_file(), "package group catalog is missing")
+    package_groups = json.loads(package_groups_path.read_text(encoding="utf-8"))
+    require(package_groups.get("schema") == "ki2-package-groups-v1", "package group schema is invalid")
+    package_group_ids = {
+        item.get("id") for item in package_groups.get("groups", []) if isinstance(item, dict)
+    }
+    require(
+        {"minimal", "server", "ai-console", "container-containerd", "container-crio", "kubernetes-node"}
+        <= package_group_ids,
+        "required package groups are incomplete",
+    )
+    ki2ctl_source = (repo_root / "distro/sources/ki2ctl/usr/bin/ki2ctl").read_text(encoding="utf-8")
+    require(
+        "command_group_install" in ki2ctl_source
+        and "command_group_remove" in ki2ctl_source
+        and "reasons" in ki2ctl_source,
+        "ki2ctl package group lifecycle or install-reason tracking is missing",
+    )
+    installer_tui_source = (repo_root / "cmd/kiki-installer-tui/main.go").read_text(encoding="utf-8")
+    installer_gtk_source = (repo_root / "cmd/kiki-installer-gtk/main.c").read_text(encoding="utf-8")
+    require("Groups" in installer_tui_source and "group add|remove" in installer_tui_source, "TUI package group selection is missing")
+    require('"--groups"' in installer_gtk_source, "GTK package group selection is missing")
+    systemd_recipe = recipes.get("systemd")
     ai_recipe = recipes.get("kiki-ai-console")
     llama_recipe = recipes.get("llama-cpp")
     libstdcxx_recipe = recipes.get("libstdcxx")
     model_recipe = recipes.get("kiki-ops-model")
+    require(systemd_recipe is not None, "systemd runtime recipe is missing")
+    require(
+        "-Dmachined=true" in systemd_recipe.build.get("configure_options", []),
+        "systemd-machined must remain enabled for the managed AI runtime",
+    )
     require(ai_recipe is not None, "on-device AI console recipe is missing")
     require(llama_recipe is not None, "llama.cpp runtime recipe is missing")
     require(libstdcxx_recipe is not None, "KIKI C++ runtime recipe is missing")
@@ -354,10 +383,11 @@ def verify_contract(repo_root: Path) -> dict[str, Any]:
     )
     libstdcxx_commands = "\n".join(
         str(command)
-        for phase in ("configure", "compile", "install")
+        for phase in ("prepare", "configure", "compile", "install")
         for command in libstdcxx_recipe.build.get(phase, [])
     )
     require("-lgcc -lgcc_eh" in libstdcxx_commands, "GNU C++ runtime must not require an unowned host libgcc_s")
+    require("gthr-default.h" in libstdcxx_commands and "--enable-libstdcxx-threads=yes" in libstdcxx_commands, "GNU C++ runtime must provide the POSIX thread symbols used by llama.cpp")
     require(
         llama_recipe.source.get("sha256") == "bd13fa381488aa59ae4081aca24d368a956ad6e393c54931510a94d240590e33",
         "llama.cpp source digest is not pinned",
@@ -369,6 +399,7 @@ def verify_contract(repo_root: Path) -> dict[str, Any]:
         for command in llama_recipe.build.get(phase, [])
     )
     require("LLAMA_USE_PREBUILT_UI=OFF" in llama_commands, "llama.cpp build must not fetch UI assets")
+    require("KI2_SYSROOT_LDFLAGS" in llama_commands, "llama.cpp must link against the packaged KIKI C++ runtime")
     require("libstdc++.so.6.0.29" in llama_commands, "llama.cpp package must carry its source-built C++ runtime")
     require("kiki-ops-model" in llama_recipe.dependencies.get("build", []), "llama.cpp must build against the verified GGUF model package")
     require(
@@ -384,8 +415,21 @@ def verify_contract(repo_root: Path) -> dict[str, Any]:
         "distro/sources/kiki-ai-console/etc/systemd/system/kiki-ai-console@.service",
         "distro/sources/kiki-ai-console/etc/systemd/system/kiki-llama-server.service",
         "distro/sources/kiki-ai-console/etc/kiki/ai-console.json",
+        "distro/sources/kiki-ai-console/usr/libexec/kiki-llama-runtime",
+        "distro/sources/kiki-ai-console/var/lib/machines/kiki-ai/etc/os-release",
     ):
         require((repo_root / required).is_file(), f"AI console asset is missing: {required}")
+    llama_unit = (repo_root / "distro/sources/kiki-ai-console/etc/systemd/system/kiki-llama-server.service").read_text(encoding="utf-8")
+    llama_launcher = (repo_root / "distro/sources/kiki-ai-console/usr/libexec/kiki-llama-runtime").read_text(encoding="utf-8")
+    console_unit = (repo_root / "distro/sources/kiki-ai-console/etc/systemd/system/kiki-ai-console@.service").read_text(encoding="utf-8")
+    require("/usr/libexec/kiki-llama-runtime" in llama_unit, "llama.cpp service must use the isolated runtime launcher")
+    require(
+        "systemd-nspawn" in llama_launcher
+        and "--register=yes" in llama_launcher
+        and "--bind-ro=/usr" in llama_launcher,
+        "llama.cpp runtime must prefer a machinectl-managed systemd-nspawn lightweight container",
+    )
+    require("--wait-local-runtime=90s" in console_unit, "tty1 AI console must wait for the local runtime readiness check")
     profile_paths = [repo_root / "distro/profiles/server-core.toml", *sorted((repo_root / "distro/profiles").glob("kiki-kube-*.yaml"))]
     for profile_path in profile_paths:
         profile = ki2build.load_profile(profile_path)
@@ -395,10 +439,17 @@ def verify_contract(repo_root: Path) -> dict[str, Any]:
         require("kiki-ai-console@tty1.service" in services, f"{profile_path.name}: tty1 AI console is missing")
         require("getty@tty2.service" in services, f"{profile_path.name}: tty2 recovery shell is missing")
         require("getty@tty1.service" not in services, f"{profile_path.name}: tty1 getty conflicts with the AI console")
+    server_profile = ki2build.load_profile(repo_root / "distro/profiles/server-core.toml")
+    require(
+        server_profile.get("groups") == ["server", "ai-console", "installer-gui"],
+        "server-core must include the graphical installer package group",
+    )
+    require("kiki-installer-gtk" in server_profile.get("packages", []), "server-core graphical installer package is missing")
     os_build_plan = load_yaml(repo_root / "distro/build-plans/stage3-server-core.yaml")
     require(os_build_plan.get("schema") == "kiki-os-build-plan-v1", "Stage 3 OS build plan schema is invalid")
     require(os_build_plan.get("name") == "stage3-server-core", "Stage 3 OS build plan name is invalid")
     require(os_build_plan.get("build", {}).get("profile") == "distro/profiles/server-core.toml", "Stage 3 build plan must use server-core")
+    require(os_build_plan.get("graphics", {}).get("enabled") is True, "Stage 3 GTK/Wayland runtime preparation is disabled")
     require(os_build_plan.get("repository", {}).get("algorithm") == "ed25519", "Stage 3 repository must use Ed25519")
     require(os_build_plan.get("verify", {}).get("stage3_contract") is True, "Stage 3 contract gate is missing from the OS build plan")
     require(os_build_plan.get("iso", {}).get("enabled") is False, "Stage 3 ISO build must require explicit activation")
