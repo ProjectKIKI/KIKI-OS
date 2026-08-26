@@ -24,6 +24,13 @@ class Ki2BuildTests(unittest.TestCase):
         command = [sys.executable, str(SCRIPT), "--repo-root", str(root), *args]
         return subprocess.run(command, text=True, capture_output=True, check=True)
 
+    def test_hyperv_drm_is_the_only_synthetic_video_owner(self):
+        config = (SCRIPT.parents[1] / "distro/kernel/x86_64-vm-stage1.config").read_text(encoding="utf-8")
+        self.assertIn("CONFIG_DRM_HYPERV=y", config)
+        self.assertIn("CONFIG_DRM_FBDEV_EMULATION=y", config)
+        self.assertIn("# CONFIG_FB_HYPERV is not set", config)
+        self.assertNotRegex(config, r"(?m)^CONFIG_FB_HYPERV=(?:y|m)$")
+
     def test_local_build_repo_and_rootfs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

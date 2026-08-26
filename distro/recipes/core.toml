@@ -25,7 +25,7 @@ system = "copy"
 [[recipe]]
 name = "linux"
 version = "6.9.9"
-release = 2
+release = 3
 summary = "Linux kernel for KIKI OS"
 license = "GPL-2.0-only"
 tier = "kernel"
