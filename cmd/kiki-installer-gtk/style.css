@@ -24,6 +24,12 @@ headerbar {
   margin-bottom: 12px;
 }
 
+.package-count {
+  color: #1d4ed8;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
 entry, dropdown, textview {
   border-radius: 8px;
 }

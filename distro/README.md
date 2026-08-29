@@ -421,9 +421,19 @@ python tools/ki2bootiso.py --profile bootstrap-stage1
 python tools/ki2bootiso.py --profile bootstrap-stage1 --mode installer
 ```
 
-설치 ISO는 KIKI 로고와 콘솔 TUI를 제공한다. 설치기는 패키지 선택, 자동/수동
-파티셔닝, 사용자 생성, systemd 유닛 활성화, UEFI 대체 부트 파일 설치를
-수행한다.
+Stage 3 설치 ISO는 KIKI 로고와 GTK 4 GUI, 전체 화면 TUI, Stage-1 CLI를
+제공한다. 기본 부팅 순서는 GUI → TUI → CLI이며, 앞 단계가 실행되지 않거나
+종료되면 다음 단계로 폴백한다. 모든 프런트엔드는 동일한 선언형 설치 계획서를
+사용한다. 설치기는 패키지 선택, 자동/수동 파티셔닝, 사용자 생성, systemd 유닛
+활성화, UEFI 대체 부트 파일 설치를 수행한다. GTK에서 설치를 시작하면 단계별
+진행률, 완료/전체 패키지 개수와 현재 패키지를 표시하고, 완료 화면에서 사용자가 확인한 경우에만
+재부팅한다.
+
+GTK 화면은 Xorg가 아니라 Cage/Wayland와 DRM/KMS를 사용한다. Hyper-V 커널은
+`CONFIG_DRM_HYPERV=y`, `CONFIG_DRM_FBDEV_EMULATION=y`를 활성화하고 충돌하는
+`CONFIG_FB_HYPERV`를 비활성화해야 한다. ISO 생성 시에는 서명 저장소의 최신
+`linux-*.ki2` 패키지를 rootfs에 남은 커널보다 우선한다. 가속 렌더 노드가 없는
+Hyper-V 출력은 `WLR_RENDERER=pixman`과 DRM dumb buffer를 사용한다.
 
 네트워크 기본값은 `systemd-networkd` DHCP다. 설치기는 기본적으로 `en* eth*`
 인터페이스에 DHCPv4, IPv6 RA, `systemd-resolved`를 설정한다. Guided 설치에서는

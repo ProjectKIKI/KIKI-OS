@@ -71,7 +71,9 @@ typedef unsigned long long u64;
 #define SYS_wait4 61
 #define SYS_fsync 74
 #define SYS_chdir 80
+#define SYS_rename 82
 #define SYS_mkdir 83
+#define SYS_unlink 87
 #define SYS_symlink 88
 #define SYS_chmod 90
 #define SYS_chown 92
@@ -83,6 +85,13 @@ typedef unsigned long long u64;
 #define SYS_reboot 169
 #define SYS_getdents64 217
 #define SYS_exit 60
+
+#define WNOHANG 1
+
+#define GUI_INSTALL_REQUEST_PATH "/run/kiki/gui-install.request"
+#define GUI_INSTALL_PROGRESS_PATH "/run/kiki/install-progress.state"
+#define GUI_INSTALL_PROGRESS_TMP_PATH "/run/kiki/install-progress.state.tmp"
+#define GUI_REBOOT_REQUEST_PATH "/run/kiki/gui-reboot.request"
 
 #define BLKRRPART 0x125f
 
@@ -119,6 +128,12 @@ static long ksys(long n, long a, long b, long c, long d, long e, long f) {
 
 static char copy_buffer[1024 * 1024];
 static char preferred_install_disk[128];
+static int gui_install_active = 0;
+static int gui_install_succeeded = 0;
+static int gui_install_last_percent = 0;
+static int gui_packages_installed = 0;
+static int gui_packages_total = 0;
+static char gui_current_package[64];
 
 static size_t kstrlen(const char *text) {
     size_t len = 0;
@@ -349,6 +364,53 @@ static int write_text_file_mode(const char *path, const char *text, long mode) {
     return 1;
 }
 
+static void remove_file(const char *path) {
+    ksys(SYS_unlink, (long)path, 0, 0, 0, 0, 0);
+}
+
+static void write_gui_install_progress(const char *state, int percent, const char *phase, const char *message) {
+    char content[1024];
+    size_t out = 0;
+    if (!gui_install_active) return;
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    gui_install_last_percent = percent;
+    out = append_string(content, sizeof(content), out, "version=1\nstate=");
+    out = append_string(content, sizeof(content), out, state ? state : "running");
+    out = append_string(content, sizeof(content), out, "\npercent=");
+    out = append_u64(content, sizeof(content), out, (u64)percent);
+    out = append_string(content, sizeof(content), out, "\nphase=");
+    out = append_string(content, sizeof(content), out, phase ? phase : "");
+    out = append_string(content, sizeof(content), out, "\nmessage=");
+    out = append_string(content, sizeof(content), out, message ? message : "");
+    out = append_string(content, sizeof(content), out, "\npackages_installed=");
+    out = append_u64(content, sizeof(content), out, (u64)gui_packages_installed);
+    out = append_string(content, sizeof(content), out, "\npackages_total=");
+    out = append_u64(content, sizeof(content), out, (u64)gui_packages_total);
+    out = append_string(content, sizeof(content), out, "\npackage=");
+    out = append_string(content, sizeof(content), out, gui_current_package);
+    append_string(content, sizeof(content), out, "\n");
+    if (!write_text_file_mode(GUI_INSTALL_PROGRESS_TMP_PATH, content, 0644)) return;
+    ksys(SYS_rename, (long)GUI_INSTALL_PROGRESS_TMP_PATH, (long)GUI_INSTALL_PROGRESS_PATH, 0, 0, 0, 0);
+}
+
+static void write_gui_package_progress(int installed, int total, const char *name, int completed) {
+    char message[256];
+    size_t out = 0;
+    int percent = total > 0 ? 45 + (installed * 35 / total) : 45;
+    gui_packages_installed = installed;
+    gui_packages_total = total;
+    copy_string(gui_current_package, sizeof(gui_current_package), name ? name : "");
+    out = append_string(message, sizeof(message), out,
+                        completed ? "패키지 설치 완료 " : "패키지 설치 중 ");
+    out = append_u64(message, sizeof(message), out, (u64)installed);
+    out = append_string(message, sizeof(message), out, "/");
+    out = append_u64(message, sizeof(message), out, (u64)total);
+    out = append_string(message, sizeof(message), out, completed ? ": " : " 완료: ");
+    append_string(message, sizeof(message), out, name ? name : "");
+    write_gui_install_progress("running", percent, "패키지 설치", message);
+}
+
 static int append_text_file_mode(const char *path, const char *text, long mode) {
     int fd = kopen_mode(path, O_WRONLY | O_CREAT | O_APPEND, mode);
     if (fd < 0) {
@@ -461,7 +523,7 @@ static int run_program(const char *path, char **argv) {
     return status == 0 ? 0 : 1;
 }
 
-static int run_graphical_program(const char *path, char **argv) {
+static long spawn_graphical_program(const char *path, char **argv) {
     static char *envp[] = {
         "PATH=/bin:/sbin:/usr/bin:/usr/sbin",
         "HOME=/root",
@@ -473,11 +535,11 @@ static int run_graphical_program(const char *path, char **argv) {
         "GSK_RENDERER=cairo",
         "LIBSEAT_BACKEND=builtin",
         "WLR_BACKENDS=drm,libinput",
-        "WLR_RENDERER=gles2",
-        // Hyper-V exposes a KMS scanout device but no accelerated render node.
-        // Mesa therefore uses llvmpipe.  wlroots rejects software GLES2 unless
-        // this opt-in is present, which previously sent Gen-2 Hyper-V guests
-        // straight to the TUI even though hyperv_drm was working correctly.
+        // The installer needs only a small 2D UI.  Pixman renders into the DRM
+        // dumb buffers supported by scanout-only devices such as hyperv_drm,
+        // avoiding a GLES2/GBM session which can stay alive without ever
+        // replacing the firmware console on a Gen-2 Hyper-V guest.
+        "WLR_RENDERER=pixman",
         "WLR_RENDERER_ALLOW_SOFTWARE=1",
         "XKB_DEFAULT_LAYOUT=kr",
         "FONTCONFIG_PATH=/etc/fonts",
@@ -487,7 +549,7 @@ static int run_graphical_program(const char *path, char **argv) {
     long pid = ksys(SYS_fork, 0, 0, 0, 0, 0, 0);
     if (pid < 0) {
         say("graphical installer fork failed\n");
-        return 1;
+        return -1;
     }
     if (pid == 0) {
         int log_fd = kopen_mode("/run/kiki/gui-installer.log", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -506,20 +568,24 @@ static int run_graphical_program(const char *path, char **argv) {
         for (;;) {
         }
     }
+    return pid;
+}
+
+static int poll_graphical_program(long pid, int *exit_status) {
     int status = 0;
-    for (;;) {
-        long waited = ksys(SYS_wait4, pid, (long)&status, 0, 0, 0, 0);
-        if (waited >= 0) {
-            break;
-        }
-        if (waited != -EINTR) {
-            return 1;
-        }
+    long waited = ksys(SYS_wait4, pid, (long)&status, WNOHANG, 0, 0, 0);
+    if (waited == 0) return 0;
+    if (waited < 0) {
+        if (waited == -EINTR) return 0;
+        if (exit_status) *exit_status = 1;
+        return -1;
     }
     if ((status & 0x7f) == 0) {
-        return (status >> 8) & 0xff;
+        if (exit_status) *exit_status = (status >> 8) & 0xff;
+    } else {
+        if (exit_status) *exit_status = 128 + (status & 0x7f);
     }
-    return 128 + (status & 0x7f);
+    return 1;
 }
 
 static int run_chroot_program_input(const char *root, const char *path, char **argv, const char *input) {
@@ -600,6 +666,7 @@ static int mount_one(const char *type, const char *target, const char *source, u
 }
 
 static int service_devtmpfs = 0;
+static int service_devshm = 0;
 static int service_proc = 0;
 static int service_sysfs = 0;
 static int service_console = 0;
@@ -611,6 +678,10 @@ static void setup_mounts(void) {
     mkdir_one("/sys", 0755);
     mkdir_one("/tmp", 01777);
     service_devtmpfs = mount_one("devtmpfs", "/dev", "devtmpfs", 0, "mode=0755");
+    // Wayland/wlroots creates the compiled keyboard map with shm_open().
+    // A syscall-only initramfs does not get systemd's dev-shm.mount, so mount
+    // it explicitly after devtmpfs has replaced the initial /dev directory.
+    service_devshm = mount_one("tmpfs", "/dev/shm", "tmpfs", 0, "mode=1777");
     attach_console();
     service_console = 1;
     service_proc = mount_one("proc", "/proc", "proc", 0, "");
@@ -1389,6 +1460,7 @@ static void service_line(const char *name, int ok) {
 static void show_services(void) {
     say("basic services:\n");
     service_line("devtmpfs on /dev", service_devtmpfs);
+    service_line("tmpfs on /dev/shm", service_devshm);
     service_line("console attached", service_console);
     service_line("procfs on /proc", service_proc);
     service_line("sysfs on /sys", service_sysfs);
@@ -2505,6 +2577,8 @@ static int install_selected_packages_to_target(const char *media_root, const cha
     }
     for (int i = 0; i < selected_package_count; i++) {
         size_t out = 0;
+        if (gui_install_active)
+            write_gui_package_progress(i, selected_package_count, selected_packages[i], 0);
         if (!find_package_file_for_name(index_path, media_root, selected_packages[i], package_path, sizeof(package_path))) {
             out = append_string(line, sizeof(line), out, "Package payload missing: ");
             out = append_string(line, sizeof(line), out, selected_packages[i]);
@@ -2526,6 +2600,8 @@ static int install_selected_packages_to_target(const char *media_root, const cha
             return 0;
         }
         installed++;
+        if (gui_install_active)
+            write_gui_package_progress(installed, selected_package_count, selected_packages[i], 1);
     }
 
     char list_path[256];
@@ -3026,6 +3102,30 @@ struct network_setup {
 
 #define INSTALL_PLAN_PATH "/run/kiki/install-plan.yaml"
 #define TARGET_INSTALL_PLAN_PATH "/mnt/target/var/lib/ki2/install-plan.yaml"
+
+struct gui_install_request {
+    char plan_path[256];
+    char target_disk[128];
+    char swap_mode[16];
+    char hostname[64];
+    char admin_user[32];
+    char admin_password[96];
+    char destructive_confirm[192];
+    char locale[64];
+    char keymap[32];
+    char timezone[64];
+    char network_mode[16];
+    char network_interface[96];
+    char address[96];
+    char gateway[96];
+    char dns[160];
+    char profile[PACKAGE_NAME_LEN];
+    char runtime[32];
+    char ai_mode[16];
+    char ai_endpoint[256];
+    char packages[MAX_SELECTED_PACKAGES][PACKAGE_NAME_LEN];
+    int package_count;
+};
 
 struct install_plan {
     int quick_mode;
@@ -3901,7 +4001,108 @@ static void persist_install_plan_to_target(void) {
 
 static int cmdline_value(const char *key, char *out, size_t out_size);
 
-static void run_guided_package_installer(int quick_mode, int unattended_mode) {
+static int request_value(const char *buffer, const char *key, char *out, size_t out_size) {
+    size_t key_len = kstrlen(key);
+    out[0] = 0;
+    for (size_t i = 0; buffer[i];) {
+        size_t line = i;
+        while (buffer[i] && buffer[i] != '\n' && buffer[i] != '\r') i++;
+        size_t end = i;
+        while (buffer[i] == '\n' || buffer[i] == '\r') i++;
+        if (end <= line + key_len || buffer[line + key_len] != '=') continue;
+        size_t matched = 0;
+        while (matched < key_len && buffer[line + matched] == key[matched]) matched++;
+        if (matched != key_len) continue;
+        size_t used = 0;
+        size_t value = line + key_len + 1;
+        while (value < end && used + 1 < out_size) out[used++] = buffer[value++];
+        out[used] = 0;
+        return 1;
+    }
+    return 0;
+}
+
+static int load_gui_install_request(struct gui_install_request *request) {
+    char buffer[16 * 1024];
+    char version[16];
+    long len = 0;
+    for (size_t i = 0; i < sizeof(*request); i++) ((char *)request)[i] = 0;
+    if (!read_small_file_raw(GUI_INSTALL_REQUEST_PATH, buffer, sizeof(buffer), &len)) return 0;
+    int request_fd = kopen(GUI_INSTALL_REQUEST_PATH, O_WRONLY | O_TRUNC);
+    if (request_fd >= 0) kclose(request_fd);
+    if (!request_value(buffer, "version", version, sizeof(version)) || kstrcmp(version, "2") != 0) {
+        say("Unsupported graphical installer request version.\n");
+        return 0;
+    }
+    request_value(buffer, "plan", request->plan_path, sizeof(request->plan_path));
+    request_value(buffer, "disk", request->target_disk, sizeof(request->target_disk));
+    request_value(buffer, "swap", request->swap_mode, sizeof(request->swap_mode));
+    request_value(buffer, "hostname", request->hostname, sizeof(request->hostname));
+    request_value(buffer, "user", request->admin_user, sizeof(request->admin_user));
+    request_value(buffer, "password", request->admin_password, sizeof(request->admin_password));
+    request_value(buffer, "confirmed", request->destructive_confirm, sizeof(request->destructive_confirm));
+    request_value(buffer, "locale", request->locale, sizeof(request->locale));
+    request_value(buffer, "keymap", request->keymap, sizeof(request->keymap));
+    request_value(buffer, "timezone", request->timezone, sizeof(request->timezone));
+    request_value(buffer, "network", request->network_mode, sizeof(request->network_mode));
+    request_value(buffer, "network_interface", request->network_interface, sizeof(request->network_interface));
+    request_value(buffer, "address", request->address, sizeof(request->address));
+    request_value(buffer, "gateway", request->gateway, sizeof(request->gateway));
+    request_value(buffer, "dns", request->dns, sizeof(request->dns));
+    request_value(buffer, "profile", request->profile, sizeof(request->profile));
+    request_value(buffer, "runtime", request->runtime, sizeof(request->runtime));
+    request_value(buffer, "ai", request->ai_mode, sizeof(request->ai_mode));
+    request_value(buffer, "ai_endpoint", request->ai_endpoint, sizeof(request->ai_endpoint));
+
+    for (size_t i = 0; buffer[i] && request->package_count < MAX_SELECTED_PACKAGES;) {
+        size_t line = i;
+        while (buffer[i] && buffer[i] != '\n' && buffer[i] != '\r') i++;
+        size_t end = i;
+        while (buffer[i] == '\n' || buffer[i] == '\r') i++;
+        if (end <= line + 8 || !starts_with(buffer + line, "package=")) continue;
+        size_t used = 0;
+        size_t value = line + 8;
+        while (value < end && used + 1 < PACKAGE_NAME_LEN) {
+            request->packages[request->package_count][used++] = buffer[value++];
+        }
+        request->packages[request->package_count][used] = 0;
+        if (used) request->package_count++;
+    }
+    char expected[192];
+    size_t expected_out = 0;
+    expected_out = append_string(expected, sizeof(expected), expected_out, "INSTALL ");
+    append_string(expected, sizeof(expected), expected_out, request->target_disk);
+    for (size_t i = 0; i < sizeof(buffer); i++) buffer[i] = 0;
+    if (!is_whole_disk_path(request->target_disk) || !request->profile[0] ||
+        !is_valid_username(request->admin_user) || kstrlen(request->admin_password) < 8 ||
+        kstrcmp(request->destructive_confirm, expected) != 0 || request->package_count == 0) {
+        say("Graphical installer request is incomplete or invalid.\n");
+        return 0;
+    }
+    return 1;
+}
+
+static void configure_gui_network(struct network_setup *network, const struct gui_install_request *request) {
+    for (size_t i = 0; i < sizeof(*network); i++) ((char *)network)[i] = 0;
+    copy_string(network->match_name, sizeof(network->match_name), request->network_interface[0] ? request->network_interface : "en* eth*");
+    copy_string(network->address, sizeof(network->address), request->address);
+    copy_string(network->gateway, sizeof(network->gateway), request->gateway);
+    copy_string(network->dns, sizeof(network->dns), request->dns);
+    if (kstrcmp(request->network_mode, "off") == 0) return;
+    network->enabled = 1;
+    if (kstrcmp(request->network_mode, "static") == 0) return;
+    network->dhcp4 = 1;
+    network->ipv6_ra = 1;
+}
+
+static void collect_gui_account_setup(struct account_setup *account, const struct gui_install_request *request) {
+    copy_string(account->admin_user, sizeof(account->admin_user), request->admin_user);
+    copy_string(account->admin_password, sizeof(account->admin_password), request->admin_password);
+    account->lock_root = 1;
+    say("Administrator password was supplied by the GTK installer and removed from the runtime request file.\n");
+}
+
+static void run_guided_package_installer_with_request(int quick_mode, int unattended_mode, const struct gui_install_request *gui_request) {
     char media_root[256];
     char index_path[384];
     char target[128];
@@ -3925,6 +4126,7 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     struct network_setup network;
     int auto_layout = 1;
     int has_swap = 0;
+    int boot_files_ok = 1;
     u64 esp_start = 0;
     u64 esp_sectors = 0;
     u64 swap_start = 0;
@@ -3951,7 +4153,16 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     cmdline_ai[0] = 0;
     cmdline_ai_endpoint[0] = 0;
 
-    if (unattended_mode) {
+    if (gui_request) {
+        gui_install_active = 1;
+        gui_install_succeeded = 0;
+        gui_packages_installed = 0;
+        gui_packages_total = 0;
+        gui_current_package[0] = 0;
+        write_gui_install_progress("running", 2, "설치 준비", "설치 요청과 대상 환경을 검증하고 있습니다.");
+        tui_header("Graphical install handoff");
+        say("The GTK installer validated the account password and destructive confirmation. Installation progress follows.\n\n");
+    } else if (unattended_mode) {
         tui_header("Autoinstall");
         say("Automatic path from kernel command line: kiki.autoinstall=erase|quick-vm.\n");
         say("This mode is destructive and intended for controlled VM or lab automation.\n\n");
@@ -3975,7 +4186,47 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
         say("Cannot find package repository index on installer media.\n");
         return;
     }
-    if (unattended_mode) {
+    if (gui_request)
+        write_gui_install_progress("running", 6, "설치 미디어 확인", "로컬 패키지 저장소를 확인했습니다.");
+    if (gui_request) {
+        const char *runtime = kstrcmp(gui_request->runtime, "profile-default") == 0 ? "" : gui_request->runtime;
+        copy_string(selected_locale, sizeof(selected_locale), gui_request->locale);
+        copy_string(selected_keymap, sizeof(selected_keymap), gui_request->keymap);
+        if (gui_request->timezone[0] == '/' || contains(gui_request->timezone, "..")) {
+            say("Invalid graphical installer timezone.\n");
+            return;
+        }
+        copy_string(selected_timezone, sizeof(selected_timezone), gui_request->timezone);
+        if (kstrcmp(gui_request->ai_mode, "local") == 0) {
+            copy_string(selected_ai_mode, sizeof(selected_ai_mode), "local");
+            copy_string(selected_ai_endpoint, sizeof(selected_ai_endpoint), "http://127.0.0.1:8080/v1/chat/completions");
+            copy_string(selected_ai_model, sizeof(selected_ai_model), "kiki-ops");
+        } else if (kstrcmp(gui_request->ai_mode, "remote") == 0 &&
+                   (starts_with(gui_request->ai_endpoint, "http://") || starts_with(gui_request->ai_endpoint, "https://")) &&
+                   !contains(gui_request->ai_endpoint, "\"") && !contains(gui_request->ai_endpoint, "\\")) {
+            copy_string(selected_ai_mode, sizeof(selected_ai_mode), "remote");
+            copy_string(selected_ai_endpoint, sizeof(selected_ai_endpoint), gui_request->ai_endpoint);
+            copy_string(selected_ai_model, sizeof(selected_ai_model), "kiki-ops");
+        } else if (kstrcmp(gui_request->ai_mode, "off") == 0) {
+            copy_string(selected_ai_mode, sizeof(selected_ai_mode), "off");
+            selected_ai_endpoint[0] = 0;
+            selected_ai_model[0] = 0;
+        } else {
+            say("Invalid graphical installer AI configuration.\n");
+            return;
+        }
+        if (!select_named_package_profile(index_path, gui_request->profile, runtime)) return;
+        selected_clear();
+        for (int i = 0; i < gui_request->package_count; i++) {
+            if (!package_exists_in_index(index_path, gui_request->packages[i])) {
+                say("Graphical install plan requests a package missing from the ISO repository: ");
+                say(gui_request->packages[i]);
+                say("\n");
+                return;
+            }
+            selected_add(gui_request->packages[i]);
+        }
+    } else if (unattended_mode) {
         cmdline_value("kiki.profile", cmdline_profile, sizeof(cmdline_profile));
         cmdline_value("kiki.runtime", cmdline_runtime, sizeof(cmdline_runtime));
         cmdline_value("kiki.locale", cmdline_locale, sizeof(cmdline_locale));
@@ -4025,10 +4276,12 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     } else if (selected_package_count == 0) {
         select_minimal_systemd_packages(index_path);
     }
+    if (gui_request)
+        write_gui_install_progress("running", 10, "프로파일 확인", "설치할 패키지와 시스템 프로파일을 확인했습니다.");
     say("Selected package install plan:\n");
     show_selected_packages();
 
-    if (!quick_mode && !unattended_mode) {
+    if (!quick_mode && !unattended_mode && !gui_request) {
         say("\nPartitioning mode\n");
         say("-----------------\n");
         say("1) Automatic whole-disk layout: ESP + swap + root\n");
@@ -4057,7 +4310,13 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
         u64 total_sectors = 0;
         list_disks();
         say("\n");
-        if (unattended_mode) {
+        if (gui_request) {
+            copy_string(target, sizeof(target), gui_request->target_disk);
+            remember_preferred_install_disk(target);
+            say("Graphical installer target disk: ");
+            say(target);
+            say("\n");
+        } else if (unattended_mode) {
             if (cmdline_value("kiki.target", cmdline_target, sizeof(cmdline_target))) {
                 if (!is_whole_disk_path(cmdline_target)) {
                     say("Invalid kiki.target value. Use a whole disk such as /dev/sda.\n");
@@ -4084,6 +4343,10 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
         disk_mib = total_sectors / 2048ULL;
         mem_mib = read_mem_total_mib();
         calculate_auto_partition_layout(disk_mib, mem_mib, selected_profile_is_kubernetes(), &esp_mib, &swap_mib, &root_mib);
+        if (gui_request && kstrcmp(gui_request->swap_mode, "off") == 0 && swap_mib > 0) {
+            root_mib += swap_mib;
+            swap_mib = 0;
+        }
         if (root_mib < 2048ULL) {
             say("Target disk is too small; need at least about 3 GiB for ESP + root.\n");
             return;
@@ -4097,6 +4360,8 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
             partition_path(target, 2, root_part, sizeof(root_part));
         }
         show_auto_partition_layout(target, esp_part, swap_part, root_part, disk_mib, mem_mib, esp_mib, swap_mib, root_mib, selected_profile_is_kubernetes());
+        if (gui_request)
+            write_gui_install_progress("running", 15, "디스크 구성", "대상 디스크의 자동 파티션 구성을 계산했습니다.");
     } else {
         char run_shell[16];
         char manual_disk[128];
@@ -4138,7 +4403,12 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
         has_swap = swap_part[0] ? 1 : 0;
     }
 
-    if (unattended_mode) {
+    if (gui_request) {
+        copy_string(hostname, sizeof(hostname), gui_request->hostname[0] ? gui_request->hostname : "localhost.localdomain");
+        say("Hostname: ");
+        say(hostname);
+        say("\n");
+    } else if (unattended_mode) {
         if (!cmdline_value("kiki.hostname", cmdline_hostname, sizeof(cmdline_hostname)) || !cmdline_hostname[0]) {
             copy_string(hostname, sizeof(hostname), "localhost.localdomain");
         } else {
@@ -4153,8 +4423,14 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
             copy_string(hostname, sizeof(hostname), "localhost.localdomain");
         }
     }
-    collect_network_setup(&network, quick_mode || unattended_mode);
-    collect_account_setup(&account, quick_mode, unattended_mode);
+    if (gui_request) {
+        configure_gui_network(&network, gui_request);
+        collect_gui_account_setup(&account, gui_request);
+        if (!account.admin_password[0]) return;
+    } else {
+        collect_network_setup(&network, quick_mode || unattended_mode);
+        collect_account_setup(&account, quick_mode, unattended_mode);
+    }
     if (!ensure_selected_ai_packages(index_path) || !ensure_selected_profile_packages(index_path)) {
         return;
     }
@@ -4165,6 +4441,8 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
         say("Failed to write declarative install plan.\n");
         return;
     }
+    if (gui_request)
+        write_gui_install_progress("running", 18, "설치 계획", "검증된 설치 계획을 생성했습니다.");
     say("\nDeclarative install plan preview\n");
     say("--------------------------------\n");
     say("The installer will execute this plan after confirmation.\n");
@@ -4175,7 +4453,13 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     size_t out = 0;
     out = append_string(expected, sizeof(expected), out, "INSTALL ");
     append_string(expected, sizeof(expected), out, auto_layout ? target : root_part);
-    if (unattended_mode) {
+    if (gui_request) {
+        say("\nGraphical confirmation accepted\n");
+        say("-------------------------------\n");
+        say("The GTK installer confirmed: ");
+        say(gui_request->destructive_confirm);
+        say("\n");
+    } else if (unattended_mode) {
         say("\nAutoinstall confirmation\n");
         say("------------------------\n");
         say("kiki.autoinstall requested destructive installation without console prompts.\n");
@@ -4205,8 +4489,10 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     }
 
     if (auto_layout) {
-        say(selected_profile_is_kubernetes() ? "\nWriting MBR partition table: ESP + ext4 root (Kubernetes swap off)...\n" : "\nWriting MBR partition table: ESP + swap + ext4 root...\n");
-        if (!write_guided_mbr(target, selected_profile_is_kubernetes(), &esp_start, &esp_sectors, &swap_start, &swap_sectors, &root_start, &root_sectors, &disk_mib, &mem_mib, &esp_mib, &swap_mib, &root_mib)) {
+        if (gui_request)
+            write_gui_install_progress("running", 20, "파티션 생성", "대상 디스크에 파티션 테이블을 기록하고 있습니다.");
+        say(has_swap ? "\nWriting MBR partition table: ESP + swap + ext4 root...\n" : "\nWriting MBR partition table: ESP + ext4 root (swap off)...\n");
+        if (!write_guided_mbr(target, !has_swap, &esp_start, &esp_sectors, &swap_start, &swap_sectors, &root_start, &root_sectors, &disk_mib, &mem_mib, &esp_mib, &swap_mib, &root_mib)) {
             return;
         }
         has_swap = swap_sectors > 0;
@@ -4218,10 +4504,16 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
         say("Partition device nodes did not appear. Reboot and retry if the hypervisor is slow to rescan disks.\n");
         return;
     }
+    if (gui_request)
+        write_gui_install_progress("running", 28, "파티션 확인", "새 파티션 장치를 확인했습니다.");
+    if (gui_request)
+        write_gui_install_progress("running", 30, "파일시스템 생성", "EFI, 루트 및 Swap 파일시스템을 생성하고 있습니다.");
     if (!format_esp_partition(esp_part) || (has_swap && !format_swap_partition(swap_part)) || !format_root_partition(root_part)) {
         say("Filesystem creation failed.\n");
         return;
     }
+    if (gui_request)
+        write_gui_install_progress("running", 40, "파일시스템 생성", "파일시스템 생성이 완료되었습니다.");
 
     mkdir_p("/mnt/target", 0755);
     mkdir_p("/mnt/esp", 0755);
@@ -4234,13 +4526,19 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
         ksys(SYS_umount2, (long)"/mnt/target", 0, 0, 0, 0, 0);
         return;
     }
+    if (gui_request)
+        write_gui_install_progress("running", 43, "대상 마운트", "설치 대상 파일시스템을 마운트했습니다.");
 
+    if (gui_request)
+        write_gui_install_progress("running", 45, "패키지 설치", "선택한 패키지 설치를 시작합니다.");
     if (!install_selected_packages_to_target(media_root, index_path, "/mnt/target")) {
         say("Package install failed. Target disk is partially installed.\n");
         ksys(SYS_umount2, (long)"/mnt/esp", 0, 0, 0, 0, 0);
         ksys(SYS_umount2, (long)"/mnt/target", 0, 0, 0, 0, 0);
         return;
     }
+    if (gui_request)
+        write_gui_install_progress("running", 82, "시스템 구성", "패키지 설치가 완료되었습니다.");
     persist_install_plan_to_target();
     if (!write_target_fstab_and_identity("/mnt/target", esp_part, root_part, has_swap ? swap_part : "", hostname)) {
         say("Failed to write target identity files.\n");
@@ -4258,6 +4556,8 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     if (!refresh_target_ld_cache("/mnt/target")) {
         say("Continuing without a refreshed ld.so.cache.\n");
     }
+    if (gui_request)
+        write_gui_install_progress("running", 90, "계정 설정", "관리자 계정과 시스템 권한을 구성하고 있습니다.");
     if (!apply_target_account_setup("/mnt/target", &account)) {
         say("Account setup failed. Target disk is partially installed.\n");
         ksys(SYS_umount2, (long)"/mnt/esp", 0, 0, 0, 0, 0);
@@ -4268,17 +4568,31 @@ static void run_guided_package_installer(int quick_mode, int unattended_mode) {
     if (selected_profile_is_kubernetes()) {
         enable_kubernetes_systemd_units();
     }
+    if (gui_request)
+        write_gui_install_progress("running", 95, "부트로더 설치", "UEFI 부팅 파일을 설치하고 있습니다.");
     if (!install_uefi_boot_files(media_root, "/mnt/target", "/mnt/esp", root_part)) {
         say("Boot file install failed. The root filesystem was installed but may not boot yet.\n");
+        boot_files_ok = 0;
     }
 
+    if (gui_request)
+        write_gui_install_progress("running", 98, "설치 마무리", "디스크 변경 내용을 동기화하고 있습니다.");
     ksys(SYS_sync, 0, 0, 0, 0, 0, 0);
     ksys(SYS_umount2, (long)"/mnt/esp", 0, 0, 0, 0, 0);
     ksys(SYS_umount2, (long)"/mnt/target", 0, 0, 0, 0, 0);
+    if (gui_request && !boot_files_ok) return;
     say("\nGuided install finished. Remove the ISO and boot the VM in UEFI mode with Secure Boot disabled.\n");
+    if (gui_request) {
+        gui_install_succeeded = 1;
+        write_gui_install_progress("completed", 100, "설치 완료", "설치가 완료되었습니다. 확인 후 재부팅할 수 있습니다.");
+    }
     if (quick_mode) {
         say("Return to the TUI and choose Reboot when you are ready.\n");
     }
+}
+
+static void run_guided_package_installer(int quick_mode, int unattended_mode) {
+    run_guided_package_installer_with_request(quick_mode, unattended_mode, NULL);
 }
 
 static void run_image_installer(void) {
@@ -4438,20 +4752,70 @@ static int try_graphical_installer(void) {
         say("udev runtime is unavailable; Cage will use the existing device nodes.\n");
     }
     char *argv[] = {"/usr/bin/cage", "--", "/usr/bin/kiki-installer-gtk", NULL};
+    remove_file(GUI_INSTALL_REQUEST_PATH);
+    remove_file(GUI_INSTALL_PROGRESS_PATH);
+    remove_file(GUI_INSTALL_PROGRESS_TMP_PATH);
+    remove_file(GUI_REBOOT_REQUEST_PATH);
     say("Starting GTK installer with the cage Wayland compositor.\n");
-    int status = run_graphical_program("/usr/bin/cage", argv);
-    say("Graphical installer exited with status ");
-    char status_line[32];
-    size_t out = 0;
-    out = append_u64(status_line, sizeof(status_line), out, (u64)status);
-    append_string(status_line, sizeof(status_line), out, "; returning to the TUI.\n");
-    say(status_line);
-    if (status != 0) {
-        show_file("GUI failure log", "/run/kiki/gui-installer.log");
-        say("The fallback TUI uses ASCII because the Linux kernel VT has no Korean glyph renderer.\n");
-        sleep_msec(2500);
+    long gui_pid = spawn_graphical_program("/usr/bin/cage", argv);
+    if (gui_pid < 0) return 0;
+
+    int status = 0;
+    for (;;) {
+        if (file_exists(GUI_INSTALL_REQUEST_PATH)) break;
+        int child_state = poll_graphical_program(gui_pid, &status);
+        if (child_state != 0) {
+            say("Graphical installer exited with status ");
+            char status_line[32];
+            size_t out = 0;
+            out = append_u64(status_line, sizeof(status_line), out, (u64)status);
+            append_string(status_line, sizeof(status_line), out, "; returning to the TUI.\n");
+            say(status_line);
+            if (status != 0) {
+                show_file("GUI failure log", "/run/kiki/gui-installer.log");
+                say("The fallback TUI uses ASCII because the Linux kernel VT has no Korean glyph renderer.\n");
+                sleep_msec(2500);
+            }
+            return 1;
+        }
+        sleep_msec(100);
     }
-    return 1;
+
+    struct gui_install_request request;
+    gui_install_active = 1;
+    gui_install_succeeded = 0;
+    gui_packages_installed = 0;
+    gui_packages_total = 0;
+    gui_current_package[0] = 0;
+    write_gui_install_progress("running", 1, "설치 요청 확인", "설치 요청을 안전하게 읽고 있습니다.");
+    say("GTK requested installation; keeping the graphical progress screen active.\n");
+    if (!load_gui_install_request(&request)) {
+        say("Cannot load the graphical install request.\n");
+        write_gui_install_progress("failed", 1, "설치 요청 오류", "설치 요청을 읽거나 검증할 수 없습니다.");
+    } else {
+        run_guided_package_installer_with_request(0, 0, &request);
+        if (!gui_install_succeeded) {
+            write_gui_install_progress("failed", gui_install_last_percent, "설치 실패",
+                                       "설치 중 오류가 발생했습니다. 화면의 안내와 콘솔 로그를 확인하세요.");
+        }
+    }
+
+    for (;;) {
+        if (gui_install_succeeded && file_exists(GUI_REBOOT_REQUEST_PATH)) {
+            write_gui_install_progress("rebooting", 100, "재부팅", "사용자 확인을 받았습니다. 시스템을 재부팅합니다.");
+            say("Graphical installer received explicit reboot confirmation.\n");
+            sleep_msec(500);
+            reboot_now();
+        }
+        int child_state = poll_graphical_program(gui_pid, &status);
+        if (child_state != 0) {
+            say(gui_install_succeeded
+                    ? "Graphical installer closed after installation; reboot was not requested.\n"
+                    : "Graphical installer closed after reporting an installation failure.\n");
+            return 2;
+        }
+        sleep_msec(100);
+    }
 }
 
 static int try_fullscreen_tui_installer(void) {
@@ -4654,8 +5018,10 @@ static int kmain(void) {
 
 #ifdef KIKI_ENABLE_INSTALLER
     if (!maybe_run_cmdline_autoinstall()) {
-        try_graphical_installer();
-        try_fullscreen_tui_installer();
+        int graphical_status = try_graphical_installer();
+        if (graphical_status != 2) {
+            try_fullscreen_tui_installer();
+        }
         installer_cli_menu();
     }
 #elif defined(KIKI_INSTALLED_STAGE1)

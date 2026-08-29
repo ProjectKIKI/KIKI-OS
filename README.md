@@ -63,7 +63,7 @@ KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 
 | 레시피 + 프로필 | `.ki2` 패키지와 OS 이미지를 재현 가능하게 만듭니다. |
 | VM / 베어메탈 | 같은 부팅 미디어를 여러 환경에서 테스트하고 설치합니다. |
 | TUI 설치기 | 디스크 파티셔닝, 패키지 선택, 사용자 생성, 네트워크 기본값을 적용합니다. |
-| CLI/TUI/GTK 설치 화면 | 지역화, 디스크, 네트워크, 소스 신뢰, 프로필, 런타임과 AI 설정을 하나의 InstallPlan으로 작성합니다. |
+| CLI/TUI/GTK 설치 화면 | 지역화, 디스크, 네트워크, 소스 신뢰, 프로필, 런타임과 AI 설정을 하나의 InstallPlan으로 작성하고 GTK에서 설치 진행·완료 확인·재부팅까지 처리합니다. |
 | systemd 기반 런타임 | `dbus`, `logind`, `networkd`, `resolved`, `sshd`, `sudo`를 운영 기본값으로 구성합니다. |
 | Go TUI 미리보기 | 선언형 설치 계획서를 상태판 형태로 렌더링하고 2단계 설치기 전환을 검증합니다. |
 | KIKI 에이전트 | 첫 부팅 자동화, 노드 프로필 적용, 클러스터 조인, 상태 보고를 담당할 예정입니다. |
@@ -107,6 +107,7 @@ KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 
 - [KIKI OS 3단계 V3 전환 계획](docs/kiki-stage3-v3-plan.ko.md)
 - [KIKI OS 3단계 V3 초안](docs/kiki-stage3-v3-draft.ko.md)
 - [KIKI OS 관리 콘솔](docs/kiki-management-console.ko.md)
+- [KIKI OS 인스톨러 구성 및 동작](docs/kiki-installer.ko.md)
 - [KIKI OS CLI/TUI/GTK 설치 프런트엔드](docs/kiki-installer-frontends.ko.md)
 - [KIKI OS 온디바이스 AI 관리 콘솔](docs/kiki-ai-console.ko.md)
 - [KIKI OS 홈페이지 콘텐츠 기준](docs/kiki-homepage-content.ko.md)
@@ -186,15 +187,18 @@ podman build -f deploy/container/Containerfile -t kiki-buildd:rocky9 .
 podman run --rm -it -p 8090:8090 -v "$PWD:/work" -e KIKI_JOBS="$(nproc)" kiki-buildd:rocky9
 ```
 
-설치 ISO 생성:
+Stage 3 GUI/TUI/CLI 설치 ISO 생성:
 
 ```bash
-python tools/ki2bootiso.py --profile bootstrap-stage1 --mode installer
+python3 tools/ki2bootiso.py \
+  --profile server-core \
+  --mode installer
 ```
 
 `--output`을 지정하지 않으면 ISO 파일명은 저장소 채널, 날짜, Git 리비전 수를
-포함한다. 현재 2단계 저장소 기준 예:
-`dist/iso/kiki-stage2-v2-installer-x86_64-20260711-rev9.iso`
+포함한다. Stage 3 설치 ISO의 기본 부팅 순서는 GTK GUI → 전체 화면 TUI →
+Stage-1 CLI다. GUI 또는 TUI가 시작되지 않으면 다음 단계로 자동 전환하며,
+GRUB에서 원하는 프런트엔드를 직접 선택할 수도 있다.
 
 HTTP 패키지 저장소 테스트:
 
@@ -226,10 +230,10 @@ go run ./cmd/kiki-installer-tui --write --plan ./install-plan.yaml
 python tools/ki2stage2.py verify-install-plan --plan ./install-plan.yaml --runtime cri-o --role compute
 ```
 
-## TUI 설치기
+## 설치 프런트엔드
 
-설치기는 부팅 시 KIKI 로고를 출력하고 콘솔 TUI를 실행합니다. 현재 기능은 다음과
-같습니다.
+설치기는 GTK 4 GUI, 전체 화면 TUI, 안전 CLI와 무인 설치가 동일한
+`kiki-install-plan-v1` 계약을 사용합니다. 현재 기능은 다음과 같습니다.
 
 - `minimal-systemd` 기본 패키지 선택
 - `kiki-kube-bootstrap`, `kiki-kube-control`, `kiki-kube-compute` 쿠버네티스 역할별 패키지 세트 선택
@@ -249,6 +253,11 @@ python tools/ki2stage2.py verify-install-plan --plan ./install-plan.yaml --runti
 - 기본 systemd 유닛 활성화
 - UEFI 대체 부팅 경로 `BOOTX64.EFI` 설치
 - 설치 전 선언형 YAML 설치 계획서 미리보기
+
+GTK GUI는 Cage/Wayland 키오스크로 실행되며 Xorg를 요구하지 않습니다. 전체 화면
+TUI에서는 방향키 또는 j/k로 이동하고 Enter로 항목을 선택하며, `:` 키로 프로필과
+패키지 그룹을 포함한 세부 설정 명령을 입력합니다. 자세한 실행 및 폴백 규칙은
+[설치 프런트엔드 문서](docs/kiki-installer-frontends.ko.md)를 참고합니다.
 
 설치 계획서는 설치 전 `/run/kiki/install-plan.yaml`에 생성되고, 패키지 설치 후
 설치된 시스템의 `/var/lib/ki2/install-plan.yaml`에 보존됩니다. 비밀번호는 계획서에
@@ -272,6 +281,12 @@ Hyper-V 2세대 가상 머신에서 테스트할 때는 보안 부팅을 끕니�
 ```powershell
 Set-VMFirmware -VMName "test-kiki-os" -EnableSecureBoot Off
 ```
+
+그래픽 설치기는 Xorg가 아니라 `hyperv_drm`의 DRM/KMS 장치를 직접 사용합니다.
+커널은 `CONFIG_DRM_HYPERV=y`, `CONFIG_DRM_FBDEV_EMULATION=y`,
+`# CONFIG_FB_HYPERV is not set` 조합이어야 합니다. `hyperv_fb`와
+`hyperv_drm`을 동시에 활성화하면 같은 합성 비디오 장치를 선점해 Cage가
+`Found 0 GPUs`로 실패할 수 있습니다.
 
 ## 문서
 

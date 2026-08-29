@@ -6,6 +6,9 @@ KIKI OS 설치기는 하나의 `kiki-install-plan-v1` 계약을 GTK GUI, 전체 
 `kiki-installer-tui`가 담당하고 GTK 앱은 이 실행 파일을 호출해 같은 YAML을
 생성한다.
 
+전체 설치 실행 구조, 디스크 작업과 빌드·검증 절차는
+[KIKI OS 인스톨러 구성 및 동작](kiki-installer.ko.md)에 정리되어 있다.
+
 패키지 역할은 `/usr/share/ki2/package-groups.json`의 공통 그룹 카탈로그를
 사용한다. GTK의 **추가 그룹(쉼표)** 입력란, TUI의
 `group add|remove <그룹>` 명령과 무인 설치의 `--groups` 옵션은 모두
@@ -73,8 +76,13 @@ KIKI_INSTALLER_CSS="$(pwd)/cmd/kiki-installer-gtk/style.css" \
 ```
 
 GTK는 웹 CSS를 직접 실행하는 것이 아니라 GTK CSS의 색상, 여백, 테두리,
-상태 클래스 등을 사용한다. 현재 GTK 앱은 계획 작성·검토·저장을 담당한다.
-실제 파티션 포맷과 패키지 추출은 ISO Stage-1 실행기가 수행한다.
+상태 클래스 등을 사용한다. GTK 앱은 계획 작성·검토·저장과 `설치 시작` 동작을
+제공한다. 시작 요청은 `/run/kiki/gui-install.request`를 통해 ISO Stage-1
+실행기로 전달되며, 실제 파티션 포맷과 패키지 추출은 Stage-1이 수행한다.
+관리자 암호와 암호 확인은 GTK 계정 화면에서 받고, 검토 화면에서
+`INSTALL /dev/...` 형식의 파괴적 확인 문자열을 입력한다. 암호는 YAML이나 영구
+디스크에 기록하지 않으며 mode 0600인 `/run` tmpfs 요청 파일로 전달한 뒤
+Stage-1이 읽자마자 파일 내용을 제거한다.
 
 Stage 3의 `server-core` 프로필은 `installer-gui` 그룹을 통해
 `kiki-installer-gtk` 패키지를 포함한다. 이 패키지는 GTK 4 앱, Cage Wayland
@@ -104,13 +112,21 @@ python3 tools/ki2build.py build \
 설치 ISO의 GRUB 기본값은 0번 `KIKI OS graphical installer (default)`이다.
 이 항목은 커널에 `kiki.ui=gui`를 전달한다. initramfs에 `cage`,
 `kiki-installer-gtk`, `kiki-installer-tui`와 GTK 4 런타임이 모두 있으면 cage
-Wayland 키오스크 세션에서 GTK 설치기를 시작한다. 구성요소가 없거나 GUI가
-종료되면 `kiki-installer-tui --fullscreen --ascii`로 자동 전환한다. Linux
+Wayland 키오스크 세션에서 GTK 설치기를 시작한다. 구성요소가 없거나 GUI 창을
+설치 요청 없이 닫으면 `kiki-installer-tui --fullscreen --ascii`로 자동 전환한다.
+`설치 시작`을 누르면 GUI에서 암호와 디스크 삭제 명령까지 확인하고 저장한
+선택값을 Stage-1 실행기로 넘긴다. GTK/Cage는 계속 실행되며
+`/run/kiki/install-progress.state`의 단계와 진행률을 한국어 화면에 표시한다.
+패키지 설치 구간에는 완료 개수/전체 개수와 현재 패키지 이름도 함께 표시한다.
+설치가 끝나면 `확인 후 재부팅` 버튼이 나타나고, 사용자가 누른 경우에만
+`/run/kiki/gui-reboot.request`를 통해 Stage-1이 재부팅한다. Linux
 커널 VT는 한글 글리프를 직접 렌더링하지 못하므로 폴백 TUI만 ASCII 안전 모드를
 사용하고, GTK 화면에서는 Noto Sans CJK로 한국어를 표시한다. GUI 시작 실패의
 원문은 `/run/kiki/gui-installer.log`에 남고 폴백 전에 화면에도 출력된다.
 Hyper-V 2세대의 `hyperv_drm`처럼 가속 렌더 노드 없이 KMS 출력만 제공하는
-가상 GPU에서는 Mesa 소프트웨어 렌더러를 명시적으로 허용한다. Xorg는 이 경로에
+가상 GPU에서는 wlroots의 CPU 기반 Pixman 렌더러와 DRM dumb buffer를 사용한다.
+GLES2/GBM 세션은 프로세스가 종료되지 않으면서 펌웨어 콘솔을 GTK 화면으로
+교체하지 못할 수 있으므로 설치기 기본값으로 강제하지 않는다. Xorg는 이 경로에
 필요하지 않으며 ISO 그래픽 설치기는 Wayland/DRM을 직접 사용한다.
 커널에서는 같은 합성 비디오 VMBus 장치를 선점하는 `CONFIG_FB_HYPERV`를 끄고
 `CONFIG_DRM_HYPERV`와 DRM fbdev 에뮬레이션만 사용한다. 이 구성이 콘솔 출력을
@@ -128,6 +144,61 @@ GRUB의 2번 `KIKI OS CLI installer (..., safe fallback)`은 `kiki.ui=cli`를
 따라서 기본 부팅 경로는 `GTK GUI → 전체 화면 TUI → Stage-1 CLI`이다.
 Stage 3 서버 빌드는 GUI 런타임을 기본 포함한다. 다른 프로필에서 GTK 4·Cage
 패키지가 없는 경우에는 첫 단계를 감지해 건너뛰고 전체 화면 TUI부터 표시한다.
+
+## Hyper-V 그래픽 오류 진단
+
+다음 로그는 Xorg 오류가 아니라 Cage/wlroots가 사용할 DRM 장치를 찾지 못했다는
+뜻이다.
+
+```text
+Found 0 GPUs, cannot create backend
+failed to add backend 'drm'
+Unable to create the wlroots backend
+```
+
+Hyper-V 2세대에서는 먼저 Secure Boot를 끄고, ISO의 부팅 커널 설정을 확인한다.
+
+```text
+CONFIG_DRM_HYPERV=y
+CONFIG_DRM_FBDEV_EMULATION=y
+# CONFIG_FB_HYPERV is not set
+```
+
+`CONFIG_FB_HYPERV=y`가 함께 설정되어 있으면 `hyperv_fb`가 합성 비디오 VMBus
+장치를 먼저 점유할 수 있으므로 잘못된 구성이다. 정상 부팅 후에는
+`/dev/dri/card0`이 생성되어야 한다. GUI 시작 과정의 전체 로그는
+`/run/kiki/gui-installer.log`에서 확인한다.
+
+오류 로그 없이 화면이 `Starting GTK installer with the cage Wayland compositor.`에
+머문다면 Cage는 실행됐지만 GLES2/GBM 렌더링 결과가 `hyperv_drm` 출력에 표시되지
+않은 상태일 수 있다. 설치 initramfs는 이를 피하기 위해
+`WLR_RENDERER=pixman`을 사용한다.
+
+`Failed to allocate shm file for keymap` 뒤에 상태 139로 종료되면 `/dev/shm`이
+준비되지 않은 것이다. 설치 initramfs는 systemd의 `dev-shm.mount`가 실행되기 전
+환경이므로 `/dev`에 devtmpfs를 마운트한 다음 `/dev/shm`에 mode 1777 tmpfs를 직접
+마운트한다. 기본 서비스 목록의 `tmpfs on /dev/shm`이 `[ OK ]`인지 확인한다.
+`failed to find data files` 또는 `Failed to load the device quirks`가 나타나지 않도록
+GTK 설치기 패키지는 `/usr/share/libinput`과 `/etc/libinput` 데이터도 포함한다.
+
+설치 ISO 생성기는 서명된 패키지 저장소의 최신 `linux-*.ki2`를 조립된 rootfs의
+커널보다 우선한다. 따라서 저장소만 갱신한 설치기 재빌드에서도 ISO가 저장소보다
+오래된 커널로 부팅하지 않는다. 특정 커널을 의도적으로 시험할 때만
+`tools/ki2bootiso.py --kernel <경로>`를 사용한다.
+
+2026-08-27 커널 수정 검증 산출물은 다음과 같다.
+
+```text
+dist/iso/kiki-stage3-v3-installer-x86_64-20260827-rev25-hyperv-drm-fix.iso
+SHA-256: db2eea8a1ed77ecb5ed2c20c518d230ba33f82c5b1d9a931131001d2178e05da
+```
+
+이 ISO는 BIOS/UEFI 부팅 항목, GUI 기본값, GUI → TUI → CLI 구성, 최신
+`linux-6.9.9-3` 패키지와 ISO 부팅 커널의 동일 해시를 정적 검증했다. 그러나
+2026-08-29 실제 Hyper-V 부팅에서 GLES2 Cage 프로세스가 종료되지 않은 채 화면이
+시작 문구에 머무르는 현상을 확인했다. 따라서 rev25도 최종 GUI 검증본으로 사용하지
+않으며, Pixman 변경을 포함해 다시 빌드한 ISO에서 화면과 입력 장치를 검증해야 한다.
+`rev24`는 오래된 커널이 포함되어 있으므로 역시 사용하지 않는다.
 
 ## AI 콘솔 배치
 

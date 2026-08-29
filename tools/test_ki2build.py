@@ -31,6 +31,11 @@ class Ki2BuildTests(unittest.TestCase):
         self.assertIn("# CONFIG_FB_HYPERV is not set", config)
         self.assertNotRegex(config, r"(?m)^CONFIG_FB_HYPERV=(?:y|m)$")
 
+    def test_installer_graphics_runtime_includes_libinput_data(self):
+        source = (SCRIPT.parents[1] / "tools/ki2graphics.py").read_text(encoding="utf-8")
+        self.assertIn('Path("/usr/share/libinput")', source)
+        self.assertIn('Path("/etc/libinput")', source)
+
     def test_local_build_repo_and_rootfs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

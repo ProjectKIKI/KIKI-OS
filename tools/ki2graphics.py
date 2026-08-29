@@ -314,6 +314,11 @@ def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs
         Path("/etc/fonts"),
         Path("/usr/share/fontconfig"),
         Path("/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc"),
+        # libinput treats the installed quirks database as runtime data.  It is
+        # not part of the shared-library ABI closure and must be copied
+        # explicitly for keyboards and pointing devices in the initramfs.
+        Path("/usr/share/libinput"),
+        Path("/etc/libinput"),
         Path("/usr/lib/udev"),
     ):
         copy_path(asset, output)

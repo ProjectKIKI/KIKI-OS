@@ -74,7 +74,7 @@
    - 루트 신뢰 저장소와 키 교체 정책을 정의한다.
    - `ki2ctl update --require-signature`를 운영 기본값으로 승격한다.
 
-## 구현 진행 상황 (2026-08-22)
+## 구현 진행 상황 (2026-08-27)
 
 - [x] Stage 2 V2 기준선과 Stage 3 관리 플랫폼 기능 브랜치를 통합했다.
 - [x] 배포판 기본값, 역할 프로필, 설치 계획서, 운영자 override, 일회성 인자를
@@ -125,6 +125,19 @@
   최종 런타임 조합은 `.pyc`, 절대 심볼릭 링크, 정적 아카이브, 빌드 경로와
   ELF RPATH/RUNPATH가 모두 0건이며, 이를 위해 zlib·XZ·Expat·OpenSSL·Python
   기반 패키지의 정적 산출물과 빌드 메타데이터 정리를 레시피에 고정했다.
+- [x] GTK 4 GUI, 전체 화면 TUI, Stage-1 CLI와 무인 설치가 동일한
+  `kiki-install-plan-v1` 계약과 패키지 그룹 카탈로그를 사용하도록 통합했다.
+- [x] 설치 ISO의 기본 경로를 GTK GUI → TUI → CLI로 구성하고, Hyper-V 2세대에서
+  `hyperv_fb`와 `hyperv_drm`의 장치 점유 충돌을 제거했다.
+- [x] 설치 ISO가 조립된 rootfs보다 서명 저장소의 최신 Linux 패키지를 우선하도록
+  변경하고 회귀 테스트를 추가했다. 2026-08-27 rev25 ISO의 부팅 커널과
+  `linux-6.9.9-3` 패키지 해시가 일치함을 확인했다.
+- [x] Hyper-V의 scanout-only DRM 장치에서 GLES2/GBM 세션이 화면을 넘기지 못하는
+  문제를 피하도록 설치기 렌더러를 CPU 기반 Pixman으로 변경했다.
+- [x] GTK 설치기를 종료하지 않고 Stage-1의 단계·패키지 진행률을 표시하며,
+  설치 완료 화면에서 사용자가 확인한 뒤에만 재부팅하도록 상태 IPC를 연결했다.
+- [ ] Pixman 변경을 포함한 ISO를 다시 빌드해 실제 Hyper-V GUI 표시와 키보드·마우스
+  입력, 설치 진행 화면, 완료 확인 재부팅과 설치 시작 전 GUI 종료 후 TUI 폴백을 검증한다.
 - [ ] 실제 KIKI OS VM의 systemd system bus에서 firewalld 서비스를 기동하고
   nftables 백엔드 적용 및 재기동 상태를 검증한다.
 - [ ] 준비된 KIKI OS VM에서 1대/2대/3대 매트릭스를 실제 통과시키고 결과를 보관한다.
