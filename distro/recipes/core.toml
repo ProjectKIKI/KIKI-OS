@@ -24,16 +24,16 @@ system = "copy"
 
 [[recipe]]
 name = "linux"
-version = "6.9.9"
-release = 3
+version = "6.1.187"
+release = 2
 summary = "Linux kernel for KIKI OS"
 license = "GPL-2.0-only"
 tier = "kernel"
 architectures = ["x86_64"]
 [recipe.source]
 type = "url"
-url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.9.tar.xz"
-sha256 = "2be05b487eb239a3bf687d628a8f104177d09c310f00bcc2a5e50f1733421eb9"
+url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.1.187.tar.xz"
+sha256 = "1b6e798aeaa708ca670a426ad5a6c86dc2237b8e59e8822876976c383873642b"
 [recipe.dependencies]
 build = []
 runtime = []
@@ -44,7 +44,7 @@ strip_module_build_links = true
 
 [[recipe]]
 name = "linux-headers"
-version = "6.9.9"
+version = "6.1.187"
 release = 1
 summary = "Linux kernel UAPI headers"
 license = "GPL-2.0-only"
@@ -52,8 +52,8 @@ tier = "toolchain"
 architectures = ["x86_64"]
 [recipe.source]
 type = "url"
-url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.9.tar.xz"
-sha256 = "2be05b487eb239a3bf687d628a8f104177d09c310f00bcc2a5e50f1733421eb9"
+url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.1.187.tar.xz"
+sha256 = "1b6e798aeaa708ca670a426ad5a6c86dc2237b8e59e8822876976c383873642b"
 [recipe.dependencies]
 build = []
 runtime = []

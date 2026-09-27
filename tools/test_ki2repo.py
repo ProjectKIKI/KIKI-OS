@@ -8,6 +8,34 @@ import ki2repo
 
 
 class Ki2RepoTests(unittest.TestCase):
+    def test_explicit_staged_release_not_filtered_by_current_recipe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages = root / "packages"
+            repo = root / "repo"
+            packages.mkdir()
+            write_package(packages / "release-only-1-1.x86_64.ki2", name="release-only", tier="base", runtime=[])
+            args = fake_args(root=root, packages=packages, repo=repo, iso=root / "iso")
+            args.include_all_staged = True
+            self.assertEqual(ki2repo.generate(args)["packages"], 1)
+
+    def test_empty_or_parent_package_directory_does_not_write_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages = root / "packages"
+            packages.mkdir()
+            repo = root / "repo"
+            args = fake_args(root=root, packages=packages, repo=repo, iso=root / "iso")
+            with self.assertRaisesRegex(ki2repo.Ki2RepoError, "no matching packages"):
+                ki2repo.generate(args)
+            self.assertFalse(repo.exists())
+            nested = packages / "x86_64"
+            nested.mkdir()
+            write_package(nested / "base-1-1.x86_64.ki2", name="base", tier="base", runtime=[])
+            with self.assertRaisesRegex(ki2repo.Ki2RepoError, "no matching packages"):
+                ki2repo.generate(args)
+            self.assertFalse(repo.exists())
+
     def test_generate_writes_index_metadata_and_channels(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

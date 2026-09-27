@@ -479,8 +479,11 @@ def generate(args: argparse.Namespace) -> dict[str, Any]:
     packages = scan_packages(
         args.packages_dir,
         args.arch,
-        current_files=current_recipe_package_files(args.repo_root, args.arch),
+        current_files=(None if getattr(args, "include_all_staged", False)
+                       else current_recipe_package_files(args.repo_root, args.arch)),
     )
+    if not packages:
+        raise Ki2RepoError("no matching packages; --packages-dir must point directly to the directory containing .ki2 files")
     index = build_index(packages, args.arch, created_at)
     index_path = args.repo_dir / f"index.{args.arch}.json"
     write_json(index_path, index)
@@ -631,6 +634,8 @@ def build_parser() -> argparse.ArgumentParser:
     generate_parser.add_argument("--description", default="KIKI OS .ki2 package repository")
     generate_parser.add_argument("--channel", default=DEFAULT_STAGE2_CHANNEL)
     generate_parser.add_argument("--base-url", default="")
+    generate_parser.add_argument("--include-all-staged", action="store_true",
+                                 help="index every staged package, including release artifacts older than current recipes")
     generate_parser.add_argument("--sign-key", type=Path, default=None, help="optional HMAC or Ed25519 private signing key")
     generate_parser.add_argument("--sign-algorithm", choices=("auto", HMAC_SIGNATURE_ALGORITHM, ED25519_SIGNATURE_ALGORITHM), default="auto")
     generate_parser.set_defaults(func=command_generate)
