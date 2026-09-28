@@ -1,0 +1,22 @@
+#!/usr/bin/bash
+# Rootful Podman bootstrap preflight. This does not start containers or pull images.
+set -eu
+
+if [ ! -f /sys/fs/cgroup/cgroup.controllers ]; then
+    echo 'Podman requires cgroup v2 on KIKI OS' >&2
+    exit 1
+fi
+for command in podman conmon crun; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+        echo "missing Podman dependency: $command" >&2
+        exit 1
+    fi
+done
+for helper in /usr/libexec/podman/netavark /usr/libexec/podman/aardvark-dns; do
+    if [ ! -x "$helper" ]; then
+        echo "missing Podman network helper: $helper" >&2
+        exit 1
+    fi
+done
+podman --version
+podman info --format 'cgroup={{.Host.CgroupsVersion}} network={{.Host.NetworkBackend}} storage={{.Store.GraphDriverName}}'

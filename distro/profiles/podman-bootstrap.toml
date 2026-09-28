@@ -1,0 +1,5 @@
+[profile]
+name = "podman-bootstrap"
+description = "Opt-in rootful Podman and Quadlet bootstrap; requires KIKI runtime validation"
+arch = "x86_64"
+packages = ["kiki-podman-bootstrap"]

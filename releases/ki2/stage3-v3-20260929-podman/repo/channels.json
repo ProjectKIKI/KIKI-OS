@@ -1,0 +1,15 @@
+{
+  "channels": {
+    "stage3-v3": {
+      "arch": "x86_64",
+      "base_url": "",
+      "index": "repo/index.x86_64.json",
+      "index_sha256": "39c61c95f2b66bde06771afd1ad0125863dd4037d77cbecfe16fe6ffeef49cc1",
+      "metadata": "repo/metadata.x86_64.json",
+      "metadata_sha256": "eda87fbdac265d257f510dd252ddb7664348024618a39a2d746a7ded0f2061a4"
+    }
+  },
+  "created_at": "2026-09-28T16:56:45.338002+00:00",
+  "name": "kiki-os",
+  "schema": "ki2-repository-channels-v1"
+}

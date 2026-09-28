@@ -1,0 +1,18 @@
+[[recipe]]
+name = "kiki-podman-bootstrap"
+version = "5.8.2"
+release = 5
+summary = "Experimental rootful Podman/Quadlet with isolated Rocky 9 host ABI libraries"
+license = "Multiple (see bundled license files)"
+tier = "server"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "build/ki2/host-podman/rootfs"
+inputs = ["tools/ki2podman.py", "distro/sources/kiki-podman"]
+[recipe.dependencies]
+build = []
+runtime = ["glibc", "libseccomp", "systemd", "bash", "conmon", "crun", "iptables", "nftables", "shadow"]
+[recipe.build]
+system = "copy"
+skip_sysroot = true

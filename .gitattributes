@@ -14,3 +14,5 @@
 *.network text eol=lf
 Containerfile text eol=lf
 deploy/container/* text eol=lf
+distro/sources/kiki-podman/usr/bin/* text eol=lf
+releases/ki2/stage3-v3-20260929-podman/repo/*.json text eol=lf
