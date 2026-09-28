@@ -1,5 +1,9 @@
 # KIKI OS 운영자 가이드
 
+> 이 문서는 전체 기능의 참고서다. Stage3 로컬 빌드 서버의 현재 절차는
+> [전용 가이드](kiki-stage3-local-builder.ko.md)를, Podman 시험 ISO의
+> 미검증 항목은 [r21 후보 기록](kiki-podman-r21-release.ko.md)을 우선한다.
+
 이 문서는 KIKI OS의 현재 기능, 빌드 흐름, 패키지 작성 방법, 설치기 동작,
 네트워크 방향을 한국어로 정리한 운영자용 문서다.
 

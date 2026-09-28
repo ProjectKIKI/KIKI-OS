@@ -1,5 +1,9 @@
 # KIKI OS 빌드 자동화 도구
 
+> Stage3 신규 빌드는 `distro/build-plans/stage3-server-core.yaml`을 명시한다.
+> 아래의 인자 없는 명령은 도구의 Stage2 기본 계획을 사용한다. 로컬 서버 설치와
+> 실제 Stage3 절차는 [로컬 빌더 가이드](kiki-stage3-local-builder.ko.md)를 참조한다.
+
 `tools/ki2osbuild.py`는 KIKI OS 전체 빌드를 선언형 YAML 계획서로 실행하는
 오케스트레이터다. 기존 도구를 새로 대체하지 않고 다음 흐름을 하나로 묶는다.
 
@@ -50,7 +54,7 @@ python tools/ki2osbuild.py plan
 ISO까지 포함할 계획을 확인하려면 다음처럼 실행한다.
 
 ```bash
-python tools/ki2osbuild.py plan --iso
+python tools/ki2osbuild.py plan --build-plan distro/build-plans/stage3-server-core.yaml --iso
 ```
 
 ## 실제 빌드
@@ -74,7 +78,7 @@ python tools/ki2osbuild.py run --dry-run
 ISO까지 생성하려면 명시적으로 `--iso`를 붙인다.
 
 ```bash
-python tools/ki2osbuild.py run --iso
+python tools/ki2osbuild.py run --build-plan distro/build-plans/stage3-server-core.yaml --iso
 ```
 
 ## 산출물 기록
