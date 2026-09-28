@@ -1,24 +1,18 @@
-# kiki-agent Stage 3 commands
+# kiki-agent Stage3 명령
 
-The Go `kiki-agent` keeps the existing inventory and InfraOps reporting commands
-and adds the guarded Stage 3 configuration path. The distribution package
-installs it as `/usr/libexec/kiki-agent-stage3`; the compatible Python
-`/usr/bin/kiki-agent` delegates the Stage 3 subcommands to that binary.
+Go 기반 `kiki-agent`는 기존 인벤토리·InfraOps 보고 기능에 보호 장치가 있는 Stage3 설정 경로를 더한다. 배포 패키지는 실행 파일을 `/usr/libexec/kiki-agent-stage3`에 설치하며, 기존 Python `/usr/bin/kiki-agent`는 Stage3 하위 명령을 이 파일에 위임한다.
 
-## Merge and reconcile
+## 설정 병합 및 조정
 
-Configuration layers are merged in this order:
+설정은 다음 순서로 병합한다. 뒤의 계층이 앞의 계층보다 우선한다.
 
 1. `/usr/share/kiki/defaults/*.yaml`
 2. `/usr/share/kiki/profiles/<role>.yaml`
 3. `/var/lib/ki2/install-plan.yaml`
 4. `/etc/kiki/overrides/*.yaml`
-5. one-shot command flags
+5. 일회성 명령행 인자
 
-Maps merge by key, ordinary lists replace earlier lists, and a list can append
-explicitly with `{merge_strategy: append, items: [...]}`. The merged plan is
-written with mode `0600`; plaintext token/password/private-key fields are
-redacted while secret references remain.
+맵은 키별로 병합하고, 일반 목록은 앞선 목록을 대체한다. 목록을 덧붙이려면 `{merge_strategy: append, items: [...]}`를 명시한다. 병합된 계획은 권한 `0600`으로 저장한다. 평문 토큰·비밀번호·개인키 필드는 가리고 비밀 참조는 유지한다.
 
 ```bash
 kiki-agent kube reconcile --dry-run \
@@ -27,19 +21,13 @@ kiki-agent kube reconcile --dry-run \
   --ca-cert-hash sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
-Join refuses missing endpoints, token references, invalid CA hashes, and
-control-plane joins without an explicit certificate policy. CRI socket
-preflight is enabled by default. `--skip-preflight` is reserved for image and
-target-rootfs validation.
+조인 시 엔드포인트나 토큰 참조가 없거나 CA 해시가 잘못되면 거부한다. 컨트롤 플레인 조인에는 명시적 인증서 정책이 필요하다. CRI 소켓 사전 점검은 기본으로 켜져 있다. `--skip-preflight`는 이미지·대상 rootfs 검증에만 사용한다.
 
-CNI is disabled by default. When explicitly enabled, only providers in the
-configured allowlist can run and a manifest URL, manifest path, or package must
-be supplied. Dry-run reports the CNI command without applying it.
+CNI는 기본으로 비활성화된다. 활성화하면 허용 목록에 있는 공급자만 실행할 수 있으며, 매니페스트 URL·파일 경로·패키지 중 하나를 제공해야 한다. `--dry-run`은 CNI 명령을 출력하지만 적용하지 않는다.
 
-## Remote install plan
+## 원격 설치 계획
 
-The remote plan is downloaded to a quarantine path and promoted only after its
-SHA-256 digest or Ed25519 signature verifies:
+원격 계획은 격리 경로에 먼저 내려받고 SHA-256 또는 Ed25519 서명 검증 후에만 승격한다.
 
 ```bash
 kiki-agent plan fetch \
@@ -47,8 +35,7 @@ kiki-agent plan fetch \
   --sha256 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
-For signature-based bootstrapping, sign the exact YAML bytes and install only
-the public key on the target:
+서명 방식에서는 YAML의 정확한 바이트를 서명하고 대상 노드에는 공개키만 설치한다.
 
 ```bash
 kiki-agent plan fetch \
@@ -57,10 +44,6 @@ kiki-agent plan fetch \
   --public-key /etc/kiki/trust/install-plan.ed25519.pub
 ```
 
-The signature value may also be `base64:<signature>`, `@/path/to/plan.sig`, or
-a `file://` URL. If both SHA-256 and a signature are supplied, both checks must
-pass. The private key never belongs on an installed node.
+서명 값으로 `base64:<signature>`, `@/path/to/plan.sig`, `file://` URL도 사용할 수 있다. SHA-256과 서명을 모두 지정하면 두 검증을 모두 통과해야 한다. 설치된 노드에 개인키를 두지 않는다.
 
-With no `--url`, the command reads `kiki.plan.url`, `kiki.plan.sha256`, and
-`kiki.plan.signature` from `/proc/cmdline`. Unverified plans are rejected unless
-the operator passes the explicit `--allow-unverified` safety override.
+`--url`이 없으면 `/proc/cmdline`의 `kiki.plan.url`, `kiki.plan.sha256`, `kiki.plan.signature`를 읽는다. 검증되지 않은 계획은 운영자가 명시적으로 `--allow-unverified`를 지정하지 않는 한 거부한다.

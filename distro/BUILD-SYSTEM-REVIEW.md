@@ -1,10 +1,13 @@
 # KIKI 빌드 시스템 검토
 
+> 이 문서는 초기 2단계 빌드 시스템 검토 기록이다. 현재 개발 라인은 Stage3이며,
+> 최신 로컬 빌드 절차는 [Stage3 로컬 빌더 가이드](../docs/kiki-stage3-local-builder.ko.md)를 따른다.
+
 ## 현재 상태
 
 저장소에는 패키지 빌드부터 OS 이미지 조립까지 이어지는 기본 뼈대가 있다.
 전체 로드맵은 1단계, 2단계, 3단계로 나누며 상세 정의는
-`docs/kiki-os-stages.ko.md`를 기준으로 한다. 현재 위치는 2단계 개발 라인이다.
+`docs/kiki-os-stages.ko.md`를 기준으로 한다. 아래 평가는 작성 당시의 2단계 개발 상태를 설명한다.
 
 - `tools/ki2build.py`
   - TOML/YAML 레시피 로드
