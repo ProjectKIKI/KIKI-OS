@@ -1,5 +1,9 @@
 # KIKI OS 개발 단계 정의
 
+> 이 문서는 단계별 목표와 완료 기준이다. 현재 Stage3 구현·검증 상태는
+> [Stage3 로컬 빌더](kiki-stage3-local-builder.ko.md)와
+> [Podman r21 후보](kiki-podman-r21-release.ko.md)를 참조한다.
+
 KIKI OS는 1단계, 2단계, 3단계까지 진행한다. 각 단계는 “무엇이 되는가”를
 기준으로 나눈다. 기능이 늘어날 때마다 이 문서를 기준으로 현재 작업이 어느
 단계에 속하는지 판단한다.

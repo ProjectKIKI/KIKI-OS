@@ -6,13 +6,29 @@ KIKI OS는 새 VM 또는 베어메탈 머신을 쿠버네티스 노드로 바꾸
 OS입니다. ISO 또는 디스크 이미지로 부팅하면 네트워크 준비, 노드 프로필 적용,
 CRI-O 또는 containerd 기반 kubelet 구성, 클러스터 조인, 상태 보고까지 이어지는 흐름을 목표로 합니다.
 
-현재 저장소는 KIKI OS의 빌드 시스템, `.ki2` 패키지 형식, 패키지 저장소, 루트
-파일시스템 조립, BIOS/UEFI 부팅 미디어, 1단계 TUI 설치기, 빌드 웹 콘솔을 함께 다룹니다.
+현재 저장소는 KIKI OS의 빌드 시스템, `.ki2` 패키지 형식, 서명 저장소, 루트
+파일시스템 조립, BIOS/UEFI 설치 미디어, CLI/TUI/GUI 인스톨러와 빌드 웹 콘솔을 함께 다룹니다.
 
 **제작자**
 최국현<tang@dustbox.kr>
 안현
 장경빈
+
+## Stage3 현재 상태 (2026-09-29)
+
+Stage1은 부팅·설치 기준선, Stage2는 패키지 관리자·Kubernetes 준비 기준선이다.
+현재 Stage3는 진행 중이며 완료된 운영 배포판을 뜻하지 않는다. 일반 서버 빌드는
+`distro/build-plans/stage3-server-core.yaml`에서 Ed25519 서명과 rootfs를 다룬다.
+Podman r21은 119개 서명 KI2가 포함된 별도 시험용 ISO 후보이며, KIKI VM에서의
+설치·부팅·컨테이너·Quadlet 검증 전이다. [r21 상태와 해시](docs/kiki-podman-r21-release.ko.md)를 확인한다.
+
+로컬 Rocky 9/WSL2 빌드 서버 준비와 자동화는
+[Stage3 로컬 빌드 서버 가이드](docs/kiki-stage3-local-builder.ko.md)를 따른다.
+빠른 계획 확인:
+
+```bash
+bash distro/builders/stage3-local-build.sh check
+```
 
 ## 개발 환경 및 진행 상황
 

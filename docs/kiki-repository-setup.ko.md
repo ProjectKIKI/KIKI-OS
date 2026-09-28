@@ -1,5 +1,8 @@
 # KIKI 패키지 저장소 구성 가이드
 
+> 아래의 HMAC 예시는 Stage2 기록이다. Stage3 신규 빌드는 Ed25519를 쓰며
+> [Stage3 로컬 빌드 절차](kiki-stage3-local-builder.ko.md)를 따른다.
+
 이 문서는 2단계에서 사용할 `.ki2` HTTP 패키지 저장소를 구성하는 방법을
 정리한다. 여기서 말하는 저장소는 소스 코드를 보관하는 Gitea/Git 저장소가 아니라,
 KIKI OS가 `ki2ctl`로 패키지를 내려받는 정적 HTTP 저장소다.

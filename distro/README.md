@@ -1,5 +1,10 @@
 # KIKI OS 배포판 빌드 시스템
 
+> Stage3 현재 빌드 기준은 `build-plans/stage3-server-core.yaml`이다.
+> Rocky 9/WSL2 준비와 자동 실행은
+> [Stage3 로컬 빌더 가이드](../docs/kiki-stage3-local-builder.ko.md)를 참조한다.
+> 아래 Stage1/2 부트스트랩 설명은 역사적 설계·검증 범위다.
+
 `distro/`는 KIKI OS를 독립 배포판으로 만들기 위한 패키지, 프로파일, 설치
 계획, 커널 설정, 템플릿을 담는 디렉터리다. 현재 목표는 완전한 자체 빌드가
 아니라, 재현 가능한 초기 배포판 파이프라인을 만드는 것이다.
