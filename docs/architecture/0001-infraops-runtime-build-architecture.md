@@ -1,110 +1,58 @@
-# ADR 0001: KIKI InfraOps, model runtime, and build architecture
+# ADR 0001: KIKI InfraOps·모델 런타임·빌드 아키텍처
 
-- Status: Accepted
-- Date: 2026-07-31
+- 상태: 채택
+- 작성일: 2026-07-31
 
-## Context
+## 배경
 
-KIKI-OS must support ordinary Kubernetes nodes, CPU and GPU LLM inference,
-declarative infrastructure operations, and web-triggered artifact builds. These
-features have different privilege and availability requirements. Treating the
-bootstrap API, node runtime, and build system as one daemon would give routine
-workloads unnecessary host access and make recovery depend on the component
-being recovered.
+KIKI OS는 일반 Kubernetes 노드, CPU/GPU LLM 추론, 선언형 인프라 운영, 웹에서 시작하는 산출물 빌드를 지원해야 한다. 각 기능의 권한과 가용성 요구가 다르다. 부트스트랩 API, 노드 런타임, 빌드를 단일 데몬에 넣으면 일반 워크로드에 불필요한 호스트 권한이 생기고, 장애 복구가 복구 대상 구성요소에 의존한다.
 
-## Decision
+## 결정: 신뢰 경계가 분리된 네 평면
 
-KIKI uses four planes with explicit trust boundaries.
+### 호스트 평면
 
-### Host plane
+Pod를 실행하기 전 또는 Kubernetes가 중단됐을 때 필요한 커널, systemd, 네트워크, 스토리지 마운트, 장치 드라이버, containerd·kubelet, 제조사 GPU 컨테이너 런타임 연동, 최소 부트스트랩·복구 에이전트만 둔다. 복구 에이전트는 임의 원격 셸 명령을 실행하지 않는다. 버전이 있는 허용 작업만 멱등성 키와 만료 시간을 검증해 받아들인다.
 
-The host contains only what is required before Pods can run or when Kubernetes
-is unavailable:
+### 노드 워크로드 평면
 
-- kernel, systemd, networking, storage mounts, and device drivers;
-- containerd and kubelet;
-- vendor GPU container-runtime integration;
-- a minimal bootstrap and recovery agent.
+일반 노드 서비스는 Pod로 실행한다. 운영 기능을 담당하는 `kiki-agent` DaemonSet, 메트릭·로그 수집기, `kiki-modeld`·llama.cpp·vLLM·추론 게이트웨이, 사용자 워크로드 및 비특권 빌드 작업자가 여기에 속한다. 사용자 네임스페이스에는 Kubernetes Restricted Pod Security를 적용한다. 신뢰된 시스템 워크로드는 별도 네임스페이스와 범위를 좁힌 서비스 계정을 쓴다.
 
-The recovery agent does not execute arbitrary remote shell commands. It accepts
-only versioned, allow-listed operations with an idempotency key and expiry.
+### InfraOps 제어 평면
 
-### Node workload plane
+`kiki-bootstrapd`는 설치와 최초 등록을 담당한다. 장기 실행 InfraOps API는 인벤토리, 목표 상태, 작업, 승인, 감사 기록, 모델 배포, 빌드 기록, 산출물 승격을 소유한다. 컨트롤러가 목표 상태를 조정하며 API 핸들러가 호스트를 직접 변경하지 않는다.
 
-Ordinary node services run as Pods:
+### 빌드 평면
 
-- the operational part of `kiki-agent` as a DaemonSet;
-- metrics and log collectors;
-- `kiki-modeld`, llama.cpp, vLLM, and the inference gateway;
-- user workloads and unprivileged build workers.
+빌드는 불변 작업이다. rootless 작업자가 BOS·OCI 산출물을 만든다. ISO·PXE·디스크 이미지는 마운트·루프 장치·부트로더 설치·QEMU/KVM 권한이 필요할 수 있으므로 격리된 전용 이미지 팩토리 노드 또는 폐기 가능한 VM에서 만든다. 빌드 노드에는 일반 워크로드를 배치하지 않는다.
 
-User namespaces enforce the Kubernetes Restricted Pod Security profile. Trusted
-system workloads use a separate namespace and narrowly scoped service accounts.
+게시된 산출물은 다이제스트로 식별한다. 릴리스 승격에는 성공한 정책 결과와 소스 리비전, 빌더 신원, 로그, 시험 결과, SBOM, 출처 증명, 서명 참조를 기록한다.
 
-### InfraOps control plane
+## 리소스 식별
 
-`kiki-bootstrapd` remains responsible for installation and initial registration.
-The long-lived InfraOps API owns inventory, desired state, tasks, approvals,
-audit records, model deployments, build records, and artifact promotion.
-Controllers reconcile desired state; API handlers do not directly mutate hosts.
+| 리소스 | 의미 |
+| --- | --- |
+| `Machine` | 목표 물리·가상 머신 |
+| `Node` | 에이전트가 등록한 관찰된 KIKI OS 인스턴스 |
+| `Machine.status.nodeRef` | 목표 머신과 관찰 노드의 연결 |
+| `Task` | 노드에 할당된 유한하고 타입이 있는 멱등 작업 |
+| `Model` | 불변 모델 내용 및 라이선스·형식 메타데이터 |
+| `ModelDeployment` | 배치, 런타임, 자원, 엔드포인트 정책 |
+| `Build` | 고정된 소스 리비전으로 수행한 불변 빌드 시도 |
+| `Artifact` | 불변 내용. `development`·`release` 채널은 승인 다이제스트를 가리키는 가변 참조 |
 
-### Build plane
+## 런타임 선택
 
-Builds are immutable jobs. Rootless workers build BOS and OCI artifacts. ISO,
-PXE, and disk images run on tainted, dedicated image-factory nodes or disposable
-VMs because they may require mounts, loop devices, bootloader installation, or
-QEMU/KVM. Build workers cannot schedule ordinary workloads.
+1. 호환 GPU에 메모리가 충분하면 지원되는 vLLM 프로필을 고른다.
+2. vLLM 미지원 GPU에서는 llama.cpp 오프로딩 프로필을 고를 수 있다.
+3. RAM이 충분한 CPU에서는 llama.cpp GGUF 프로필을 고른다.
+4. 자원이 부족하거나 호환되지 않으면 기계가 읽을 수 있는 사유와 함께 배포를 `Pending`으로 남긴다. 모델의 정체성이나 양자화 형식을 조용히 바꾸지 않는다.
 
-Every published artifact is addressed by digest. Release promotion requires a
-successful policy result and records source revision, builder identity, logs,
-test results, SBOM, provenance, and signature references.
+추론 런타임은 내부 OpenAI 호환 게이트웨이를 통해 제공한다. InfraOps 진단은 읽기 전용 소비자이며 기존 규칙 기반 대체 경로를 유지한다.
 
-## Resource identity
+## 노드 작업 안전 불변식
 
-- `Machine` is a desired physical or virtual machine.
-- `Node` is an observed KIKI-OS instance registered by the agent.
-- `Machine.status.nodeRef` associates the desired machine with an observed node.
-- `Task` is a finite, typed, idempotent operation assigned to a node.
-- `Model` identifies immutable model content and its license/format metadata.
-- `ModelDeployment` declares placement, runtime, resources, and endpoint policy.
-- `Build` is one immutable build attempt from a pinned source revision.
-- `Artifact` is immutable content; channels such as `development` and `release`
-  are mutable references to approved artifact digests.
+각 작업에는 불변 UUID·멱등성 키, 타입이 있는 동작·스키마 검증 인자, 대상 노드·생성자·생성 시간·만료, 필요한 승인 등급, 목표·관찰·종료 상태, 제한된 실행 시간·출력 크기, 추가만 가능한 감사 기록이 있어야 한다. 프로토콜은 범용 `shell`, `command`, 실행 스크립트 동작을 제공하지 않는다. 파괴적 작업에는 명시적 승인이 필요하며 같은 주체가 생성과 승인을 함께 할 수 없다.
 
-## Runtime selection
+## 결과
 
-Runtime selection is deterministic and explainable:
-
-1. A compatible GPU with sufficient memory selects a supported vLLM profile.
-2. A GPU unsupported by vLLM may select a llama.cpp offload profile.
-3. A CPU with sufficient RAM selects a llama.cpp GGUF profile.
-4. Insufficient or incompatible resources leave the deployment Pending with a
-   machine-readable condition. The controller never silently selects a model
-   with a different identity or quantization.
-
-All inference runtimes are exposed through an internal OpenAI-compatible
-gateway. InfraOps diagnostics are read-only consumers and retain the existing
-rule-based fallback.
-
-## Task safety invariants
-
-Every node task has:
-
-- an immutable UUID and idempotency key;
-- a typed action and schema-validated parameters;
-- target node, creator, creation time, and expiry;
-- required approval class;
-- desired, observed, and terminal state;
-- bounded execution time and output size;
-- an append-only audit trail.
-
-The protocol has no generic `shell`, `command`, or executable-script action.
-Destructive operations require explicit approval and cannot be generated or
-approved by the same principal.
-
-## Consequences
-
-Kubernetes failure does not remove the minimal recovery path. Most functionality
-can still be upgraded as Pods. Privileged image builds are isolated from general
-nodes. The separation introduces more APIs, but those APIs provide stable
-boundaries for the web portal, CLI, controllers, and future storage backends.
+Kubernetes 장애에도 최소 복구 경로가 남는다. 대부분의 기능은 Pod로 업그레이드할 수 있고, 특권 이미지 빌드는 일반 노드와 분리된다. API 수는 늘어나지만 웹 포털·CLI·컨트롤러·후속 저장 백엔드를 위한 안정적인 경계가 생긴다.
