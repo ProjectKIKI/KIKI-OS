@@ -34,6 +34,19 @@ bash distro/builders/stage3-local-build.sh iso
 `build`는 `distro/build-plans/stage3-server-core.yaml`의 패키지·Ed25519 서명
 저장소·rootfs 검증 흐름을 실행한다. `iso`는 같은 흐름에 설치 ISO를 추가한다.
 기본 병렬도는 `nproc`; 예: `KIKI_BUILD_JOBS=8 bash .../stage3-local-build.sh build`.
+WSL에서 저장소가 `/mnt/c` 또는 `/mnt/e`에 있으면 임시 소스·컴파일·sysroot와
+빌드 상태를 Linux 파일시스템으로 분리할 수 있다:
+
+```bash
+KIKI_BUILD_DIR="$HOME/.cache/kiki-build" KIKI_ROOTFS_DIR="$HOME/.cache/kiki-rootfs" KIKI_BUILD_JOBS=2 bash distro/builders/stage3-local-build.sh iso
+# 관리 CLI에서도 같은 옵션 제공
+python3 tools/kiki_console.py iso --yes --jobs 2 --build-dir "$HOME/.cache/kiki-build" --rootfs-dir "$HOME/.cache/kiki-rootfs"
+```
+
+패키지·소스 다운로드 캐시·저장소 메타데이터와 rootfs/ISO의 기본 위치는 기존
+저장소 경로를 사용한다. Windows 드라이브에서 rootfs를 조립하면 Linux 권한이
+유실될 수 있으므로 `--rootfs-dir`도 Linux 경로로 지정한다. 빌더는 권한 보존을
+검사하고, 실패하면 기존 rootfs를 삭제하기 전에 중단한다. 경로는 manifest에 기록된다.
 `iso`는 빌드 단계를 다시 수행할 수 있으므로 실행 계획을 먼저 확인하고 시간을 확보한다.
 로그·단계별 결과는 `.ki2osbuild/`의 실행 디렉터리에 기록된다. 실패하면 이 기록과
 해당 단계 로그를 확인하고 수정 후 재실행한다. 이전 산출물을 무조건 삭제하거나

@@ -1,0 +1,45 @@
+[[recipe]]
+name = "libgcc"
+version = "11.5.0"
+release = 1
+summary = "GCC shared support and exception unwinding runtime for KIKI"
+license = "GPL-3.0-or-later WITH GCC-exception-3.1"
+tier = "base"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://ftp.gnu.org/gnu/gcc/gcc-11.5.0/gcc-11.5.0.tar.xz"
+file = "gcc-11.5.0.tar.xz"
+sha256 = "a6e21868ead545cf87f0c01f84276e4b5281d672098591c1c896241f09363478"
+[recipe.dependencies]
+build = ["glibc"]
+runtime = ["glibc"]
+[recipe.build]
+system = "gnu"
+configure = [
+  'cd "${KI2_BUILD_DIR}" && "${KI2_SOURCE_DIR}/configure" --prefix=/usr --target=${KI2_TARGET_TRIPLE} --with-sysroot="${KI2_SYSROOT}" --with-native-system-header-dir=/usr/include --disable-bootstrap --disable-multilib --disable-nls --enable-languages=c --enable-shared --enable-threads=posix --disable-libsanitizer --disable-libquadmath --disable-libgomp --disable-libssp --disable-libatomic',
+]
+compile = [
+  'make -C "${KI2_BUILD_DIR}" -j "${KI2_JOBS}" all-gcc',
+  'make -C "${KI2_BUILD_DIR}" -j "${KI2_JOBS}" all-target-libgcc',
+]
+install = [
+  'install -Dm755 "${KI2_BUILD_DIR}/${KI2_TARGET_TRIPLE}/libgcc/libgcc_s.so.1" "${KI2_DESTDIR}/usr/lib/libgcc_s.so.1"',
+  'ln -s libgcc_s.so.1 "${KI2_DESTDIR}/usr/lib/libgcc_s.so"',
+]
+[recipe.build.env]
+CFLAGS = "-O2 -pipe"
+CXXFLAGS = "-O2 -pipe"
+# The target has a distinct vendor triple but uses the same x86_64 ELF tools.
+# Do not let GCC synthesize nonexistent x86_64-kiki-linux-gnu-* tool names.
+AS_FOR_TARGET = "/usr/bin/as"
+LD_FOR_TARGET = "/usr/bin/ld"
+AR_FOR_TARGET = "/usr/bin/ar"
+NM_FOR_TARGET = "/usr/bin/nm"
+RANLIB_FOR_TARGET = "/usr/bin/ranlib"
+STRIP_FOR_TARGET = "/usr/bin/strip"
+OBJCOPY_FOR_TARGET = "/usr/bin/objcopy"
+OBJDUMP_FOR_TARGET = "/usr/bin/objdump"
+# libgcc's shared link rule uses CFLAGS rather than LDFLAGS_FOR_TARGET.
+CFLAGS_FOR_TARGET = "-O2 -pipe -fPIC -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -Wl,-z,relro,-z,now"
+LDFLAGS_FOR_TARGET = "${KI2_SYSROOT_LDFLAGS} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -Wl,-z,relro,-z,now"

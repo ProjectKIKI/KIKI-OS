@@ -1,0 +1,13 @@
+[Unit]
+Description=KIKI build web port 80 mapping to authenticated container
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft -f /etc/nftables/kiki-build-web.nft
+ExecStop=/usr/sbin/nft delete table ip kiki_build_web
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

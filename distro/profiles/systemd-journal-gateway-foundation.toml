@@ -1,0 +1,6 @@
+# Build-only prerequisite; does not enable an HTTP listener.
+[profile]
+name = "systemd-journal-gateway-foundation"
+description = "TLS-capable HTTP library for optional systemd journal gateway"
+arch = "x86_64"
+packages = ["libmicrohttpd", "systemd-journal-gatewayd", "systemd-journal-transport"]

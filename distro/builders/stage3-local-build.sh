@@ -6,6 +6,13 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 plan="distro/build-plans/stage3-server-core.yaml"
 mode="${1:-check}"
 jobs="${KIKI_BUILD_JOBS:-$(nproc)}"
+build_dir_args=()
+if [[ -n "${KIKI_BUILD_DIR:-}" ]]; then
+  build_dir_args=(--build-dir "$KIKI_BUILD_DIR")
+fi
+if [[ -n "${KIKI_ROOTFS_DIR:-}" ]]; then
+  build_dir_args+=(--rootfs-dir "$KIKI_ROOTFS_DIR")
+fi
 
 if [[ "$(uname -m)" != "x86_64" ]]; then
   echo "Stage 3 local builder requires x86_64" >&2
@@ -26,13 +33,13 @@ case "$mode" in
     ;;
   check)
     python3 tools/ki2build.py validate --profile distro/profiles/server-core.toml --max-packages 72
-    exec python3 tools/ki2osbuild.py plan --build-plan "$plan" --jobs "$jobs"
+    exec python3 tools/ki2osbuild.py plan --build-plan "$plan" --jobs "$jobs" "${build_dir_args[@]}"
     ;;
   build)
-    exec python3 tools/ki2osbuild.py run --build-plan "$plan" --jobs "$jobs"
+    exec python3 tools/ki2osbuild.py run --build-plan "$plan" --jobs "$jobs" "${build_dir_args[@]}"
     ;;
   iso)
-    exec python3 tools/ki2osbuild.py run --build-plan "$plan" --jobs "$jobs" --iso
+    exec python3 tools/ki2osbuild.py run --build-plan "$plan" --jobs "$jobs" --iso "${build_dir_args[@]}"
     ;;
   *)
     echo "Usage: $0 {check|deps|build|iso}" >&2

@@ -255,11 +255,16 @@ def osbuild_command(args: argparse.Namespace, action: str, *, include_iso: bool 
         command.append("--dry-run")
     if getattr(args, "run_dir", None):
         command.extend(["--run-dir", str(args.run_dir)])
+    if getattr(args, "build_dir", None):
+        command.extend(["--build-dir", str(args.build_dir)])
+    if getattr(args, "rootfs_dir", None):
+        command.extend(["--rootfs-dir", str(args.rootfs_dir)])
     return command
 
 
-def execute(command: list[str], *, cwd: Path) -> int:
-    print("$ " + shlex.join(command), flush=True)
+def execute(command: list[str], *, cwd: Path, announce: bool = True) -> int:
+    if announce:
+        print("$ " + shlex.join(command), flush=True)
     return subprocess.run(command, cwd=cwd, check=False).returncode
 
 
@@ -304,8 +309,25 @@ def command_artifacts(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_build_jobs(args: argparse.Namespace) -> int:
+    action = {"jobs": "list-jobs", "job": "show-job", "pipeline-plan": "plan", "build-web": "serve"}[args.command]
+    command = [sys.executable, "tools/ki2ci.py", action, "--repo-root", str(args.repo_root.resolve()), "--arch", args.arch]
+    if args.artifact_root:
+        command.extend(["--artifact-root", str(args.artifact_root)])
+    if getattr(args, "json", False):
+        command.append("--json")
+    if args.command == "job":
+        command.append(args.job_id)
+    elif args.command == "pipeline-plan":
+        command.extend([args.pipeline, "--jobs", str(args.jobs)])
+    elif args.command == "build-web":
+        command.extend(["--host", args.host, "--port", str(args.port), "--jobs", str(args.jobs)])
+    return execute(command, cwd=args.repo_root.resolve(), announce=not getattr(args, "json", False))
+
+
 def shell_help(out: TextIO = sys.stdout) -> None:
-    print("명령: status, doctor, verify, plan, build, iso, artifacts, help, quit", file=out)
+    print("명령: status, doctor, verify, plan, build, iso, artifacts, jobs, job, pipeline-plan, build-web, help, quit", file=out)
+    print("빌드 작업: jobs / job <작업 ID> / pipeline-plan smoke / build-web", file=out)
     print("ISO 실제 빌드는 'iso --yes'처럼 명시적으로 승인해야 합니다.", file=out)
 
 
@@ -318,11 +340,25 @@ def shell_dispatch(line: str, base: list[str]) -> int | None:
     if words[0] == "help":
         shell_help()
         return 0
-    return main([words[0], *base, *words[1:]], interactive_child=True)
+    # Shell defaults apply only to options supported by the selected command.
+    # Previously status/artifacts/verify failed because they received --build-plan.
+    parser = build_parser()
+    subcommands = next(action for action in parser._actions if isinstance(action, argparse._SubParsersAction))
+    selected = subcommands.choices.get(words[0])
+    supported = selected._option_string_actions if selected else {}
+    defaults = []
+    for index in range(0, len(base), 2):
+        if base[index] in supported and base[index] not in words[1:]:
+            defaults.extend(base[index:index + 2])
+    return main([words[0], *defaults, *words[1:]], interactive_child=True)
 
 
 def command_shell(args: argparse.Namespace) -> int:
     base = ["--repo-root", str(args.repo_root.resolve()), "--arch", args.arch, "--jobs", str(args.jobs), "--build-plan", str(args.build_plan)]
+    if args.build_dir:
+        base.extend(["--build-dir", str(args.build_dir)])
+    if args.rootfs_dir:
+        base.extend(["--rootfs-dir", str(args.rootfs_dir)])
     print("KIKI OS 대화형 관리 콘솔입니다. 'help'로 명령을 확인하세요.")
     while True:
         try:
@@ -345,6 +381,8 @@ def add_common(parser: argparse.ArgumentParser, *, plan: bool = False) -> None:
     if plan:
         parser.add_argument("--build-plan", type=Path, default=Path(DEFAULT_PLAN))
         parser.add_argument("--jobs", type=int, default=max(os.cpu_count() or 2, 2))
+        parser.add_argument("--build-dir", type=Path, help="패키지 작업·상태 경로; WSL에서는 Linux 파일시스템 권장")
+        parser.add_argument("--rootfs-dir", type=Path, help="rootfs 출력 경로; POSIX 파일 권한을 보존하는 Linux 파일시스템 필요")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -394,6 +432,29 @@ def build_parser() -> argparse.ArgumentParser:
     shell = subcommands.add_parser("shell", help="대화형 관리 콘솔 시작")
     add_common(shell, plan=True)
     shell.set_defaults(func=command_shell)
+
+    for name, description in (
+        ("jobs", "웹 빌더 작업 목록과 단계 진행률 표시"),
+        ("job", "빌드 작업 상세와 최근 로그 표시"),
+        ("pipeline-plan", "웹 빌더 파이프라인 실행 단계 미리보기"),
+        ("build-web", "로컬 웹 빌드 콘솔 실행"),
+    ):
+        child = subcommands.add_parser(name, help=description)
+        add_common(child)
+        child.add_argument("--artifact-root", type=Path, default=None)
+        if name != "build-web":
+            child.add_argument("--json", action="store_true")
+        if name == "job":
+            child.add_argument("job_id")
+        if name in {"pipeline-plan", "build-web"}:
+            child.add_argument("--jobs", type=int, default=max(os.cpu_count() or 2, 2))
+        if name == "pipeline-plan":
+            import ki2ci
+            child.add_argument("pipeline", choices=ki2ci.pipeline_names())
+        if name == "build-web":
+            child.add_argument("--host", default="127.0.0.1")
+            child.add_argument("--port", type=int, default=8090)
+        child.set_defaults(func=command_build_jobs)
     return parser
 
 

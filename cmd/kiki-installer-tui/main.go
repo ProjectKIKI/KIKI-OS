@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -131,7 +132,9 @@ type PackagesPlan struct {
 }
 
 type ServicesPlan struct {
-	Enable []string
+	Disable       []string
+	Enable        []string
+	DefaultTarget string
 }
 
 type BootPlan struct {
@@ -218,7 +221,7 @@ func main() {
 	sourceType := flag.String("source", "local", "package source: local, remote, or mirror")
 	sourceLocation := flag.String("source-location", defaultMediaRoot, "media root, repository URL, or mirror path")
 	verifyKey := flag.String("verify-key", "", "repository verification key")
-	aiMode := flag.String("ai", "local", "AI mode: local, remote, or off")
+	aiMode := flag.String("ai", "profile-default", "AI mode: profile-default, local, remote, or off")
 	aiEndpoint := flag.String("ai-endpoint", "", "OpenAI-compatible endpoint override")
 	renderOnly := flag.Bool("render", false, "render dashboard and exit")
 	writeOnly := flag.Bool("write", false, "write install plan and exit")
@@ -262,7 +265,11 @@ func main() {
 			fatalFlag(err)
 		}
 	}
-	if err := applyAI(&plan, *aiMode, *aiEndpoint); err != nil {
+	requestedAI := *aiMode
+	if requestedAI == "profile-default" {
+		requestedAI = plan.AI.Mode
+	}
+	if err := applyAI(&plan, requestedAI, *aiEndpoint); err != nil {
 		fatalFlag(err)
 	}
 	if *packageGroups != "" {
@@ -323,7 +330,7 @@ func usage() {
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  kiki-installer-tui --fullscreen [--plan /run/kiki/install-plan.yaml]")
-	fmt.Println("  kiki-installer-tui [--plan /run/kiki/install-plan.yaml] [--profile minimal-systemd|server-core|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute]")
+	fmt.Println("  kiki-installer-tui [--plan /run/kiki/install-plan.yaml] [--profile minimal-systemd|server-core|desktop-gnome|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute]")
 	fmt.Println("  kiki-installer-tui --render")
 	fmt.Println("  kiki-installer-tui --write --plan ./install-plan.yaml [--disk /dev/sda] [--locale ko_KR.UTF-8] [--timezone Asia/Seoul]")
 	fmt.Println("  kiki-installer-tui --write --mode unattended --profile server-core --ai local --source local")
@@ -349,7 +356,7 @@ func NewDefaultPlan(profile string) InstallPlan {
 		Target: TargetPlan{
 			Disk:           "/dev/sda",
 			Partitioning:   "auto-whole-disk",
-			PartitionTable: "mbr",
+			PartitionTable: "gpt",
 			DiskMiB:        0,
 			MemoryMiB:      0,
 			Filesystems: FilesystemsPlan{
@@ -452,122 +459,16 @@ func NewDefaultPlan(profile string) InstallPlan {
 	return plan
 }
 
-var minimalSystemdPackages = []string{
-	"base-files",
-	"linux",
-	"glibc",
-	"libxcrypt",
-	"zlib",
-	"expat",
-	"openssl",
-	"libcap",
-	"libseccomp",
-	"acl",
-	"attr",
-	"ncurses",
-	"util-linux",
-	"cfdisk",
-	"kmod",
-	"dbus",
-	"systemd",
-	"bash",
-	"busybox",
-	"coreutils",
-	"findutils",
-	"grep",
-	"sed",
-	"gawk",
-	"tar",
-	"gzip",
-	"xz",
-	"zstd",
-	"python",
-	"e2fsprogs",
-	"shadow",
-	"sudo",
-	"iproute2",
-	"ca-certificates",
-	"openssh",
-	"curl",
-	"ki2ctl",
-	"kiki-agent",
-	"kiki-netconfig",
-	"kiki-installer-tui",
-}
-
-var serverCorePackages = []string{
-	"bridge-utils",
-	"chrony",
-	"conntrack-tools",
-	"firewalld",
-	"nftables",
-	"iptables",
-	"socat",
-	"ethtool",
-}
-
-var serverCoreServices = []string{
-	"nftables.service",
-	"firewalld.service",
-	"chronyd.service",
-}
-
-var kubernetesCommonPackages = []string{
-	"bridge-utils",
-	"cni-plugins",
-	"cri-tools",
-	"conntrack-tools",
-	"firewalld",
-	"nftables",
-	"iptables",
-	"socat",
-	"kubelet",
-	"kubectl",
-	"kubeadm",
-	"kiki-kubeadm",
-	"ethtool",
-	"chrony",
-}
-
-var crioRuntimePackages = []string{
-	"conmon",
-	"crun",
-	"cri-o",
-	"kube-node-config",
-}
-
 var containerdRuntimePackages = []string{
 	"runc",
 	"containerd",
 	"kube-node-config-containerd",
 }
 
-var containerdStandalonePackages = []string{
-	"runc",
-	"containerd",
-	"cni-plugins",
-	"cri-tools",
-}
-
-var minimalSystemdServices = []string{
-	"dbus.service",
-	"kiki-boot-prepare.service",
-	"getty@tty1.service",
-	"systemd-logind.service",
-	"systemd-networkd.service",
-	"systemd-resolved.service",
-	"sshd.service",
-	"kiki-agent.service",
-}
-
 var kubeNodeServices = []string{
 	"crio.service",
 	"kubelet.service",
 	"chronyd.service",
-}
-
-var containerdServices = []string{
-	"containerd.service",
 }
 
 var kubernetesProfiles = map[string]string{
@@ -628,10 +529,15 @@ func ApplyProfile(plan *InstallPlan, profile string) {
 		normalized = "minimal-systemd"
 	}
 	normalized = canonicalProfile(normalized)
+	plan.Services.Disable = nil
 	plan.Packages.Profile = normalized
 	plan.Packages.Groups = []string{"minimal"}
+	if definition, ok := catalogProfiles[normalized]; ok {
+		plan.Packages.Groups = appendUnique(plan.Packages.Groups, definition.Groups...)
+	}
 	plan.Packages.Selected = append([]string{}, minimalSystemdPackages...)
 	plan.Services.Enable = append([]string{}, minimalSystemdServices...)
+	plan.Services.DefaultTarget = "multi-user.target"
 	plan.Runtime.ContainerRuntime = "none"
 	plan.Runtime.SwapPolicy = "system"
 	plan.Kubernetes = KubernetesPlan{
@@ -664,7 +570,11 @@ func ApplyProfile(plan *InstallPlan, profile string) {
 		applyContainerRuntime(plan, defaultRuntimeForProfile(normalized))
 		configureKubeadm(plan)
 	}
+	rebuildCatalogGroups(plan)
 	_ = applyAI(plan, plan.AI.Mode, plan.AI.Endpoint)
+	if normalized == "desktop-gnome" {
+		_ = applyPackageGroup(plan, "desktop-gnome", true)
+	}
 }
 
 func applyContainerRuntime(plan *InstallPlan, runtime string) {
@@ -831,10 +741,12 @@ func applyNetwork(plan *InstallPlan, mode, interfaceMatch, address, gateway, dns
 	plan.Network.Address = ""
 	plan.Network.Gateway = ""
 	plan.Network.DNS = ""
+	if mode != "off" {
+		plan.Network.DNS = strings.ReplaceAll(strings.TrimSpace(dns), ",", " ")
+	}
 	if mode == "static" {
 		plan.Network.Address = strings.TrimSpace(address)
 		plan.Network.Gateway = strings.TrimSpace(gateway)
-		plan.Network.DNS = strings.TrimSpace(dns)
 	}
 	return nil
 }
@@ -880,6 +792,9 @@ func applyRuntime(plan *InstallPlan, runtime string) error {
 }
 
 func applyAI(plan *InstallPlan, mode, endpoint string) error {
+	if mode != "off" && contains(plan.Packages.Groups, "desktop-gnome") {
+		return fmt.Errorf("GNOME uses the graphical login; disable desktop-gnome before enabling the tty1 AI console")
+	}
 	mode = strings.TrimSpace(mode)
 	if mode != "local" && mode != "remote" && mode != "off" {
 		return fmt.Errorf("AI mode must be local, remote, or off")
@@ -892,9 +807,9 @@ func applyAI(plan *InstallPlan, mode, endpoint string) error {
 		plan.Packages.Groups = appendUnique(plan.Packages.Groups, "ai-console")
 		plan.AI.Endpoint = "http://127.0.0.1:8080/v1/chat/completions"
 		plan.AI.Model = "kiki-ops"
-		plan.Packages.Selected = appendUnique(plan.Packages.Selected, "llama-cpp", "kiki-ai-console")
-		plan.Services.Enable = appendUnique(plan.Services.Enable, "kiki-llama-server.service", "kiki-ai-console@tty1.service", "getty@tty2.service")
-		plan.Services.Enable = removeItems(plan.Services.Enable, "getty@tty1.service")
+		plan.Packages.Selected = appendUnique(plan.Packages.Selected, "llama-cpp", "kiki-ai-console", "kiki-kmscon")
+		plan.Services.Enable = appendUnique(plan.Services.Enable, "kiki-llama-server.service", "kiki-ai-console-kmscon@tty1.service", "getty@tty2.service")
+		plan.Services.Enable = removeItems(plan.Services.Enable, "getty@tty1.service", "kiki-ai-console@tty1.service")
 	} else if mode == "remote" {
 		if strings.TrimSpace(endpoint) == "" {
 			return fmt.Errorf("remote AI mode requires --ai-endpoint or: ai remote <endpoint>")
@@ -905,32 +820,21 @@ func applyAI(plan *InstallPlan, mode, endpoint string) error {
 		plan.AI.Endpoint = endpoint
 		plan.Packages.Groups = appendUnique(plan.Packages.Groups, "ai-console-remote")
 		plan.AI.Model = "kiki-ops"
-		plan.Packages.Selected = appendUnique(plan.Packages.Selected, "kiki-ai-console")
+		plan.Packages.Selected = appendUnique(plan.Packages.Selected, "kiki-ai-console", "kiki-kmscon")
 		plan.Packages.Selected = removeItems(plan.Packages.Selected, "llama-cpp")
-		plan.Services.Enable = removeItems(plan.Services.Enable, "kiki-llama-server.service", "getty@tty1.service")
-		plan.Services.Enable = appendUnique(plan.Services.Enable, "kiki-ai-console@tty1.service", "getty@tty2.service")
+		plan.Services.Enable = removeItems(plan.Services.Enable, "kiki-llama-server.service", "getty@tty1.service", "kiki-ai-console@tty1.service")
+		plan.Services.Enable = appendUnique(plan.Services.Enable, "kiki-ai-console-kmscon@tty1.service", "getty@tty2.service")
 	} else {
 		plan.AI.Endpoint = ""
 		plan.AI.Model = ""
-		plan.Packages.Selected = removeItems(plan.Packages.Selected, "llama-cpp", "kiki-ai-console")
-		plan.Services.Enable = removeItems(plan.Services.Enable, "kiki-llama-server.service", "kiki-ai-console@tty1.service")
+		plan.Packages.Selected = removeItems(plan.Packages.Selected, "llama-cpp", "kiki-ai-console", "kiki-kmscon")
+		plan.Services.Enable = removeItems(plan.Services.Enable, "kiki-llama-server.service", "kiki-ai-console@tty1.service", "kiki-ai-console-kmscon@tty1.service")
 		plan.Services.Enable = appendUnique(plan.Services.Enable, "getty@tty1.service", "getty@tty2.service")
 	}
 	if endpoint != "" && mode == "local" {
 		plan.AI.Endpoint = endpoint
 	}
 	return nil
-}
-
-var selectablePackageGroups = []string{
-	"minimal",
-	"server",
-	"ai-console",
-	"ai-console-remote",
-	"container-containerd",
-	"container-crio",
-	"kubernetes-node",
-	"development",
 }
 
 func applyPackageGroup(plan *InstallPlan, groupID string, enabled bool) error {
@@ -948,19 +852,6 @@ func applyPackageGroup(plan *InstallPlan, groupID string, enabled bool) error {
 	}
 
 	switch groupID {
-	case "minimal":
-		plan.Packages.Selected = appendUnique(plan.Packages.Selected, minimalSystemdPackages...)
-		plan.Services.Enable = appendUnique(plan.Services.Enable, minimalSystemdServices...)
-	case "server":
-		if enabled {
-			plan.Packages.Selected = appendUnique(plan.Packages.Selected, serverCorePackages...)
-			plan.Services.Enable = appendUnique(plan.Services.Enable, serverCoreServices...)
-			plan.Firewall.Firewalld = true
-		} else {
-			plan.Packages.Selected = removeItems(plan.Packages.Selected, serverCorePackages...)
-			plan.Services.Enable = removeItems(plan.Services.Enable, serverCoreServices...)
-			plan.Firewall.Firewalld = false
-		}
 	case "ai-console":
 		if enabled {
 			return applyAI(plan, "local", "")
@@ -968,38 +859,58 @@ func applyPackageGroup(plan *InstallPlan, groupID string, enabled bool) error {
 		return applyAI(plan, "off", "")
 	case "ai-console-remote":
 		if enabled {
-			if plan.AI.Mode != "remote" || plan.AI.Endpoint == "" {
-				return fmt.Errorf("ai-console-remote requires --ai remote and --ai-endpoint")
-			}
 			return applyAI(plan, "remote", plan.AI.Endpoint)
 		}
 		return applyAI(plan, "off", "")
-	case "container-containerd":
-		if enabled {
+	case "container-containerd", "container-crio":
+		if !enabled {
+			return applyRuntime(plan, "none")
+		}
+		if groupID == "container-containerd" {
 			return applyRuntime(plan, "containerd")
 		}
-		return applyRuntime(plan, "none")
-	case "container-crio":
-		if enabled {
-			return applyRuntime(plan, "crio")
+		return applyRuntime(plan, "crio")
+	}
+	if enabled && groupID == "desktop-gnome" {
+		_ = applyAI(plan, "off", "")
+	}
+	rebuildCatalogGroups(plan)
+	plan.Firewall.Firewalld = contains(plan.Packages.Groups, "server") || (isKubernetesProfile(plan.Packages.Profile) && !isKubernetesComputeProfile(plan.Packages.Profile))
+	return nil
+}
+
+// Recompute the union so removing a group cannot remove another group's packages.
+func rebuildCatalogGroups(plan *InstallPlan) {
+	var packages, enable, disable []string
+	visited := map[string]bool{}
+	target := "multi-user.target"
+	var visit func(string)
+	visit = func(id string) {
+		if visited[id] {
+			return
 		}
-		return applyRuntime(plan, "none")
-	case "kubernetes-node":
-		if enabled {
-			plan.Packages.Selected = appendUnique(plan.Packages.Selected, kubernetesCommonPackages...)
-			plan.Services.Enable = appendUnique(plan.Services.Enable, "kubelet.service", "chronyd.service")
-		} else if !isKubernetesProfile(plan.Packages.Profile) {
-			plan.Packages.Selected = removeItems(plan.Packages.Selected, kubernetesCommonPackages...)
-			plan.Services.Enable = removeItems(plan.Services.Enable, "kubelet.service", "chronyd.service")
+		visited[id] = true
+		g := catalogGroups[id]
+		for _, dep := range g.Requires {
+			visit(dep)
 		}
-	case "development":
-		if enabled {
-			plan.Packages.Selected = appendUnique(plan.Packages.Selected, "make")
-		} else {
-			plan.Packages.Selected = removeItems(plan.Packages.Selected, "make")
+		packages = appendUnique(packages, g.Packages...)
+		enable = appendUnique(enable, g.Enable...)
+		disable = appendUnique(disable, g.Disable...)
+		if g.DefaultTarget != "" {
+			target = g.DefaultTarget
 		}
 	}
-	return nil
+	for _, id := range plan.Packages.Groups {
+		visit(id)
+	}
+	if isKubernetesProfile(plan.Packages.Profile) && plan.Runtime.ContainerRuntime == "containerd" {
+		packages = appendUnique(packages, "kube-node-config-containerd")
+	}
+	plan.Packages.Selected = packages
+	plan.Services.Enable = removeItems(enable, disable...)
+	plan.Services.Disable = disable
+	plan.Services.DefaultTarget = target
 }
 
 var fullscreenMenuLabels = []string{
@@ -1230,6 +1141,7 @@ var fullscreenProfiles = []string{
 	"kiki-kube-control-containerd",
 	"kiki-kube-compute",
 	"kiki-kube-compute-containerd",
+	"desktop-gnome",
 }
 
 func (t *TUI) editFullscreenItem(selected int) (string, bool, error) {
@@ -1444,12 +1356,7 @@ func (t *TUI) editFullscreenItem(selected int) (string, bool, error) {
 		if !ReviewReady(t.Plan) {
 			return "Install plan is blocked and was not saved.", false, nil
 		}
-		t.Plan.Artifacts.RuntimePlan = t.PlanPath
-		if err := WritePlanFile(t.PlanPath, t.Plan); err != nil {
-			return "", false, err
-		}
-		t.PlanWritten = true
-		return "Install plan saved: " + t.PlanPath, false, nil
+		return t.startFullscreenInstall()
 	default:
 		return "", false, fmt.Errorf("unknown full-screen menu item %d", selected)
 	}
@@ -1478,7 +1385,7 @@ func (t *TUI) RenderFullscreen(selected int, message string) {
 	labels := fullscreenMenuLabels
 	if t.ASCII {
 		labels = fullscreenMenuLabelsASCII
-		fmt.Fprint(t.Out, "KIKI OS Installer - TUI fallback\r\n")
+		fmt.Fprint(t.Out, "KIKI OS Scratch Pad - TUI fallback\r\n")
 		fmt.Fprint(t.Out, "--------------------------------------------------------------------\r\n")
 		fmt.Fprintf(t.Out, "Install plan: %s\r\n\r\n", t.PlanPath)
 	} else {
@@ -1568,6 +1475,18 @@ func (t *TUI) RunFullscreen() error {
 				continue
 			}
 			var output bytes.Buffer
+			if strings.TrimSpace(command) == "install" || strings.TrimSpace(command) == "start" || strings.TrimSpace(command) == "10" {
+				itemMessage, done, installErr := t.startFullscreenInstall()
+				if done {
+					return installErr
+				}
+				if installErr != nil {
+					message = "Error: " + installErr.Error()
+				} else {
+					message = itemMessage
+				}
+				continue
+			}
 			oldOut := t.Out
 			t.Out = &output
 			done, applyErr := t.ApplyCommand(command)
@@ -1656,7 +1575,7 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 	case "6":
 		fmt.Fprintln(t.Out, "Profile:", t.Plan.Packages.Profile)
 		fmt.Fprintln(t.Out, "Groups:", strings.Join(t.Plan.Packages.Groups, ", "))
-		fmt.Fprintln(t.Out, "Use: profile minimal-systemd|server-core|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
+		fmt.Fprintln(t.Out, "Use: profile minimal-systemd|server-core|desktop-gnome|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
 		fmt.Fprintln(t.Out, "     add -containerd to a Kubernetes profile to use containerd by default")
 		fmt.Fprintln(t.Out, "     group add|remove server|development|container-containerd|container-crio")
 	case "7":
@@ -1691,7 +1610,7 @@ func (t *TUI) ApplyCommand(line string) (bool, error) {
 		fmt.Fprintln(t.Out, "Stage-1 installer and Stage-3 executor can consume this install plan.")
 	case "profile":
 		if len(fields) != 2 {
-			return false, fmt.Errorf("usage: profile minimal-systemd|server-core|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute[-containerd]")
+			return false, fmt.Errorf("usage: profile minimal-systemd|server-core|desktop-gnome|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute[-containerd]")
 		}
 		ApplyProfile(&t.Plan, fields[1])
 		t.Render()
@@ -2031,7 +1950,7 @@ func dashboardAccountSummary(plan InstallPlan) string {
 
 func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "Commands:")
-	fmt.Fprintln(w, "  profile minimal-systemd|server-core|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
+	fmt.Fprintln(w, "  profile minimal-systemd|server-core|desktop-gnome|kiki-kube-bootstrap|kiki-kube-control|kiki-kube-compute")
 	fmt.Fprintln(w, "  profile kiki-kube-bootstrap-containerd|kiki-kube-control-containerd|kiki-kube-compute-containerd")
 	fmt.Fprintln(w, "  group add|remove minimal|server|ai-console|container-containerd|container-crio|kubernetes-node|development")
 	fmt.Fprintln(w, "    legacy aliases: kiki-kube-controller -> kiki-kube-control, kiki-kube-node -> kiki-kube-compute")
@@ -2147,8 +2066,32 @@ func checkNetwork(plan InstallPlan) Check {
 	if plan.Network.Mode != "dhcp" && plan.Network.Mode != "static" && plan.Network.Mode != "off" {
 		return Check{Name: "Network", State: "BLOCK", Summary: "network mode must be dhcp, static, or off"}
 	}
-	if plan.Network.Mode == "static" && plan.Network.Address == "" {
-		return Check{Name: "Network", State: "BLOCK", Summary: "static network mode requires address/prefix"}
+	if plan.Network.Mode != "off" {
+		if strings.TrimSpace(plan.Network.InterfaceMatch) == "" || strings.ContainsAny(plan.Network.InterfaceMatch, "\r\n\x00=/") {
+			return Check{Name: "Network", State: "BLOCK", Summary: "select a valid network device or name pattern"}
+		}
+		for _, server := range strings.Fields(plan.Network.DNS) {
+			ip := net.ParseIP(server)
+			if ip == nil || ip.IsUnspecified() || ip.IsMulticast() {
+				return Check{Name: "Network", State: "BLOCK", Summary: "DNS servers must be valid unicast IP addresses"}
+			}
+		}
+	}
+	if plan.Network.Mode == "static" {
+		ip, subnet, err := net.ParseCIDR(plan.Network.Address)
+		if err != nil || ip.IsUnspecified() || ip.IsMulticast() {
+			return Check{Name: "Network", State: "BLOCK", Summary: "static network mode requires a valid unicast address/prefix"}
+		}
+		if plan.Network.Gateway != "" {
+			gateway := net.ParseIP(plan.Network.Gateway)
+			if gateway == nil || gateway.IsUnspecified() || gateway.IsMulticast() ||
+				(ip.To4() == nil) != (gateway.To4() == nil) {
+				return Check{Name: "Network", State: "BLOCK", Summary: "gateway must be a unicast IP of the same address family"}
+			}
+			if !subnet.Contains(gateway) && !gateway.IsLinkLocalUnicast() {
+				return Check{Name: "Network", State: "BLOCK", Summary: "gateway must be reachable in the configured subnet"}
+			}
+		}
 	}
 	return Check{Name: "Network", State: "OK", Summary: fmt.Sprintf("%s via %s (%s)", plan.Network.Mode, plan.Network.Manager, plan.Network.InterfaceMatch)}
 }
@@ -2292,8 +2235,11 @@ func WritePlanYAML(w io.Writer, plan InstallPlan) error {
 	line("    selected:")
 	writeStringList(bw, "      ", plan.Packages.Selected)
 	line("  services:")
+	line("    default_target: %s", quoteYAML(plan.Services.DefaultTarget))
 	line("    enable:")
 	writeStringList(bw, "      ", plan.Services.Enable)
+	line("    disable:")
+	writeStringList(bw, "      ", plan.Services.Disable)
 	line("  boot:")
 	line("    loader: %s", quoteYAML(plan.Boot.Loader))
 	line("    kernel: %s", quoteYAML(plan.Boot.Kernel))

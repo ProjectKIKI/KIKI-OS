@@ -1,5 +1,19 @@
 # KIKI OS 관리 콘솔
 
+빌드 웹 콘솔과 작업 기록도 같은 관리 콘솔에서 사용할 수 있다:
+
+```bash
+python3 tools/kiki_console.py build-web --jobs 8
+python3 tools/kiki_console.py pipeline-plan smoke
+python3 tools/kiki_console.py jobs
+python3 tools/kiki_console.py job <작업-ID> --json
+```
+
+대화형 `shell`에서도 `jobs`, `job <작업-ID>`, `pipeline-plan smoke`, `build-web`을
+입력할 수 있다. 명령마다 지원하는 기본 옵션만 전달하며, 명시적으로 입력한
+옵션이 셸 기본값보다 우선한다. 웹 화면의 실행 미리보기, 대기열, 실시간 로그,
+취소·재실행 동작은 [빌드 자동화 가이드](kiki-os-build-automation.ko.md)에 설명한다.
+
 `tools/kiki_console.py`는 ISO를 만들기 전에 Git 상태, Stage 3 진행률, 패키지 저장소,
 rootfs와 ISO 산출물을 한 화면에서 확인하고 검증·빌드 작업을 제어하는 운영자용 CLI다.
 CI 서버용 `ki2ci.py`와 선언형 실행기 `ki2osbuild.py`를 대체하지 않고 안전한 관리

@@ -1,0 +1,5 @@
+[profile]
+name = "info-tools"
+description = "Info index updater build and validation"
+arch = "x86_64"
+packages = ["install-info"]

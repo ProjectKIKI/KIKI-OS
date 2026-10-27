@@ -12,17 +12,29 @@ profile:
     - arch
     - boot
     - services
+    - groups
+    - prebuilt
 
 fields:
   name: rootfs와 ISO 출력 경로에 사용하는 프로파일 이름.
   description: 사람이 읽는 프로파일 목적 설명.
   arch: 대상 아키텍처.
   packages: 프로파일이 직접 요청하는 루트 패키지. 런타임 의존성은 자동으로 추가된다.
+  groups: package-groups.json에서 확장할 패키지 그룹 ID 목록.
 
 boot:
   init: 설치된 시스템에서 사용할 PID 1 경로.
   kernel: 설치된 OS 트리 내부 커널 이미지 경로.
   kernel_args: 추가 커널 명령행 인자.
+  default_target: multi-user.target 또는 graphical.target.
 
 services:
   enable: 패키지 추출 후 설치기가 활성화할 systemd 유닛 목록.
+  disable: rootfs의 기존 활성화 심볼릭 링크에서 제거할 systemd 유닛 목록.
+
+prebuilt:
+  repository: 이미 검증된 repo/ 및 packages/ 스냅샷 경로. 저장소 루트 기준.
+  public_key: 스냅샷 내부 Ed25519 공개키 경로.
+  public_key_sha256: 신뢰할 공개키의 고정 SHA-256.
+  index_sha256: 신뢰할 패키지 인덱스의 고정 SHA-256.
+  behavior: plan/validate/rootfs가 서명·인덱스·패키지 해시를 확인하고 기존 아카이브를 사용한다. build는 원본 소스 빌드 절차를 사용하도록 안내한다.

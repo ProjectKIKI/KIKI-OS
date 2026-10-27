@@ -1,0 +1,5 @@
+[profile]
+name = "x11-runtime"
+description = "Opt-in minimal Xorg session; not a desktop and not Xwayland"
+arch = "x86_64"
+packages = ["kiki-x11-runtime"]

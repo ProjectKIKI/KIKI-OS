@@ -1,0 +1,38 @@
+[[recipe]]
+name = "libxau"
+version = "1.0.12"
+release = 1
+summary = "X11 authorization file management library"
+license = "MIT"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://www.x.org/releases/individual/lib/libXau-1.0.12.tar.xz"
+file = "libXau-1.0.12.tar.xz"
+sha256 = "74d0e4dfa3d39ad8939e99bda37f5967aba528211076828464d2777d477fc0fb"
+[recipe.dependencies]
+build = ["linux-headers", "xorgproto"]
+runtime = ["glibc"]
+[recipe.build]
+system = "meson"
+inputs = ["distro/specs/graphics-cross.ini", "distro/scripts/ki2-target-pkg-config", "distro/scripts/ki2-target-run"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"',
+  'install -m644 "${KI2_REPO_ROOT}/distro/specs/graphics-cross.ini" "${KI2_BUILD_DIR}/cross.ini"',
+  'sed -i -e "s|@BUILD@|${KI2_BUILD_DIR}|g" -e "s|@REPO@|${KI2_REPO_ROOT}|g" "${KI2_BUILD_DIR}/cross.ini"',
+  'meson setup "${KI2_BUILD_DIR}/libxau" "${KI2_SOURCE_DIR}" --cross-file "${KI2_BUILD_DIR}/cross.ini" --prefix=/usr --libdir=lib --buildtype=release --wrap-mode=nofallback -Ddefault_library=shared -Dxthreads=true',
+]
+compile = [
+  'meson compile -C "${KI2_BUILD_DIR}/libxau" -j "${KI2_JOBS}"',
+  'meson test -C "${KI2_BUILD_DIR}/libxau" --no-rebuild --print-errorlogs',
+]
+install = [
+  'DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/libxau"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/COPYING" "${KI2_DESTDIR}/usr/share/licenses/libxau/COPYING"',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libXau.so.6" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+KI2_SYSROOT_LIBRARY_PATH = "${KI2_BUILD_DIR}/libxau:${KI2_SYSROOT_LIBRARY_PATH}"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"

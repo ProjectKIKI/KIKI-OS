@@ -1,0 +1,64 @@
+[[recipe]]
+name = "libdatrie"
+version = "0.2.14"
+release = 1
+summary = "Double-array trie library and dictionary compiler"
+license = "LGPL-2.1-or-later"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://linux.thai.net/pub/thailinux/software/libthai/libdatrie-0.2.14.tar.xz"
+file = "libdatrie-0.2.14.tar.xz"
+sha256 = "f04095010518635b51c2313efa4f290b7db828d6273e39b2b8858f859dfe81d5"
+[recipe.dependencies]
+build = ["linux-headers"]
+runtime = ["glibc"]
+[recipe.build]
+system = "gnu"
+configure = ['cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --disable-static --disable-doxygen-doc']
+compile = ['make -C "${KI2_SOURCE_DIR}" -j "${KI2_JOBS}"']
+install = [
+  'make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install',
+  'install -Dm644 "${KI2_SOURCE_DIR}/COPYING" "${KI2_DESTDIR}/usr/share/licenses/libdatrie/COPYING"',
+  'find "${KI2_DESTDIR}/usr/lib" -name "*.la" -delete',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libdatrie.so.1" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CC = "cc --sysroot=${KI2_SYSROOT}"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+[[recipe]]
+name = "libthai"
+version = "0.1.30"
+release = 1
+summary = "Thai text processing with generated word-break dictionary"
+license = "LGPL-2.1-or-later"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://linux.thai.net/pub/thailinux/software/libthai/libthai-0.1.30.tar.xz"
+file = "libthai-0.1.30.tar.xz"
+sha256 = "ddba8b53dfe584c3253766030218a88825488a51a7deef041d096e715af64bdd"
+[recipe.dependencies]
+build = ["linux-headers"]
+runtime = ["libdatrie"]
+[recipe.build]
+system = "gnu"
+inputs = ["distro/scripts/ki2-target-run"]
+configure = ['cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --disable-static --disable-doxygen-doc --enable-dict']
+compile = ['make -C "${KI2_SOURCE_DIR}" -j "${KI2_JOBS}"']
+install = [
+  'make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install',
+  'install -Dm644 "${KI2_SOURCE_DIR}/COPYING" "${KI2_DESTDIR}/usr/share/licenses/libthai/COPYING"',
+  'test -s "${KI2_DESTDIR}/usr/share/libthai/thbrk.tri"',
+  'find "${KI2_DESTDIR}/usr/lib" -name "*.la" -delete',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libthai.so.0" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CC = "cc --sysroot=${KI2_SYSROOT}"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+TRIETOOL = "/bin/sh ${KI2_REPO_ROOT}/distro/scripts/ki2-target-run ${KI2_SYSROOT}/usr/bin/trietool-0.2"

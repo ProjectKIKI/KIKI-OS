@@ -1,0 +1,34 @@
+[[recipe]]
+name = "fribidi"
+version = "1.0.16"
+release = 1
+summary = "Unicode bidirectional text algorithm library"
+license = "LGPL-2.1-or-later"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://github.com/fribidi/fribidi/releases/download/v1.0.16/fribidi-1.0.16.tar.xz"
+file = "fribidi-1.0.16.tar.xz"
+sha256 = "1b1cde5b235d40479e91be2f0e88a309e3214c8ab470ec8a2744d82a5a9ea05c"
+[recipe.dependencies]
+build = ["linux-headers"]
+runtime = ["glibc"]
+[recipe.build]
+system = "meson"
+inputs = ["distro/specs/graphics-cross.ini", "distro/scripts/ki2-target-pkg-config", "distro/scripts/ki2-target-run"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"',
+  'install -m644 "${KI2_REPO_ROOT}/distro/specs/graphics-cross.ini" "${KI2_BUILD_DIR}/cross.ini"',
+  'sed -i -e "s|@BUILD@|${KI2_BUILD_DIR}|g" -e "s|@REPO@|${KI2_REPO_ROOT}|g" "${KI2_BUILD_DIR}/cross.ini"',
+  'meson setup "${KI2_BUILD_DIR}/fribidi" "${KI2_SOURCE_DIR}" --cross-file "${KI2_BUILD_DIR}/cross.ini" --prefix=/usr --libdir=lib --buildtype=release --wrap-mode=nofallback -Ddefault_library=shared -Ddocs=false -Dbin=true -Dtests=true',
+]
+compile = ['meson compile -C "${KI2_BUILD_DIR}/fribidi" -j "${KI2_JOBS}"']
+install = [
+  'DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/fribidi"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/COPYING" "${KI2_DESTDIR}/usr/share/licenses/fribidi/COPYING"',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libfribidi.so.0" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"

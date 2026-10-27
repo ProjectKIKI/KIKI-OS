@@ -1,0 +1,16 @@
+[Unit]
+Description=KIKI OS Korean AI console on %I (kmscon)
+Documentation=file:/usr/share/doc/kiki-ai-console/README.ko.md
+Conflicts=getty@%i.service kiki-ai-console@%i.service
+After=systemd-user-sessions.service kiki-llama-server.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/kiki-kmscon --vt=/dev/%I --no-reset-env --oneshot --login -- /usr/bin/kiki-ai-console --config /etc/kiki/ai-console.json --wait-local-runtime=90s
+Restart=always
+RestartSec=2
+Environment=LANG=C.UTF-8 LC_ALL=C.UTF-8 KIKI_HANGUL_INPUT=1
+KeyringMode=private
+
+[Install]
+WantedBy=getty.target

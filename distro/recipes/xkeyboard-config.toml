@@ -1,0 +1,32 @@
+[[recipe]]
+name = "xkeyboard-config"
+version = "2.46"
+release = 2
+summary = "Keyboard rules, layouts and Korean keymap data"
+license = "MIT"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://www.x.org/releases/individual/data/xkeyboard-config/xkeyboard-config-2.46.tar.xz"
+file = "xkeyboard-config-2.46.tar.xz"
+sha256 = "10c58218fb60d08fb1f7b30304deb3ba47613195aa8a08a81f1972775ccc3640"
+[recipe.dependencies]
+build = ["python"]
+runtime = []
+[recipe.build]
+system = "meson"
+inputs = ["distro/scripts/ki2-target-python3", "distro/scripts/ki2-target-run"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3" "${KI2_BUILD_DIR}/tools/python3"',
+  'PATH="${KI2_BUILD_DIR}/tools:$PATH" meson setup "${KI2_BUILD_DIR}/xkeyboard-config" "${KI2_SOURCE_DIR}" --prefix=/usr --libdir=lib --buildtype=release --wrap-mode=nofallback -Dnls=true',
+]
+compile = ['PATH="${KI2_BUILD_DIR}/tools:$PATH" meson compile -C "${KI2_BUILD_DIR}/xkeyboard-config" -j "${KI2_JOBS}"']
+install = [
+  'PATH="${KI2_BUILD_DIR}/tools:$PATH" DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/xkeyboard-config"',
+  'ln -sfn ../xkeyboard-config-2 "${KI2_DESTDIR}/usr/share/X11/xkb"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/COPYING" "${KI2_DESTDIR}/usr/share/licenses/xkeyboard-config/COPYING"',
+  'test -s "${KI2_DESTDIR}/usr/share/xkeyboard-config-2/symbols/kr" && test -s "${KI2_DESTDIR}/usr/share/xkeyboard-config-2/rules/evdev"',
+]
+[recipe.build.env]
+KI2_USE_TARGET_LOADER = "1"

@@ -8,7 +8,9 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
+from types import SimpleNamespace
 
 
 SCRIPT = Path(__file__).resolve().parent / "ki2build.py"
@@ -20,6 +22,94 @@ SPEC.loader.exec_module(ki2build)
 
 
 class Ki2BuildTests(unittest.TestCase):
+    def test_unsupported_rootfs_storage_keeps_existing_files_before_clean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "rootfs"
+            root.mkdir()
+            marker = root / "existing-file"
+            marker.write_text("preserve me")
+            ctx = SimpleNamespace(rootfs_dir=root, dry_run=False, clean_rootfs=True)
+            with patch.object(ki2build, "validate_rootfs_storage", side_effect=ki2build.Ki2Error("unsupported storage")):
+                with self.assertRaisesRegex(ki2build.Ki2Error, "unsupported storage"):
+                    ki2build.assemble_rootfs(ctx, {}, [])
+            self.assertEqual(marker.read_text(), "preserve me")
+
+    @unittest.skipUnless(sys.platform == "linux", "requires POSIX mode bits")
+    def test_private_kmscon_binary_keeps_executable_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "kmscon"
+            binary.write_bytes(b"fixture")
+            for original, expected in ((0o755, 0o755), (0o644, 0o644)):
+                binary.chmod(original)
+                self.assertEqual(ki2build.package_entry_mode("usr/lib/kiki-kmscon/kmscon", binary), expected)
+
+    @unittest.skipUnless(sys.platform == "linux", "requires POSIX mode bits")
+    def test_polkit_modes_do_not_grant_implicit_privileges(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("polkitd", "polkit-agent-helper-1"):
+                item = root / name
+                item.write_text("fixture only\n")
+                for original, expected in ((0o644, 0o644), (0o755, 0o755), (0o4755, 0o4755)):
+                    item.chmod(original)
+                    self.assertEqual(ki2build.package_entry_mode("usr/lib/polkit-1/" + name, item), expected)
+            item = root / "unrelated"
+            item.write_text("data")
+            item.chmod(0o755)
+            self.assertEqual(ki2build.package_entry_mode("usr/lib/polkit-1/data.txt", item), 0o644)
+
+    def test_explicit_build_inputs_invalidate_url_recipe_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            helper = root / 'target-run'
+            helper.write_text('version one')
+            recipe = ki2build.normalize_recipe({
+                'name': 'library', 'version': '1', 'summary': 'test', 'license': 'MIT',
+                'source': {'type': 'url', 'url': 'https://example.invalid/source.tar.xz'},
+                'build': {'system': 'gnu', 'inputs': ['target-run']},
+            }, root / 'recipe.toml')
+            ctx = SimpleNamespace(repo_root=root, arch='x86_64', toolchain_id='test')
+            first = ki2build.build_key(recipe, ctx, {})
+            (root / 'unrelated').write_text('not a build input')
+            self.assertEqual(first, ki2build.build_key(recipe, ctx, {}))
+            helper.write_text('version two')
+            self.assertNotEqual(first, ki2build.build_key(recipe, ctx, {}))
+            helper.unlink()
+            with self.assertRaisesRegex(ki2build.Ki2Error, 'build.inputs file not found'):
+                ki2build.build_key(recipe, ctx, {})
+
+    def test_rootfs_schema_cache_checks_and_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ki2build.refresh_rootfs_gsettings_cache(root, "x86_64")
+            schemas = root / "usr/share/glib-2.0/schemas"
+            schemas.mkdir(parents=True)
+            cache = schemas / "gschemas.compiled"
+            cache.write_bytes(b"preserve-me")
+            with self.assertRaisesRegex(ki2build.Ki2Error, "no schema sources"):
+                ki2build.refresh_rootfs_gsettings_cache(root, "x86_64")
+            self.assertEqual(cache.read_bytes(), b"preserve-me")
+            (schemas / "test.gschema.xml").write_text("<schemalist/>")
+            with patch.object(ki2build.sys, "platform", "linux"):
+                with self.assertRaisesRegex(ki2build.Ki2Error, "missing"):
+                    ki2build.refresh_rootfs_gsettings_cache(root, "x86_64")
+                with self.assertRaisesRegex(ki2build.Ki2Error, "x86_64 builder"):
+                    ki2build.refresh_rootfs_gsettings_cache(root, "aarch64")
+                compiler = root / "usr/bin/glib-compile-schemas"
+                compiler.parent.mkdir(parents=True)
+                compiler.write_bytes(b"test")
+                loader = root / "usr/lib/ld-linux-x86-64.so.2"
+                loader.parent.mkdir(parents=True)
+                loader.write_bytes(b"test")
+                with patch.object(ki2build.subprocess, "run") as run:
+                    ki2build.refresh_rootfs_gsettings_cache(root, "x86_64")
+                    args, kwargs = run.call_args
+                    self.assertEqual(args[0][-2:], ["--strict", str(schemas)])
+                    self.assertNotIn("LD_PRELOAD", kwargs["env"])
+                    run.side_effect = subprocess.CalledProcessError(1, "schema-test")
+                    with self.assertRaisesRegex(ki2build.Ki2Error, "generation failed"):
+                        ki2build.refresh_rootfs_gsettings_cache(root, "x86_64")
+
     def run_ki2(self, root, *args):
         command = [sys.executable, str(SCRIPT), "--repo-root", str(root), *args]
         return subprocess.run(command, text=True, capture_output=True, check=True)
@@ -49,6 +139,13 @@ class Ki2BuildTests(unittest.TestCase):
             (root / "distro/sources/base/var/tmp").mkdir(parents=True)
             (root / "distro/sources/base/usr/bin").mkdir(parents=True)
             (root / "distro/sources/base/usr/lib/systemd/system").mkdir(parents=True)
+            polkit_dir = root / "distro/sources/base/usr/lib/polkit-1"
+            polkit_dir.mkdir(parents=True)
+            for name in ("polkitd", "polkit-agent-helper-1", "data.txt"):
+                item = polkit_dir / name
+                item.write_text("fixture only\n", encoding="utf-8")
+                item.chmod(0o755 if name != "data.txt" else 0o644)
+            (root / "distro/sources/base/etc/polkit-1/rules.d").mkdir(parents=True)
             (root / "distro/sources/middle").mkdir(parents=True)
             (root / "distro/sources/app/usr/bin").mkdir(parents=True)
             (root / "distro/sources/app-tools/usr/bin").mkdir(parents=True)
@@ -193,6 +290,12 @@ enable = ["test.service"]
                 self.assertEqual(tar.getmember("rootfs/etc/shadow").mode, 0o600)
                 self.assertEqual(tar.getmember("rootfs/etc/sudoers").mode, 0o440)
                 self.assertEqual(tar.getmember("rootfs/etc/sudoers.d").mode, 0o750)
+                for name in ("polkitd", "polkit-agent-helper-1"):
+                    entry = tar.getmember("rootfs/usr/lib/polkit-1/" + name)
+                    self.assertEqual(entry.mode, 0o755)
+                    self.assertEqual((entry.uid, entry.gid), (0, 0))
+                self.assertEqual(tar.getmember("rootfs/usr/lib/polkit-1/data.txt").mode, 0o644)
+                self.assertEqual(tar.getmember("rootfs/etc/polkit-1/rules.d").mode, 0o750)
                 self.assertEqual(tar.getmember("rootfs/etc/sudoers.d/kiki-admin").mode, 0o440)
                 self.assertEqual(tar.getmember("rootfs/usr/bin/sudo").mode, 0o4755)
                 self.assertEqual(tar.getmember("rootfs/root").mode, 0o700)

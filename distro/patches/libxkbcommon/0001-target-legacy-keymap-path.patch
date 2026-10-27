@@ -1,0 +1,15 @@
+--- a/meson.build
++++ b/meson.build
+@@ -70,6 +70,12 @@
+         break
+     endif
+ endforeach
++# KIKI cross pkg-config expands its sysroot for build-time lookups. The
++# fallback is a runtime path, so never embed the build sysroot in config.h.
++# KIKI xkeyboard-config installs the legacy link under prefix/datadir.
++if meson.is_cross_build()
++    XKB_LEGACY_ROOT = get_option('prefix')/get_option('datadir')/'X11'/'xkb'
++endif
+ if XKB_LEGACY_ROOT == ''
+     # Fallback to the legacy X11 directory
+     XKB_LEGACY_ROOT = get_option('prefix')/get_option('datadir')/'X11'/'xkb'

@@ -1,4 +1,4 @@
-# KIKI OS GTK 4 설치 계획 작성기
+# KIKI OS GTK 4 인스톨러
 
 `kiki-installer-gtk`는 GTK 4 기반 설치 프런트엔드입니다. YAML을 독자적으로
 작성하지 않고 `kiki-installer-tui --write`를 호출하므로 CLI, TUI, GUI와 무인
@@ -13,8 +13,9 @@ Hyper-V처럼 가속 렌더 노드가 없는 장치에서는 wlroots Pixman과 D
 검토 화면의 `설치 시작` 버튼은 계획을 저장한 뒤 `/run/kiki/gui-install.request`로
 Stage-1 실행기에 전달합니다. GUI에서 선택한 디스크, 프로필과 추가 그룹,
 네트워크, 지역화 및 AI 설정은 실제 설치에 사용됩니다. 관리자 암호와 암호 확인은
-계정 화면에서 입력하고, 검토 화면에서는 `INSTALL /dev/...` 확인 문자열을 정확히
-입력합니다. 암호는 InstallPlan이나 영구 디스크에 기록하지 않습니다. 프로세스
+계정 화면에서 입력하고, 검토 화면에서는 대상 디스크를 확인하고 데이터 삭제 동의
+체크박스를 선택합니다. 디스크를 변경하면 동의가 해제됩니다. 직접 확인 문자열을
+입력할 필요는 없습니다. 암호는 InstallPlan이나 영구 디스크에 기록하지 않습니다. 프로세스
 간 전달을 위해 mode 0600인 `/run` tmpfs 요청 파일에 잠시 기록하며 Stage-1이
 읽은 즉시 파일 내용을 제거합니다.
 
@@ -40,10 +41,50 @@ KIKI_INSTALLER_CSS="$(pwd)/cmd/kiki-installer-gtk/style.css" \
 
 ```sh
 python3 tools/ki2graphics.py doctor
-python3 tools/ki2graphics.py prepare --jobs 4
+python3 tools/ki2graphics.py prepare --installer-ui c --jobs 4
 python3 tools/ki2build.py build \
   --profile distro/profiles/server-core.toml --only kiki-installer-gtk
 ```
+
+Stage 3 빌드 계획은 `graphics.installer_ui: c`로 이 화면을 명시적으로 선택한다.
+창 제목 표시줄은 하나만 사용하며, 각 설정 화면은 스크롤되고 이전/다음 버튼은
+하단에 고정된다. 계획 경로와 자동화 모드는 시작 화면의 고급 옵션에 있다.
+디스크는 모델·용량을 확인해 직접 선택한다. `/dev/sda`를 기본 선택하지 않는다.
+
+로컬 화면·계획 생성·설치 요청 연동 테스트:
+
+```sh
+KIKI_GTK_TEST_ARTIFACTS=artifacts/installer-ui-test \
+  python3 tools/test_gtk_installer_ui.py
+```
+
+Linux, GTK 4 개발 헤더, Go와 Xvfb가 필요하다. 실제 GTK 창을 한국어/영어와
+1024×768·800×600 크기로 렌더링한다. Go 계획 생성기는 실제 실행하고,
+설치·진행 상태·재부팅 요청은 임시 디렉터리의 모의 백엔드로 확인한다.
+호스트 디스크를 포맷하거나 실제 재부팅하지 않는다. 이 테스트가 VM 설치 인수
+검증을 대신하지는 않는다.
+
+실제 패키지의 GUI·미디어 검증기·파티션 도구를 조합하는 Linux chroot 검사:
+
+```sh
+sudo env KIKI_TEST_MEDIA_RUNTIME=1 PYTHONPATH=tools \
+  python3 -m unittest tools/test_ki2media_runtime.py
+```
+
+기본 패키지 경로는 `dist/ki2/packages/x86_64`이며, 별도 후보 저장소는
+`KIKI_TEST_PACKAGES`로 지정한다. 이 검사는 `sfdisk`·`mkfs.ext4` 실행과 서명 검증,
+손상·누락 패키지 및 변조된 메타데이터 거부를 확인한다. 장치에 쓰지는 않는다.
+
+설치 대상 패키지로 만든 별도 rootfs에는 다음 검사도 실행한다. GUI 런타임이
+기본 명령을 덮어쓰지 않은 패키지 조합이어야 한다.
+
+```sh
+sudo env KIKI_CLI_TEST_ROOTFS=/path/to/disposable-installed-rootfs PYTHONPATH=tools \
+  python3 -m unittest tools/test_installed_cli_runtime.py
+```
+
+`id`, `ls`, `cp`, `mv`, `stat`, `awk`, `find`, `sed`, `grep`, `tar`를 chroot에서 실행해
+빌드 호스트 라이브러리에 대한 숨은 의존성을 확인한다.
 
 ## Hyper-V 확인
 
@@ -69,3 +110,30 @@ scanout-only 장치에 화면을 표시하지 못한 경우와 구분해야 합�
 wlroots는 키맵 전달에 POSIX 공유 메모리를 사용하므로 initramfs의 `/dev/shm`에는
 mode 1777 tmpfs가 마운트되어야 합니다. GTK 설치기 런타임에는 libinput의 장치별
 quirks 데이터인 `/usr/share/libinput`과 선택적 `/etc/libinput`도 함께 들어갑니다.
+
+## 기존 GNOME 환경 선택
+
+설치 프로파일 `desktop-gnome` 또는 추가 그룹 `desktop-gnome`은 기존에 구성한
+GNOME 50·GDM·Wayland·네이티브 Mesa 후보의 `kiki-gnome-desktop`을 선택한다.
+GDM과 충돌하는 tty1 AI 콘솔은 끄고, tty2 복구 로그인은 유지한다.
+백엔드는 기존 `/usr/libexec/kiki-desktop-prepare`로 계정·캐시를 준비하고
+`display-manager.service`와 `graphical.target`을 연결한다.
+
+```sh
+kiki-installer-tui --write --profile desktop-gnome --plan /tmp/desktop-plan.yaml
+# 기존 서버 프로파일에 데스크톱 그룹을 추가하는 경우:
+kiki-installer-tui --write --profile server-core --groups desktop-gnome --plan /tmp/desktop-plan.yaml
+
+python3 tools/ki2build.py plan --profile distro/profiles/desktop-gnome.toml
+python3 tools/ki2build.py rootfs --profile distro/profiles/desktop-gnome.toml \
+  --rootfs-dir /tmp/kiki-desktop-rootfs
+```
+
+빌드 프로파일은 별도 GNOME 후보 저장소의 공개키·인덱스를 고정하고 서명과 모든
+선택 패키지 해시를 확인한 뒤 재사용한다. GNOME 소스 재컴파일은 기존 후보 빌드
+절차로 수행한다. `server-core` 기본 패키지는 유지한다.
+기존 r4 서버 ISO에는 GNOME 패키지가 없으므로 해당 ISO만으로는 설치할 수 없다.
+새 설치 미디어에는 업데이트한 설치기와 GNOME 후보 패키지·서명 인덱스가 필요하며,
+필수 패키지가 없는 미디어에서는 디스크 쓰기 전에 중단한다.
+이 연결 작업은 이전 후보의 최소 로그인 환경 범위를 확장하거나 새 ISO의 GNOME
+로그인 검증을 완료했다는 뜻은 아니다.

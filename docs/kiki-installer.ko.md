@@ -190,6 +190,7 @@ python3 tools/ki2bootiso.py \
   --rootfs-dir dist/rootfs/server-core \
   --repo-dir dist/ki2/repo \
   --packages-dir dist/ki2/packages/x86_64 \
+  --media-public-key build/ki2/keys/stage3-v3-repo.ed25519.pub \
   --output dist/iso/kiki-stage3-v3-installer-x86_64.iso
 ```
 

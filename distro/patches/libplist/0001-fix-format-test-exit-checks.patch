@@ -1,0 +1,27 @@
+--- a/test/json-invalid-types.test
++++ b/test/json-invalid-types.test
+@@ -17 +17 @@
+-if [ $? -neq 2 ]; then
++if [ $? -ne 2 ]; then
+@@ -23 +23 @@
+-if [ $? -neq 2 ]; then
++if [ $? -ne 2 ]; then
+@@ -29 +29 @@
+-if [ $? -neq 2 ]; then
++if [ $? -ne 2 ]; then
+--- a/test/ostep-invalid-types.test
++++ b/test/ostep-invalid-types.test
+@@ -15,3 +15,3 @@
+-echo "Converting (failure expected)"
++echo "Converting data (supported by OpenStep)"
+ $top_builddir/tools/plistutil -f openstep -i $DATASRC/$TESTFILE0 -o /dev/null
+-if [ $? -neq 2 ]; then
++if [ $? -ne 0 ]; then
+@@ -22,2 +22,2 @@
+-$top_builddir/tools/plistutil -f openstepn -i $DATASRC/$TESTFILE1 -o /dev/null
+-if [ $? -neq 2 ]; then
++$top_builddir/tools/plistutil -f openstep -i $DATASRC/$TESTFILE1 -o /dev/null
++if [ $? -ne 2 ]; then
+@@ -29 +29 @@
+-if [ $? -neq 2 ]; then
++if [ $? -ne 2 ]; then

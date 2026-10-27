@@ -1,0 +1,34 @@
+[[recipe]]
+name = "install-info"
+version = "7.2"
+release = 2
+summary = "GNU Info directory index updater"
+license = "GPL-3.0-or-later"
+tier = "runtime"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://ftp.gnu.org/gnu/texinfo/texinfo-7.2.tar.xz"
+file = "texinfo-7.2.tar.xz"
+sha256 = "0329d7788fbef113fa82cb80889ca197a344ce0df7646fe000974c5d714363a6"
+[recipe.dependencies]
+build = ["linux-headers"]
+runtime = ["glibc", "busybox", "gzip", "xz"]
+[recipe.build]
+system = "gnu"
+configure = [
+  'cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --disable-nls --disable-rpath',
+]
+compile = [
+  'make -C "${KI2_SOURCE_DIR}/gnulib/lib" -j "${KI2_JOBS}"',
+  'make -C "${KI2_SOURCE_DIR}/install-info" -j "${KI2_JOBS}" ginstall-info',
+]
+install = [
+  'install -Dm755 "${KI2_SOURCE_DIR}/install-info/ginstall-info" "${KI2_DESTDIR}/usr/bin/install-info"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/COPYING" "${KI2_DESTDIR}/usr/share/licenses/install-info/COPYING"',
+  'readelf -d "${KI2_DESTDIR}/usr/bin/install-info" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CC = "cc --sysroot=${KI2_SYSROOT}"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"

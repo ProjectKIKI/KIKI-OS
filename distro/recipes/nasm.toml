@@ -1,0 +1,29 @@
+[[recipe]]
+name = "nasm"
+version = "3.02"
+release = 1
+summary = "x86 assembler for native SIMD-enabled graphics builds"
+license = "BSD-2-Clause"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://www.nasm.us/pub/nasm/releasebuilds/3.02/nasm-3.02.tar.xz"
+file = "nasm-3.02.tar.xz"
+sha256 = "87336eba53b4acfe917424ab5d500d2b0054d9f5148d35c2273ccf2cfb712f0d"
+[recipe.dependencies]
+build = ["linux-headers"]
+runtime = ["glibc", "zlib"]
+[recipe.build]
+system = "autotools"
+configure = ['cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE}']
+compile = ['make -C "${KI2_SOURCE_DIR}" -j "${KI2_JOBS}"']
+install = [
+  'make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install',
+  'install -Dm644 "${KI2_SOURCE_DIR}/LICENSE" "${KI2_DESTDIR}/usr/share/licenses/nasm/LICENSE"',
+  'test -x "${KI2_DESTDIR}/usr/bin/nasm" && test -x "${KI2_DESTDIR}/usr/bin/ndisasm"',
+  'readelf -d "${KI2_DESTDIR}/usr/bin/nasm" "${KI2_DESTDIR}/usr/bin/ndisasm" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"

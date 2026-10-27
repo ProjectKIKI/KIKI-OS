@@ -1,0 +1,5 @@
+[profile]
+name = "xorg-protocols"
+description = "X11 protocol headers, not an X server or desktop"
+arch = "x86_64"
+packages = ["xorgproto", "xcb-proto"]

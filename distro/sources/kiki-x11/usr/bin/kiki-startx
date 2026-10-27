@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+/usr/bin/kiki-x11-check
+if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    echo "Run from a local text console, not an existing graphical session." >&2
+    exit 1
+fi
+case "$(tty)" in
+    /dev/tty[0-9]*) ;;
+    *) echo "A local /dev/ttyN login is required." >&2; exit 1 ;;
+esac
+if [ "$#" -ne 0 ]; then
+    echo "Usage: kiki-startx (minimal Xorg + xterm session on :0)" >&2
+    exit 1
+fi
+umask 077
+authdir=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/kiki-x11.XXXXXX")
+trap 'rm -f "$authdir/authority"; rmdir "$authdir"' EXIT
+XAUTHORITY="$authdir/authority"
+export XAUTHORITY
+touch "$XAUTHORITY"
+cookie=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+[ "${#cookie}" -eq 32 ] || exit 1
+xauth -f "$XAUTHORITY" add :0 MIT-MAGIC-COOKIE-1 "$cookie"
+unset cookie
+echo "Xorg :0: cookie authentication enabled; TCP disabled. Exit xterm to return."
+xinit /usr/bin/xterm -fa monospace -fs 12 -- /usr/bin/Xorg :0 -nolisten tcp -auth "$XAUTHORITY" -keeptty

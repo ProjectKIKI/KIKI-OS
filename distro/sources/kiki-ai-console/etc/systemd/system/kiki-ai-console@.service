@@ -1,8 +1,8 @@
 [Unit]
-Description=KIKI OS Korean AI management console on %I
+Description=KIKI OS English AI management console on %I
 Documentation=file:/usr/share/doc/kiki-ai-console/README.ko.md
 Conflicts=getty@%i.service
-After=systemd-user-sessions.service network-online.target kiki-llama-server.service
+After=systemd-user-sessions.service kiki-llama-server.service
 
 [Service]
 Type=simple
@@ -16,7 +16,7 @@ StandardError=tty
 TTYReset=yes
 TTYVHangup=yes
 TTYVTDisallocate=yes
-Environment=LANG=C.UTF-8
+Environment=LANG=C.UTF-8 LC_ALL=C.UTF-8
 KeyringMode=private
 
 [Install]

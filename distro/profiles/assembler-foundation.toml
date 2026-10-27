@@ -1,0 +1,5 @@
+[profile]
+name = "assembler-foundation"
+description = "Assembler build prerequisite, not a desktop profile"
+arch = "x86_64"
+packages = ["nasm"]

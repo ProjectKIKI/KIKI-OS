@@ -1,0 +1,6 @@
+# Incremental native prerequisite, not a GNOME desktop session.
+[profile]
+name = "gnome-power"
+description = "UPower prerequisite for a future GNOME 50 Wayland session"
+arch = "x86_64"
+packages = ["upower"]

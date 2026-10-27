@@ -1,0 +1,97 @@
+# Planning lock only: these are upstream inputs, NOT completed KIKI recipes.
+# Source: verified GNOME build metadata 50.4, core/ and core-deps/ elements.
+status = "planned-not-buildable"
+desktop = "GNOME"
+metadata_url = "https://download.gnome.org/sources/gnome-build-meta/50/gnome-build-meta-50.4.tar.xz"
+metadata_sha256 = "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+
+# Native session/desktop prerequisites from the same locked metadata.
+# Additional graphics prerequisites pinned from official release archives.
+# Hashes computed locally; independent signatures not verified.
+[[source]]
+name = "libjpeg-turbo"
+version = "3.2.0"
+url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz"
+sha256 = "6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e"
+
+[[source]]
+name = "nasm"
+version = "3.02"
+url = "https://www.nasm.us/pub/nasm/releasebuilds/3.02/nasm-3.02.tar.xz"
+sha256 = "87336eba53b4acfe917424ab5d500d2b0054d9f5148d35c2273ccf2cfb712f0d"
+
+# Native session/desktop prerequisites from the locked GNOME metadata.
+[[source]]
+name = "gnome-desktop"
+version = "44.5"
+url = "https://download.gnome.org/sources/gnome-desktop/44/gnome-desktop-44.5.tar.xz"
+sha256 = "20e0995a6e3a03e8c1026c5a27bc3f45e69ffcc392ad743dcab6107a541d232f"
+
+[[source]]
+name = "gtk"
+version = "4.22.4"
+url = "https://download.gnome.org/sources/gtk/4.22/gtk-4.22.4.tar.xz"
+sha256 = "51bd9f60c7d23a665a556c7364c21fb2e4e282566b3e7e092455e8f910330893"
+
+# Polkit tag archive digest computed locally; independent signature not verified.
+[[source]]
+name = "polkit"
+version = "127"
+url = "https://github.com/polkit-org/polkit/archive/refs/tags/127.tar.gz"
+sha256 = "9b7bc16f086479dcc626c575976568ba4a85d34297a750d8ab3d2e57f6d8b988"
+
+# libusb is pinned separately from GNOME build-meta's freedesktop-sdk junction.
+# Digest verified against the upstream GitHub release asset metadata.
+[[source]]
+name = "libusb"
+version = "1.0.29"
+url = "https://github.com/libusb/libusb/releases/download/v1.0.29/libusb-1.0.29.tar.bz2"
+sha256 = "5977fc950f8d1395ccea9bd48c06b3f808fd3c2c961b44b0c2e6e29fc3a70a85"
+
+[[source]]
+name = "gnome-shell"
+version = "50.4"
+url = "https://download.gnome.org/sources/gnome-shell/50/gnome-shell-50.4.tar.xz"
+sha256 = "c531939539db316a41aef23670370abd1330d3254f84bcb0f9f4dae5d6e362cf"
+
+[[source]]
+name = "mutter"
+version = "50.4"
+url = "https://download.gnome.org/sources/mutter/50/mutter-50.4.tar.xz"
+sha256 = "273d33c875abcb4b6cbea3f4ec045d18155fbc510c3521fc7e47926371310988"
+
+[[source]]
+name = "gdm"
+version = "50.2"
+url = "https://download.gnome.org/sources/gdm/50/gdm-50.2.tar.xz"
+sha256 = "8a4679e47cddfe8b0a1bd9d3836042deb68fb3e1b0e7e62dfd0631dc5b6fc541"
+
+[[source]]
+name = "gnome-session"
+version = "50.1"
+url = "https://download.gnome.org/sources/gnome-session/50/gnome-session-50.1.tar.xz"
+sha256 = "6289b6afa44d3e4c999ce5761ff8b2c10ba309f55f9425f2b13f98208c81f6fb"
+
+[[source]]
+name = "dconf"
+version = "0.49.0"
+url = "https://download.gnome.org/sources/dconf/0.49/dconf-0.49.0.tar.xz"
+sha256 = "16a47e49a58156dbb96578e1708325299e4c19eea9be128d5bd12fd0963d6c36"
+
+[[source]]
+name = "gsettings-desktop-schemas"
+version = "50.1"
+url = "https://download.gnome.org/sources/gsettings-desktop-schemas/50/gsettings-desktop-schemas-50.1.tar.xz"
+sha256 = "0a2aa25082672585d16fcdab61c7b0e33f035fb87476505c794f29565afa485b"
+
+[[source]]
+name = "json-glib"
+version = "1.10.8"
+url = "https://download.gnome.org/sources/json-glib/1.10/json-glib-1.10.8.tar.xz"
+sha256 = "55c5c141a564245b8f8fbe7698663c87a45a7333c2a2c56f06f811ab73b212dd"
+
+[[source]]
+name = "libgudev"
+version = "238"
+url = "https://download.gnome.org/sources/libgudev/238/libgudev-238.tar.xz"
+sha256 = "61266ab1afc9d73dbc60a8b2af73e99d2fdff47d99544d085760e4fa667b5dd1"

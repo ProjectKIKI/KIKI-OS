@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+: "${KI2_BUILD_DIR:?KI2_BUILD_DIR is required}"
+: "${KI2_REPO_ROOT:?KI2_REPO_ROOT is required}"
+exec /bin/sh "${KI2_REPO_ROOT}/distro/scripts/ki2-target-run" "${KI2_BUILD_DIR}/wayland-scanner.real" "$@"

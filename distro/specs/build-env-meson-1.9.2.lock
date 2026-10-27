@@ -1,0 +1,8 @@
+{
+  "schema": "kiki-python-wheel-lock-v1",
+  "packages": [
+    {"name": "meson", "version": "1.9.2", "role": "runtime", "filename": "meson-1.9.2-py3-none-any.whl", "url": "https://files.pythonhosted.org/packages/d7/ab/115470e7c6dcce024e43e2e00986864c56e48c59554bb19f4b02ed72814c/meson-1.9.2-py3-none-any.whl", "sha256": "1a284dc1912929098a6462401af58dc49ae3f324e94814a38a8f1020cee07cba"},
+    {"name": "tomli", "version": "2.2.1", "role": "runtime", "filename": "tomli-2.2.1-py3-none-any.whl", "url": "https://files.pythonhosted.org/packages/6e/c2/61d3e0f47e2b74ef40a68b9e6ad5984f6241a942f7cd3bbfbdbd03861ea9/tomli-2.2.1-py3-none-any.whl", "sha256": "cb55c73c5f4408779d0cf3eef9f762b9c9f147a77de7b258bef0a5628adc85cc"},
+    {"name": "installer", "version": "0.7.0", "role": "bootstrap", "filename": "installer-0.7.0-py3-none-any.whl", "url": "https://files.pythonhosted.org/packages/e5/ca/1172b6638d52f2d6caa2dd262ec4c811ba59eee96d54a7701930726bce18/installer-0.7.0-py3-none-any.whl", "sha256": "05d1933f0a5ba7d8d6296bb6d5018e7c94fa473ceb10cf198a92ccea19c27b53"}
+  ]
+}

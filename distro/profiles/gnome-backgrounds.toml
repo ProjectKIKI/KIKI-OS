@@ -1,0 +1,6 @@
+# Incremental GNOME 50 artifact; not an installable desktop session.
+[profile]
+name = "gnome-backgrounds"
+description = "Native GNOME 50 background artwork build and verification"
+arch = "x86_64"
+packages = ["gnome-backgrounds"]

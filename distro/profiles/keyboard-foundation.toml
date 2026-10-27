@@ -1,0 +1,5 @@
+[profile]
+name = "keyboard-foundation"
+description = "Native keyboard mapping and X11/Wayland input prerequisites"
+arch = "x86_64"
+packages = ["libxkbcommon"]

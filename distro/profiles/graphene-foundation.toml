@@ -1,0 +1,5 @@
+[profile]
+name = "graphene-foundation"
+description = "GTK graphics types development validation"
+arch = "x86_64"
+packages = ["graphene"]

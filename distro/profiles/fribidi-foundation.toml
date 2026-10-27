@@ -1,0 +1,5 @@
+[profile]
+name = "fribidi-foundation"
+description = "Bidirectional text development and validation profile"
+arch = "x86_64"
+packages = ["fribidi"]

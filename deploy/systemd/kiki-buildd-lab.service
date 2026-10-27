@@ -1,0 +1,22 @@
+[Unit]
+Description=KIKI OS lab build web console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lab
+Group=lab
+WorkingDirectory=/home/lab/kiki-os
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=KIKI_TOOLCHAIN_ID=rocky9-lab-stage3-v1
+ExecStart=/usr/bin/python3 /home/lab/kiki-os/tools/ki2ci.py serve --host 127.0.0.1 --port 8090 --jobs 2 --artifact-root /home/lab/kiki-os/build/ki2ci
+Restart=on-failure
+RestartSec=5s
+UMask=0027
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+[[recipe]]
+name = "kiki-lightdm"
+version = "1.30.0"
+release = 1
+summary = "Optional LightDM login with GTK greeter and minimal X11 session (Rocky 9 ABI bootstrap)"
+license = "LGPL-2.1-or-later AND GPL-3.0-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "build/ki2/host-lightdm/rootfs"
+inputs = ["tools/ki2lightdm.py", "distro/sources/kiki-lightdm"]
+[recipe.dependencies]
+build = []
+runtime = ["glibc", "kiki-x11-runtime", "linux-pam", "dbus", "systemd", "shadow", "bash"]
+[recipe.build]
+system = "copy"
+skip_sysroot = true

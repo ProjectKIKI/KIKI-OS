@@ -1,0 +1,5 @@
+[profile]
+name = "lightdm"
+description = "Opt-in LightDM + GTK greeter; does not change the default boot target"
+arch = "x86_64"
+packages = ["kiki-lightdm"]

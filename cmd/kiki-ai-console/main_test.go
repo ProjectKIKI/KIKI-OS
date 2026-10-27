@@ -29,10 +29,10 @@ func TestRenderPlanShowsExactExecutionContext(t *testing.T) {
 	var output bytes.Buffer
 	renderPlan(&output, plan)
 	for _, expected := range []string{
-		"위험 등급: network",
+		"Risk: network",
 		`$ /bin/sh -c 'printf '\''%s'\'' ok'`,
-		"작업 경로: /etc",
-		"환경 변수: LANG=ko_KR.UTF-8",
+		"Working directory: /etc",
+		"Environment: LANG=ko_KR.UTF-8",
 	} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("rendered plan missing %q:\n%s", expected, output.String())
@@ -79,6 +79,20 @@ func TestWaitForRuntimeRetriesUntilHealthy(t *testing.T) {
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func TestConsoleStartupAndHelpAreASCII(t *testing.T) {
+	var output bytes.Buffer
+	c := newConsole(defaultConfig(), "", strings.NewReader("/help\n/exit\n"), &output, &output)
+	c.run(context.Background())
+	for _, r := range output.String() {
+		if r > 127 {
+			t.Fatalf("non-ASCII console output: %q", output.String())
+		}
+	}
+	if !strings.Contains(output.String(), "execute / edit / cancel") {
+		t.Fatal("approval help missing")
+	}
+}
 
 func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return function(request)

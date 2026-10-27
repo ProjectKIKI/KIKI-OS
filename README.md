@@ -1,18 +1,20 @@
 # KIKI OS
 
+![KIKI · 키키 로고](assets/brand/kikios-kiki-wordmark-v1.png)
+
 **첫 부팅부터 쿠버네티스 노드까지.**
 
 KIKI OS는 새 VM 또는 베어메탈 머신을 쿠버네티스 노드로 바꾸기 위한 자동화
-OS입니다. ISO 또는 디스크 이미지로 부팅하면 네트워크 준비, 노드 프로필 적용,
-CRI-O 또는 containerd 기반 kubelet 구성, 클러스터 조인, 상태 보고까지 이어지는 흐름을 목표로 합니다.
+OS입니다. ISO 또는 디스크 이미지로 부팅하면 네트워크 준비, 노드 프로필 적용, CRI-O 또는 containerd 기반 kubelet 구성, 클러스터 조인, 상태 보고까지 이어지는 흐름을 목표로 합니다.
 
 현재 저장소는 KIKI OS의 빌드 시스템, `.ki2` 패키지 형식, 서명 저장소, 루트
 파일시스템 조립, BIOS/UEFI 설치 미디어, CLI/TUI/GUI 인스톨러와 빌드 웹 콘솔을 함께 다룹니다.
 
 **제작자**
 최국현<tang@dustbox.kr>
-안현
-장경빈
+
+**지원자(Thanks for)**
+안현, 장경빈
 
 ## Stage3 현재 상태 (2026-09-29)
 
@@ -32,24 +34,37 @@ bash distro/builders/stage3-local-build.sh check
 
 ## 개발 환경 및 진행 상황
 
-현재 개발 환경은 WSL2입니다. 최대한 크로스 컴파일을 배제하고 네이티브 패키지를
-지향하면서 패키지와 운영체제를 구성하고 있습니다. 현재 진행 상황은 다음과 같습니다.
+### 빌드 서버와 Git 연동 (2026-10-27)
+
+별도 Rocky Linux 9 빌드 서버의 rootless Podman 환경에서 패키지·커널 빌드와
+릴리즈별 ISO 보관을 운영합니다. Git 전송은 Gitea `stage3`의 HTTPS만 사용합니다.
+기본 패키지·커널 빌드는 실행 직전에 최신 커밋을 가져와 고정하고, 해당 커밋의
+명세·설정·패치·빌드 도구를 작업별 경로에서 실행합니다. 재시도는 실제 사용한
+커밋을 유지합니다. [Git 빌드 사용 방법](docs/kiki-build-web-git-sync.ko.md)을 확인하세요.
+
+기존 설치기·원본 패키지·고정 릴리즈·ISO는 별도로 보존합니다. 빌드 성공과
+SHA 검사가 실제 VM 설치·커널 부팅·GNOME 로그인 검증을 대신하지 않으며,
+완료한 산출물을 자동으로 운영 릴리즈에 승격하지 않습니다.
+
+개발 PC의 Windows/WSL과 별도 Linux 빌드 서버를 함께 사용합니다. 최대한 크로스 컴파일을 배제하고 네이티브 패키지를 지향하면서 패키지와 운영체제를 구성하고 있습니다. 현재 진행 상황은 다음과 같습니다.
 
 - [x] 기본 부팅 경로
 - [x] systemd로 PID 1을 넘기는 단순 init 경로
-- [ ] systemd-initramfs 구현
-- [ ] 원격 패키지 저장소 HTTP/HTTPS 구현
+- [X] systemd-initramfs 구현
+- [X] 원격 패키지 저장소 HTTP/HTTPS 구현
+- [ ] 엑스 윈도우 구성
+- [ ] AI 및 LLM 서비스 통합
+- [ ] 엑스 윈도우 서버 관리자 도구
 
 
 ## 저장소
 
-- Gitea: <https://git.vlab.dustbox.kr/dustbox/kiki-os>
-- GitHub: <https://github.com/ProjectKIKI/KIKI-OS>
+- 개발자 Gitea: <https://git.vlab.dustbox.kr/dustbox/kiki-os>
+- 개발자 공개 GitHub: <https://github.com/ProjectKIKI/KIKI-OS>
 
 ## 현재 상태
 
-KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 미디어가 아니라,
-쿠버네티스 노드 수명주기 자동화를 위한 재현 가능한 독립 배포판입니다.
+KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 미디어가 아니라, 쿠버네티스 노드 수명주기 자동화를 위한 재현 가능한 독립 배포판입니다.
 
 - 1단계 설치기가 있습니다.
 - `.ki2 패키지 -> 저장소 -> 루트 파일시스템 -> 부팅 미디어` 파이프라인이 있습니다.
@@ -107,6 +122,7 @@ KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 
 - `tools/ki2build.py`: `.ki2` 패키지 빌드, 의존성 계획, 루트 파일시스템 조립
 - `tools/ki2repo.py`: HTTP 패키지 저장소 인덱스, 메타데이터, 채널 파일 생성
 - `tools/ki2ci.py`: 명령줄 파이프라인과 빌드 웹 콘솔
+- [빌드 웹 Git 소스 동기화](docs/kiki-build-web-git-sync.ko.md): Gitea 브랜치 가져오기·커밋 고정·작업별 패키지 빌드
 - `tools/ki2iso.py`: 루트 파일시스템과 패키지 저장소를 담는 페이로드 ISO 생성
 - `tools/ki2bootiso.py`: BIOS/UEFI 부팅 ISO, 1단계 TUI 설치 ISO 생성
 - `tools/ki2publish.py`: 패키지, 저장소, ISO, 디스크 이미지를 정적 배포 트리로 복사
@@ -140,7 +156,14 @@ python3 tools/kiki_console.py status
 python3 tools/kiki_console.py doctor
 python3 tools/kiki_console.py plan
 python3 tools/kiki_console.py build --dry-run
+python3 tools/kiki_console.py pipeline-plan smoke
+python3 tools/kiki_console.py jobs
+python3 tools/kiki_console.py build-web --jobs 8
 ```
+
+웹 빌드 콘솔은 `http://127.0.0.1:8090/jobs`에서 실행 계획 미리보기, 순차 대기열,
+실시간 진행·로그, 대기 작업 취소와 전체 재실행을 제공한다.
+[빌드 실행·기록·CLI 사용법](docs/kiki-os-build-automation.ko.md)을 참고한다.
 
 프로필 검증:
 

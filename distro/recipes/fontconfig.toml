@@ -1,0 +1,34 @@
+[[recipe]]
+name = "fontconfig"
+version = "2.18.3"
+release = 1
+summary = "Font discovery, matching, and cache tools"
+license = "MIT AND Unicode-DFS-2016"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://gitlab.freedesktop.org/api/v4/projects/890/packages/generic/fontconfig/2.18.3/fontconfig-2.18.3.tar.xz"
+file = "fontconfig-2.18.3.tar.xz"
+sha256 = "4f7b554a38cdf78c033f666c8871f3749e14a094f65a07f630c91ed0b43d35e3"
+[recipe.dependencies]
+build = ["linux-headers"]
+runtime = ["freetype", "expat"]
+[recipe.build]
+system = "meson"
+inputs = ["distro/specs/graphics-cross.ini", "distro/scripts/ki2-target-pkg-config", "distro/scripts/ki2-target-run"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"',
+  'install -m644 "${KI2_REPO_ROOT}/distro/specs/graphics-cross.ini" "${KI2_BUILD_DIR}/cross.ini"',
+  'sed -i -e "s|@BUILD@|${KI2_BUILD_DIR}|g" -e "s|@REPO@|${KI2_REPO_ROOT}|g" "${KI2_BUILD_DIR}/cross.ini"',
+  'meson setup "${KI2_BUILD_DIR}/fontconfig" "${KI2_SOURCE_DIR}" --cross-file "${KI2_BUILD_DIR}/cross.ini" --prefix=/usr --libdir=lib --sysconfdir=/etc --localstatedir=/var --buildtype=release --wrap-mode=nofallback -Ddefault_library=shared -Dxml-backend=expat -Ddoc=disabled -Dnls=enabled -Dtools=enabled -Dtests=enabled -Dtests-bwrap=disabled -Dtests-external-fonts=disabled -Dcache-build=disabled -Dcache-dir=/var/cache/fontconfig -Ddefault-fonts-dirs=/usr/share/fonts',
+]
+compile = ['meson compile -C "${KI2_BUILD_DIR}/fontconfig" -j "${KI2_JOBS}"']
+install = [
+  'DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/fontconfig"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/COPYING" "${KI2_DESTDIR}/usr/share/licenses/fontconfig/COPYING"',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libfontconfig.so.1" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"

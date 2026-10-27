@@ -1,0 +1,6 @@
+# Build/verification profile only; not a usable GNOME desktop.
+[profile]
+name = "gnome-foundation"
+description = "Native GNOME settings foundation for development and runtime validation"
+arch = "x86_64"
+packages = ["dconf", "gsettings-desktop-schemas", "json-glib", "libgudev", "libusb", "libplist", "libimobiledevice-glue", "libusbmuxd", "libtatsu", "libgpg-error", "libgcrypt", "gmp", "nettle", "libtasn1", "libunistring", "libidn2", "p11-kit", "gnutls", "libimobiledevice", "polkit", "libpng", "freetype", "harfbuzz", "fontconfig", "pango", "graphene"]

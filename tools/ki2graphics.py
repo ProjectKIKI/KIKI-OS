@@ -112,6 +112,25 @@ def extract_tar(archive: Path, destination: Path) -> None:
         bundle.extractall(destination)
 
 
+def install_brand_asset(repo_root: Path, output: Path) -> None:
+    source = repo_root / "assets/brand/kikios-kiki-wordmark-v1.png"
+    if not source.is_file() or source.is_symlink():
+        raise GraphicsError(f"required bilingual logo missing or not a regular file: {source}")
+    if source.read_bytes()[:8] != b"\x89PNG\r\n\x1a\n":
+        raise GraphicsError(f"bilingual logo is not a PNG: {source}")
+    copy_path(source, output, Path("usr/share/pixmaps/kiki-installer.png"))
+
+
+def install_gsettings_assets(source: Path, output: Path) -> None:
+    # Keep the sources matching the host bootstrap cache. Rootfs assembly
+    # recompiles the combined schema set with the target GLib.
+    if not source.is_dir() or not list(source.glob("*.gschema.xml")):
+        raise GraphicsError(f"GSettings schema sources missing: {source}")
+    if not (source / "gschemas.compiled").is_file():
+        raise GraphicsError(f"GSettings bootstrap cache missing: {source}")
+    copy_path(source, output, Path("usr/share/glib-2.0/schemas"))
+
+
 def copy_path(source: Path, rootfs: Path, destination: Path | None = None) -> None:
     if not source.exists() and not source.is_symlink():
         return
@@ -191,7 +210,67 @@ def copy_rpm_licenses(rootfs: Path) -> list[str]:
     return sorted(packages)
 
 
-def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs: int) -> None:
+def build_installer(repo_root: Path, binary: Path, installer_ui: str) -> None:
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    if installer_ui == "gotk":
+        run(["make", "-C", str(repo_root / "cmd/kiki-installer-gotk"),
+             f"OUTPUT={binary}", "LIVE=true"])
+    elif installer_ui == "c":
+        cflags = subprocess.check_output(["pkg-config", "--cflags", "gtk4"], text=True).split()
+        libs = subprocess.check_output(["pkg-config", "--libs", "gtk4"], text=True).split()
+        run(["cc", "-O2", "-pipe", "-Wall", "-Wextra", "-Werror", *cflags,
+             "-o", str(binary), str(repo_root / "cmd/kiki-installer-gtk/main.c"), *libs])
+    else:
+        raise GraphicsError(f"Unknown installer UI: {installer_ui}")
+
+
+def relativize_runtime_links(output: Path) -> None:
+    """Keep runtime links inside the payload and compatible with safe extraction."""
+    for path in output.rglob("*"):
+        if not path.is_symlink():
+            continue
+        target = os.readlink(path)
+        if target.startswith("/"):
+            destination = output / target.lstrip("/")
+            if ".." in Path(target).parts:
+                raise GraphicsError(f"Unsafe runtime link: {path}")
+            relative = os.path.relpath(destination, path.parent)
+            path.unlink()
+            path.symlink_to(relative)
+
+
+def copy_go_licenses(repo_root: Path, output: Path) -> None:
+    module = repo_root / "cmd/kiki-installer-gotk"
+    listing = subprocess.check_output(
+        ["go", "list", "-m", "-mod=readonly", "-f", "{{.Path}}|{{.Version}}|{{.Dir}}", "all"],
+        cwd=module, text=True)
+    destination = output / "usr/share/licenses/kiki-installer-gotk"
+    for line in listing.splitlines():
+        name, version, directory = line.split("|", 2)
+        if not version:
+            continue
+        files = [p for p in Path(directory).iterdir()
+                 if p.is_file() and p.name.upper().startswith(("LICENSE", "COPYING", "COPYRIGHT", "NOTICE"))]
+        if not files:
+            raise GraphicsError(f"No license found for Go module {name}@{version}")
+        target = destination / (re.sub(r"[^A-Za-z0-9_.-]", "_", name) + "@" + version)
+        target.mkdir(parents=True, exist_ok=True)
+        for source in files:
+            # Go's module cache is read-only; do not propagate that mode.
+            shutil.copyfile(source, target / source.name)
+    goroot = subprocess.check_output(["go", "env", "GOROOT"], text=True).strip()
+    destination.mkdir(parents=True, exist_ok=True)
+    go_license = Path(goroot) / "LICENSE"
+    if not go_license.is_file():
+        go_license = Path("/usr/share/doc/golang/LICENSE")
+    if not go_license.is_file():
+        raise GraphicsError("Go toolchain license is missing")
+    shutil.copy2(go_license, destination / "Go-LICENSE")
+    shutil.copy2(module / "go.mod", destination / "go.mod")
+    shutil.copy2(module / "go.sum", destination / "go.sum")
+
+
+def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs: int, installer_ui: str = "gotk") -> None:
     require_commands(["cc", "meson", "ninja", "pkg-config", "wayland-scanner"])
     require_pkgconfig([
         "gtk4", "libdrm", "libinput", "libseat", "wayland-client",
@@ -262,14 +341,8 @@ def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs
     run(["meson", "compile", "-C", str(cage_build), "-j", str(jobs)], env=cage_env)
     run(["meson", "install", "-C", str(cage_build), "--destdir", str(stage)], env=cage_env)
 
-    gtk_cflags = subprocess.check_output(["pkg-config", "--cflags", "gtk4"], text=True).split()
-    gtk_libs = subprocess.check_output(["pkg-config", "--libs", "gtk4"], text=True).split()
     gtk_binary = stage / "usr/bin/kiki-installer-gtk"
-    gtk_binary.parent.mkdir(parents=True, exist_ok=True)
-    run([
-        "cc", "-O2", "-pipe", "-Wall", "-Wextra", "-Werror", *gtk_cflags,
-        "-o", str(gtk_binary), str(repo_root / "cmd/kiki-installer-gtk/main.c"), *gtk_libs,
-    ])
+    build_installer(repo_root, gtk_binary, installer_ui)
     copy_path(
         repo_root / "cmd/kiki-installer-gtk/style.css",
         stage,
@@ -278,6 +351,7 @@ def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs
 
     copy_path(stage / "usr/bin/cage", output, Path("usr/bin/cage"))
     copy_path(gtk_binary, output, Path("usr/bin/kiki-installer-gtk"))
+    install_brand_asset(repo_root, output)
     copy_path(
         stage / "usr/share/kiki-installer-gtk/style.css",
         output,
@@ -308,7 +382,6 @@ def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs
     for asset in (
         Path("/usr/share/glvnd/egl_vendor.d"),
         Path("/usr/share/X11/xkb"),
-        Path("/usr/share/glib-2.0/schemas/gschemas.compiled"),
         Path("/usr/lib64/gdk-pixbuf-2.0/2.10.0/loaders"),
         Path("/usr/lib64/gdk-pixbuf-2.0/2.10.0/loaders.cache"),
         Path("/etc/fonts"),
@@ -322,6 +395,8 @@ def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs
         Path("/usr/lib/udev"),
     ):
         copy_path(asset, output)
+
+    install_gsettings_assets(Path("/usr/share/glib-2.0/schemas"), output)
 
     # libinput relies on udev's ID_INPUT tags.  mdev only creates device nodes,
     # so ship the small udev manager/client pair and run them before Cage.
@@ -338,6 +413,8 @@ def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs
     shutil.copy2(wlroots_source / "LICENSE", license_dir / "wlroots-LICENSE")
     shutil.copy2(seatd_source / "LICENSE", license_dir / "seatd-LICENSE")
     runtime_packages = copy_rpm_licenses(output)
+    if installer_ui == "gotk":
+        copy_go_licenses(repo_root, output)
 
     # The pixbuf loader modules also need their private ABI closure.
     loader_dir = Path("/usr/lib64/gdk-pixbuf-2.0/2.10.0/loaders")
@@ -351,12 +428,14 @@ def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs
     for library in sorted((stage / "usr/lib64").glob("libseat.so*")):
         copy_path(library, output, Path("lib64") / library.name)
 
+    relativize_runtime_links(output)
     manifest_dir = output / "usr/share/kiki-installer-gtk"
     manifest_dir.mkdir(parents=True, exist_ok=True)
     files = [path for path in output.rglob("*") if path.is_file() and not path.is_symlink()]
     manifest = {
         "schema": "kiki-graphics-runtime-v1",
         "bootstrap": "host-abi",
+        "installer_ui": installer_ui,
         "cage": {"version": CAGE_VERSION, "url": CAGE_URL, "sha256": CAGE_SHA256},
         "wlroots": {"version": WLROOTS_VERSION, "url": WLROOTS_URL, "sha256": WLROOTS_SHA256},
         "seatd": {
@@ -387,6 +466,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--sources", type=Path)
     result.add_argument("--work", type=Path)
     result.add_argument("--jobs", type=int, default=max(1, min(4, os.cpu_count() or 1)))
+    result.add_argument("--installer-ui", choices=("c", "gotk"), default="gotk",
+                        help="select the Go Scratch Pad UI (default) or legacy C frontend")
     return result
 
 
@@ -401,13 +482,16 @@ def main() -> int:
     try:
         require_commands(["cc", "meson", "ninja", "pkg-config", "wayland-scanner"])
         require_pkgconfig(["gtk4", "libdrm", "libinput", "libseat", "wayland-server", "xkbcommon", "gbm"])
+        if args.installer_ui == "gotk":
+            require_commands(["go", "make"])
+            require_pkgconfig(["gobject-introspection-1.0"])
         font = Path("/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc")
         if not font.is_file():
             raise GraphicsError(f"Korean installer font is missing: {font}")
         if args.command == "doctor":
             print("graphics bootstrap dependencies: OK")
             return 0
-        build_runtime(repo_root, output, sources, work, max(1, args.jobs))
+        build_runtime(repo_root, output, sources, work, max(1, args.jobs), args.installer_ui)
         return 0
     except (GraphicsError, OSError, subprocess.CalledProcessError) as exc:
         print(f"ki2graphics: {exc}", file=sys.stderr)

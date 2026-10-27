@@ -1,0 +1,5 @@
+[profile]
+name = "jpeg-foundation"
+description = "Native JPEG image codec prerequisites for GTK"
+arch = "x86_64"
+packages = ["libjpeg-turbo"]

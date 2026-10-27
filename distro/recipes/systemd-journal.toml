@@ -1,0 +1,118 @@
+# Optional journal HTTP transport prerequisite. No network listener is enabled here.
+[[recipe]]
+name = "libmicrohttpd"
+version = "1.0.10"
+release = 1
+summary = "GNU HTTP server library for optional systemd journal gateway"
+license = "LGPL-2.1-or-later"
+tier = "server"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://ftp.gnu.org/gnu/libmicrohttpd/libmicrohttpd-1.0.10.tar.gz"
+file = "libmicrohttpd-1.0.10.tar.gz"
+sha256 = "04bfe8ef75db7d629a33de767599765cecadc56274a39822d5d081030d577685"
+[recipe.dependencies]
+build = ["gnutls"]
+runtime = ["gnutls"]
+[recipe.build]
+system = "gnu"
+configure = [
+  'cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --enable-shared --disable-static --enable-https=yes --with-gnutls --with-threads=posix --enable-epoll=yes --disable-doc',
+]
+compile = ['make -C "${KI2_SOURCE_DIR}" -j "${KI2_JOBS}"']
+install = [
+  'make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install',
+  'install -Dm644 "${KI2_SOURCE_DIR}/COPYING" "${KI2_DESTDIR}/usr/share/licenses/libmicrohttpd/COPYING"',
+  'rm -f "${KI2_DESTDIR}/usr/lib/libmicrohttpd.la"',
+]
+[recipe.build.env]
+CC = "cc"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+[[recipe]]
+name = "systemd-journal-transport"
+version = "255.7"
+release = 1
+summary = "Opt-in systemd journal remote receiver and uploader"
+license = "LGPL-2.1-or-later"
+tier = "server"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://github.com/systemd/systemd-stable/archive/refs/tags/v255.7.tar.gz"
+file = "v255.7.tar.gz"
+sha256 = "da29f2490c192ca743511098b1d15e385b1b5e7744979661dc30514c1ac61f0e"
+[recipe.dependencies]
+build = ["systemd", "libmicrohttpd", "gnutls", "curl"]
+runtime = ["systemd", "libmicrohttpd", "gnutls", "curl"]
+[recipe.build]
+system = "meson"
+patches = ["distro/patches/systemd/0001-include-linux-mount-before-fallback-macros.patch"]
+inputs = ["distro/scripts/ki2-target-pkg-config"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"',
+  'meson setup "${KI2_BUILD_DIR}/meson" "${KI2_SOURCE_DIR}" --prefix=/usr --libdir=lib --sysconfdir=/etc --localstatedir=/var --buildtype=release --wrap-mode=nofallback -Dtests=false -Dman=false -Dfirstboot=false -Ddefault-dnssec=no -Dremote=enabled -Dmicrohttpd=enabled -Dlibcurl=enabled -Dgnutls=enabled -Ddbus-interfaces-dir=no -Ddbuspolicydir=/usr/share/dbus-1/system.d -Ddbussystemservicedir=/usr/share/dbus-1/system-services -Ddbussessionservicedir=/usr/share/dbus-1/services -Dc_args="--sysroot=${KI2_SYSROOT} -Wno-error=shift-overflow"',
+]
+compile = [
+  'ninja -C "${KI2_BUILD_DIR}/meson" -j "${KI2_JOBS}" systemd-journal-remote systemd-journal-upload units/systemd-journal-remote.service units/systemd-journal-upload.service src/journal-remote/journal-remote.conf src/journal-remote/journal-upload.conf',
+]
+install = [
+  'install -Dm755 "${KI2_BUILD_DIR}/meson/systemd-journal-remote" "${KI2_DESTDIR}/usr/lib/systemd/systemd-journal-remote"',
+  'install -Dm755 "${KI2_BUILD_DIR}/meson/systemd-journal-upload" "${KI2_DESTDIR}/usr/lib/systemd/systemd-journal-upload"',
+  'chrpath -d "${KI2_DESTDIR}/usr/lib/systemd/systemd-journal-remote"',
+  'chrpath -d "${KI2_DESTDIR}/usr/lib/systemd/systemd-journal-upload"',
+  'install -Dm644 "${KI2_BUILD_DIR}/meson/units/systemd-journal-remote.service" "${KI2_DESTDIR}/usr/lib/systemd/system/systemd-journal-remote.service"',
+  'install -Dm644 "${KI2_BUILD_DIR}/meson/units/systemd-journal-upload.service" "${KI2_DESTDIR}/usr/lib/systemd/system/systemd-journal-upload.service"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/units/systemd-journal-remote.socket" "${KI2_DESTDIR}/usr/lib/systemd/system/systemd-journal-remote.socket"',
+  'sed -i "s/ListenStream=19532/ListenStream=127.0.0.1:19532/" "${KI2_DESTDIR}/usr/lib/systemd/system/systemd-journal-remote.socket"',
+  'install -Dm644 "${KI2_BUILD_DIR}/meson/src/journal-remote/journal-remote.conf" "${KI2_DESTDIR}/usr/lib/systemd/journal-remote.conf"',
+  'install -Dm644 "${KI2_BUILD_DIR}/meson/src/journal-remote/journal-upload.conf" "${KI2_DESTDIR}/usr/lib/systemd/journal-upload.conf"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/sysusers.d/systemd-remote.conf" "${KI2_DESTDIR}/usr/lib/sysusers.d/systemd-remote.conf"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/LICENSE.LGPL2.1" "${KI2_DESTDIR}/usr/share/licenses/systemd-journal-transport/LICENSE.LGPL2.1"',
+]
+[recipe.build.env]
+PKG_CONFIG = "${KI2_BUILD_DIR}/target-pkg-config"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+[[recipe]]
+name = "systemd-journal-gatewayd"
+version = "255.7"
+release = 1
+summary = "Opt-in systemd journal HTTP gateway bound to loopback"
+license = "LGPL-2.1-or-later"
+tier = "server"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://github.com/systemd/systemd-stable/archive/refs/tags/v255.7.tar.gz"
+file = "v255.7.tar.gz"
+sha256 = "da29f2490c192ca743511098b1d15e385b1b5e7744979661dc30514c1ac61f0e"
+[recipe.dependencies]
+build = ["systemd", "libmicrohttpd", "gnutls"]
+runtime = ["systemd", "libmicrohttpd", "gnutls"]
+[recipe.build]
+system = "meson"
+patches = ["distro/patches/systemd/0001-include-linux-mount-before-fallback-macros.patch"]
+inputs = ["distro/scripts/ki2-target-pkg-config"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"',
+  'meson setup "${KI2_BUILD_DIR}/meson" "${KI2_SOURCE_DIR}" --prefix=/usr --libdir=lib --sysconfdir=/etc --localstatedir=/var --buildtype=release --wrap-mode=nofallback -Dtests=false -Dman=false -Dfirstboot=false -Ddefault-dnssec=no -Dremote=auto -Dmicrohttpd=enabled -Dlibcurl=disabled -Dgnutls=enabled -Ddbus-interfaces-dir=no -Ddbuspolicydir=/usr/share/dbus-1/system.d -Ddbussystemservicedir=/usr/share/dbus-1/system-services -Ddbussessionservicedir=/usr/share/dbus-1/services -Dc_args="--sysroot=${KI2_SYSROOT} -Wno-error=shift-overflow"',
+]
+compile = ['meson compile -C "${KI2_BUILD_DIR}/meson" systemd-journal-gatewayd units/systemd-journal-gatewayd.service -j "${KI2_JOBS}"']
+install = [
+  'install -Dm755 "${KI2_BUILD_DIR}/meson/systemd-journal-gatewayd" "${KI2_DESTDIR}/usr/lib/systemd/systemd-journal-gatewayd"',
+  'chrpath -d "${KI2_DESTDIR}/usr/lib/systemd/systemd-journal-gatewayd"',
+  'install -Dm644 "${KI2_BUILD_DIR}/meson/units/systemd-journal-gatewayd.service" "${KI2_DESTDIR}/usr/lib/systemd/system/systemd-journal-gatewayd.service"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/units/systemd-journal-gatewayd.socket" "${KI2_DESTDIR}/usr/lib/systemd/system/systemd-journal-gatewayd.socket"',
+  'sed -i "s/ListenStream=19531/ListenStream=127.0.0.1:19531/" "${KI2_DESTDIR}/usr/lib/systemd/system/systemd-journal-gatewayd.socket"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/src/journal-remote/browse.html" "${KI2_DESTDIR}/usr/share/systemd/gatewayd/browse.html"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/LICENSE.LGPL2.1" "${KI2_DESTDIR}/usr/share/licenses/systemd-journal-gatewayd/LICENSE.LGPL2.1"',
+  'test -s "${KI2_DESTDIR}/usr/lib/systemd/systemd-journal-gatewayd"',
+]
+[recipe.build.env]
+PKG_CONFIG = "${KI2_BUILD_DIR}/target-pkg-config"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"

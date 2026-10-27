@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+: "${KI2_BUILD_DIR:?KI2_BUILD_DIR is required}"
+: "${KI2_SYSROOT_LIBRARY_PATH:?KI2_SYSROOT_LIBRARY_PATH is required}"
+if [ "${KI2_USE_TARGET_LOADER:-0}" = 1 ]; then
+    exec /bin/sh "${KI2_REPO_ROOT}/distro/scripts/ki2-target-run" "${KI2_BUILD_DIR}/g-ir-compiler.real" "$@"
+fi
+# Scope KIKI libraries to this compiler process, leaving host Meson/Ninja untouched.
+export LD_LIBRARY_PATH="${KI2_SYSROOT_LIBRARY_PATH}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+exec "${KI2_BUILD_DIR}/g-ir-compiler.real" "$@"

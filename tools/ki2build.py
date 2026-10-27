@@ -894,6 +894,7 @@ def build_key(recipe: Recipe, ctx: BuildContext, dep_keys: dict[str, str]) -> st
     extra_inputs: list[dict[str, str]] = []
     extra_inputs.extend(build_file_inputs(ctx, recipe, "config_fragments"))
     extra_inputs.extend(build_file_inputs(ctx, recipe, "patches"))
+    extra_inputs.extend(build_file_inputs(ctx, recipe, "inputs"))
     extra_inputs.extend(local_source_inputs(ctx, recipe))
     extra_inputs.extend(host_file_inputs(ctx, recipe))
     return stable_hash(
@@ -1249,12 +1250,34 @@ def extract_archive(archive: Path, target: Path) -> None:
     target.mkdir(parents=True, exist_ok=True)
     if tarfile.is_tarfile(archive):
         with tarfile.open(archive) as tar:
+            check_archive_case_collisions(tar.getnames(), target)
             try:
                 tar.extractall(target, filter="data")
             except TypeError:
                 tar.extractall(target)
         return
     raise Ki2Error(f"unsupported archive format: {archive}")
+
+
+def check_archive_case_collisions(names: list[str], target: Path) -> None:
+    """Do not silently merge FirewallD.conf and firewalld.conf on NTFS."""
+    with tempfile.TemporaryDirectory(prefix="ki2-case-probe-", dir=target) as probe:
+        path = Path(probe)
+        (path / "CaseSensitive").touch()
+        if not (path / "casesensitive").exists():
+            return
+    seen: dict[str, str] = {}
+    for name in names:
+        parts = Path(name).parts
+        for depth in range(1, len(parts) + 1):
+            original = "/".join(parts[:depth])
+            folded = original.casefold()
+            previous = seen.setdefault(folded, original)
+            if previous != original:
+                raise Ki2Error(
+                    f"archive paths collide on this filesystem: {previous!r} and {original!r}; "
+                    "use --build-dir on a case-sensitive Linux filesystem (for example /tmp)"
+                )
 
 
 def run_shell(command: str, env: dict[str, str], cwd: Path, dry_run: bool) -> None:
@@ -1665,6 +1688,9 @@ def package_entry_mode(rel: str, path: Path) -> int:
         return 0o440
     if rel == "usr/bin/sudo":
         return 0o4755
+    if rel == "etc/polkit-1/rules.d" and path.is_dir():
+        # Target systemd-tmpfiles applies the target polkitd group later.
+        return 0o750
     if path.is_dir():
         mode = stat.S_IMODE(path.stat().st_mode)
         return mode if mode & 0o7000 else 0o755
@@ -1677,6 +1703,12 @@ def package_entry_mode(rel: str, path: Path) -> int:
     mode = stat.S_IMODE(path.stat().st_mode)
     if mode & 0o7000:
         return mode
+    if rel in {"usr/lib/polkit-1/polkitd", "usr/lib/polkit-1/polkit-agent-helper-1"}:
+        # Preserve executable intent without implicitly granting setuid.
+        return 0o755 if mode & 0o111 else 0o644
+    if rel == "usr/lib/kiki-kmscon/kmscon":
+        # kmscon is launched by the tty1 wrapper from its private runtime path.
+        return 0o755 if mode & 0o111 else 0o644
     if rel.startswith(("bin/", "sbin/", "usr/bin/", "usr/sbin/", "usr/local/bin/")):
         return 0o755
     if rel.startswith(("usr/libexec/", "libexec/", "usr/lib/systemd/", "lib/systemd/")) and mode & 0o111:
@@ -1889,39 +1921,40 @@ def relative_symlink_target(link: Path, target: Path) -> str:
     return os.path.relpath(target, start=link.parent).replace(os.sep, "/")
 
 
+def required_unit_link(link: Path, unit_file: Path) -> None:
+    if link.exists() or link.is_symlink():
+        if link.is_symlink() and link.resolve() == unit_file.resolve():
+            return
+        raise Ki2Error(f"conflicting systemd enable link: {link}")
+    # A copied unit is not equivalent to a systemd enable symlink. In particular,
+    # do not hide permission/read-only filesystem errors by copying the file.
+    link.symlink_to(relative_symlink_target(link, unit_file))
+
+
 def enable_systemd_units(rootfs: Path, units: list[str], seen: set[str] | None = None) -> None:
     if seen is None:
         seen = set()
     for unit in units:
         if unit in seen:
             continue
-        seen.add(unit)
         unit_file = systemd_unit_path(rootfs, unit)
-        if unit_file is None:
-            print(f"[rootfs] warning: systemd unit not found for enable: {unit}")
-            continue
+        if unit_file is None or not unit_file.is_file() or unit_file.stat().st_size == 0:
+            raise Ki2Error(f"required systemd unit missing or empty: {unit}")
+        if not unit_file.resolve().is_relative_to(rootfs.resolve()):
+            raise Ki2Error(f"systemd unit resolves outside target root: {unit}")
         install_fields = systemd_install_fields(unit_file)
         for target in systemd_wanted_by(unit_file, unit):
             wants_dir = rootfs / "etc" / "systemd" / "system" / f"{target}.wants"
             wants_dir.mkdir(parents=True, exist_ok=True)
             link = wants_dir / unit
-            if link.exists() or link.is_symlink():
-                continue
-            try:
-                link.symlink_to(relative_symlink_target(link, unit_file))
-            except OSError:
-                shutil.copy2(unit_file, link)
+            required_unit_link(link, unit_file)
             print(f"[rootfs] enable {unit} -> {target}")
         for alias in install_fields["Alias"]:
             alias_link = rootfs / "etc" / "systemd" / "system" / alias
             alias_link.parent.mkdir(parents=True, exist_ok=True)
-            if alias_link.exists() or alias_link.is_symlink():
-                continue
-            try:
-                alias_link.symlink_to(relative_symlink_target(alias_link, unit_file))
-            except OSError:
-                shutil.copy2(unit_file, alias_link)
+            required_unit_link(alias_link, unit_file)
             print(f"[rootfs] alias {alias} -> {unit}")
+        seen.add(unit)
         if install_fields["Also"]:
             enable_systemd_units(rootfs, install_fields["Also"], seen)
 
@@ -1967,6 +2000,9 @@ def package_artifact_for_recipe(ctx: BuildContext, recipe: Recipe) -> Path | Non
     output = package_path(ctx, recipe)
     if output.exists():
         return output
+    # Kernel pins are release boundaries, not a best-effort cache preference.
+    if recipe.name in {"linux", "linux-headers"}:
+        return None
     return package_artifact_by_name(ctx, recipe.name)
 
 
@@ -2126,9 +2162,104 @@ def write_repo_index(ctx: BuildContext) -> None:
     print(f"[repo] wrote {out} ({len(packages)} packages)")
 
 
+def refresh_rootfs_gsettings_cache(rootfs: Path, arch: str) -> None:
+    """Compile the assembled schema set with its KIKI GLib, not the host version."""
+    rootfs = rootfs.resolve()
+    schemas = rootfs / "usr/share/glib-2.0/schemas"
+    if not schemas.exists():
+        return
+    if not schemas.is_dir() or not schemas.resolve().is_relative_to(rootfs):
+        raise Ki2Error("invalid rootfs GSettings schema directory")
+    if not any(schemas.glob("*.gschema.xml")):
+        if (schemas / "gschemas.compiled").exists():
+            raise Ki2Error("GSettings cache has no schema sources; refusing to erase it")
+        return
+    if sys.platform != "linux" or arch != "x86_64":
+        raise Ki2Error("GSettings rootfs cache generation currently requires a Linux x86_64 builder")
+    compiler = rootfs / "usr/bin/glib-compile-schemas"
+    if not compiler.is_file() or not compiler.resolve().is_relative_to(rootfs):
+        raise Ki2Error("rootfs glib-compile-schemas is missing or outside the rootfs")
+    libraries = []
+    loader = None
+    for relative in ("usr/lib", "lib", "usr/lib64", "lib64"):
+        directory = rootfs / relative
+        if directory.exists():
+            if not directory.resolve().is_relative_to(rootfs):
+                raise Ki2Error("rootfs library directory escapes rootfs")
+            libraries.append(str(directory))
+            candidate = directory / "ld-linux-x86-64.so.2"
+            if candidate.is_file() and candidate.resolve().is_relative_to(rootfs):
+                loader = candidate.resolve()
+    if loader is None:
+        raise Ki2Error("rootfs dynamic loader is missing")
+    try:
+        subprocess.run([str(loader), "--inhibit-cache", "--library-path", ":".join(libraries),
+                        str(compiler), "--strict", str(schemas)], check=True, timeout=60,
+                       env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"})
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise Ki2Error(f"rootfs GSettings schema cache generation failed: {exc}") from exc
+
+
+def refresh_rootfs_info_index(rootfs: Path) -> None:
+    """Rebuild the shared Info directory atomically from installed manuals."""
+    directory = rootfs / "usr/share/info"
+    if not directory.exists():
+        return
+    if directory.is_symlink() or not directory.resolve().is_relative_to(rootfs.resolve()):
+        raise Ki2Error("Info directory must stay inside the target rootfs")
+    manuals = sorted(p for p in directory.iterdir()
+                     if p.name.endswith((".info", ".info.gz", ".info.xz", ".info.bz2")))
+    if not manuals:
+        return
+    if any(p.is_symlink() or not p.is_file() for p in manuals):
+        raise Ki2Error("Info manuals must be regular files")
+    output = directory / "dir"
+    if output.is_symlink():
+        raise Ki2Error("Info index must not be a symlink")
+    tool = shutil.which("install-info")
+    if tool is None:
+        raise Ki2Error("install-info is required to rebuild the rootfs Info index")
+    environment = os.environ.copy()
+    for key in ("LD_LIBRARY_PATH", "LD_PRELOAD"):
+        environment.pop(key, None)
+    environment["LC_ALL"] = "C"
+    with tempfile.TemporaryDirectory(prefix=".ki2-info-", dir=directory) as temporary:
+        index = Path(temporary) / "dir"
+        index.write_text("\x1f\nFile: dir, Node: Top\n\n* Menu:\n", encoding="utf-8")
+        try:
+            for manual in manuals:
+                subprocess.run([tool, "--dir-file=" + str(index), str(manual)],
+                               env=environment, check=True, capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise Ki2Error(f"Info index rebuild failed: {exc}") from exc
+        index.chmod(0o644)
+        index.replace(output)
+
+
+def validate_rootfs_storage(rootfs: Path) -> None:
+    """Reject Linux mounts that silently discard target file permissions."""
+    if sys.platform != "linux":
+        return
+    rootfs.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, filename = tempfile.mkstemp(prefix=".ki2-rootfs-mode-", dir=rootfs.parent)
+    os.close(descriptor)
+    try:
+        os.chmod(filename, 0o640)
+        mode = stat.S_IMODE(os.stat(filename).st_mode)
+        if mode != 0o640:
+            raise Ki2Error(
+                f"rootfs storage does not preserve POSIX permissions (requested 0640, got {mode:04o}): "
+                f"{rootfs.parent}; use --rootfs-dir on a Linux filesystem"
+            )
+    finally:
+        Path(filename).unlink(missing_ok=True)
+
+
 def assemble_rootfs(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list[str], profile: dict[str, Any] | None = None) -> None:
     if ctx.rootfs_dir is None:
         raise Ki2Error("--rootfs-dir is required for rootfs assembly")
+    if not ctx.dry_run:
+        validate_rootfs_storage(ctx.rootfs_dir)
     if ctx.clean_rootfs and ctx.rootfs_dir.exists() and not ctx.dry_run:
         shutil.rmtree(ctx.rootfs_dir)
     if ctx.dry_run:
@@ -2155,11 +2286,84 @@ def assemble_rootfs(ctx: BuildContext, recipes: dict[str, Recipe], ordered: list
 
     services = profile.get("services", {}) if profile else {}
     if isinstance(services, dict):
+        if not ctx.dry_run:
+            systemd = ctx.rootfs_dir / "etc/systemd/system"
+            for unit in services.get("disable", []):
+                if not isinstance(unit, str) or "/" in unit or unit in ("", ".", ".."):
+                    raise Ki2Error("invalid disabled systemd unit")
+                for link in systemd.rglob(unit):
+                    if link.is_symlink():
+                        link.unlink()
         enable = services.get("enable", [])
         if isinstance(enable, list) and not ctx.dry_run:
             enable_systemd_units(ctx.rootfs_dir, [unit for unit in enable if isinstance(unit, str)])
+    default_target = profile.get("boot", {}).get("default_target") if profile else None
+    if default_target and not ctx.dry_run:
+        if default_target not in ("graphical.target", "multi-user.target"):
+            raise Ki2Error("unsupported default boot target")
+        target = systemd_unit_path(ctx.rootfs_dir, default_target)
+        if target is None:
+            raise Ki2Error(f"missing default boot target: {default_target}")
+        link = ctx.rootfs_dir / "etc/systemd/system/default.target"
+        if link.exists() or link.is_symlink():
+            if link.is_dir() and not link.is_symlink():
+                raise Ki2Error(f"default boot target is a directory: {link}")
+            # A profile's explicit boot target replaces the baseline copied unit.
+            link.unlink()
+        required_unit_link(link, target)
     if not ctx.dry_run:
+        refresh_rootfs_gsettings_cache(ctx.rootfs_dir, ctx.arch)
+        refresh_rootfs_info_index(ctx.rootfs_dir)
         write_rootfs_installed_state(ctx.rootfs_dir, installed_packages)
+
+
+def load_prebuilt_profile(profile: dict[str, Any], repo_root: Path, arch: str) -> tuple[Path, dict[str, Recipe], list[str]]:
+    """Resolve an explicitly pinned package snapshot without replacing source recipes."""
+    import ki2media
+    import ki2repo
+    config = profile["prebuilt"]
+    repository = resolve_under_root(repo_root, Path(config["repository"]))
+    public = repository / config["public_key"]
+    index_path = repository / "repo" / f"index.{arch}.json"
+    metadata_path = index_path.with_name(f"metadata.{arch}.json")
+    if not all(path.is_file() for path in (public, index_path, metadata_path)):
+        raise Ki2Error(f"prebuilt profile snapshot is unavailable: {repository}")
+    if file_sha256(public) != config["public_key_sha256"] or file_sha256(index_path) != config["index_sha256"]:
+        raise Ki2Error("prebuilt profile public key or index differs from its pinned snapshot")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if not ki2repo.verify_metadata_ed25519(metadata, public):
+        raise Ki2Error("prebuilt profile repository signature is invalid")
+    if metadata["index"]["sha256"] != config["index_sha256"] or metadata["index"]["size"] != index_path.stat().st_size:
+        raise Ki2Error("prebuilt profile signed index does not match the snapshot")
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    if index.get("arch") != arch:
+        raise Ki2Error("prebuilt profile architecture mismatch")
+    try:
+        ordered = ki2media.runtime_closure(index, profile["packages"])
+    except ki2media.MediaError as exc:
+        raise Ki2Error(str(exc)) from exc
+    entries = {entry["name"]: entry for entry in index["packages"]}
+    recipes = {}
+    for name in ordered:
+        entry = entries[name]
+        filename = entry["file"]
+        if Path(filename).name != filename or "/" in filename or "\\" in filename:
+            raise Ki2Error("invalid prebuilt package filename")
+        package = repository / "packages" / arch / filename
+        if package.is_symlink() or not package.is_file() or package.stat().st_size != entry["size"] or file_sha256(package) != entry["sha256"]:
+            raise Ki2Error(f"prebuilt package integrity mismatch: {name}")
+        raw = read_package_manifest(package)
+        if raw["name"] != name or str(raw["version"]) != str(entry["version"]) or str(raw["release"]) != str(entry["release"]) or raw["arch"] != arch:
+            raise Ki2Error(f"prebuilt package identity mismatch: {name}")
+        runtime = entry.get("dependencies", {}).get("runtime", [])
+        if raw.get("dependencies", {}).get("runtime", []) != runtime:
+            raise Ki2Error(f"prebuilt package dependency metadata mismatch: {name}")
+        raw["dependencies"] = {"build": [], "runtime": runtime}
+        raw.update(architectures=[arch], source={"type": "local", "path": str(package)}, build={"system": "prebuilt"})
+        recipes[name] = normalize_recipe(raw, package)
+        if package_filename(recipes[name], arch) != filename:
+            raise Ki2Error(f"prebuilt package filename differs from identity: {name}")
+    return repository, recipes, ordered
 
 
 def command_list(args: argparse.Namespace) -> None:
@@ -2171,6 +2375,8 @@ def command_list(args: argparse.Namespace) -> None:
 def command_validate(args: argparse.Namespace) -> None:
     recipes = load_recipes(args.recipe_dir)
     profile = load_profile(args.profile) if args.profile else None
+    if profile and profile.get("prebuilt"):
+        _, recipes, _ = load_prebuilt_profile(profile, args.repo_root, args.arch)
     warnings = validate_recipes(recipes, args.arch, profile, args.max_packages)
     print(f"validated {len(recipes)} recipes")
     for warning in warnings:
@@ -2180,7 +2386,12 @@ def command_validate(args: argparse.Namespace) -> None:
 def command_plan(args: argparse.Namespace) -> None:
     recipes = load_recipes(args.recipe_dir)
     profile = load_profile(args.profile)
-    ordered = dependency_closure(recipes, list(profile["packages"]), args.arch, args.include_build_deps)
+    if profile.get("prebuilt"):
+        if args.include_build_deps:
+            raise Ki2Error("prebuilt profile contains runtime artifacts; use its recorded source build pipeline for rebuilds")
+        _, recipes, ordered = load_prebuilt_profile(profile, args.repo_root, args.arch)
+    else:
+        ordered = dependency_closure(recipes, list(profile["packages"]), args.arch, args.include_build_deps)
     mode = "build" if args.include_build_deps else "runtime"
     print(f"profile: {profile['name']} ({mode} plan, {len(ordered)} packages)")
     for index, name in enumerate(ordered, start=1):
@@ -2210,6 +2421,8 @@ def make_context(args: argparse.Namespace) -> BuildContext:
 def command_build(args: argparse.Namespace) -> None:
     recipes = load_recipes(args.recipe_dir)
     profile = load_profile(args.profile)
+    if profile.get("prebuilt"):
+        raise Ki2Error("this profile reuses a signed package snapshot; use plan/rootfs, or its recorded GNOME source build pipeline")
     validate_recipes(recipes, args.arch, profile, None)
     ordered = dependency_closure(recipes, list(profile["packages"]), args.arch, include_build_deps=True)
     if args.only:
@@ -2231,8 +2444,13 @@ def command_repo_index(args: argparse.Namespace) -> None:
 def command_rootfs(args: argparse.Namespace) -> None:
     recipes = load_recipes(args.recipe_dir)
     profile = load_profile(args.profile)
-    ordered = dependency_closure(recipes, list(profile["packages"]), args.arch, include_build_deps=False)
-    assemble_rootfs(make_context(args), recipes, ordered, profile)
+    context = make_context(args)
+    if profile.get("prebuilt"):
+        repository, recipes, ordered = load_prebuilt_profile(profile, args.repo_root, args.arch)
+        context.packages_dir = repository / "packages"
+    else:
+        ordered = dependency_closure(recipes, list(profile["packages"]), args.arch, include_build_deps=False)
+    assemble_rootfs(context, recipes, ordered, profile)
 
 
 def add_common_options(parser: argparse.ArgumentParser) -> None:

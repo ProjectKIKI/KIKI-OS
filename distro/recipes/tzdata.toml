@@ -1,0 +1,25 @@
+[[recipe]]
+name = "tzdata"
+version = "2025b"
+release = 1
+summary = "IANA time zone database"
+license = "LicenseRef-Public-Domain"
+tier = "base"
+architectures = ["all"]
+[recipe.source]
+type = "url"
+url = "https://data.iana.org/time-zones/releases/tzdata2025b.tar.gz"
+sha256 = "11810413345fc7805017e27ea9fa4885fd74cd61b2911711ad038f5d28d71474"
+[recipe.dependencies]
+build = []
+runtime = []
+[recipe.build]
+system = "make"
+commands = [
+  "command -v zic >/dev/null",
+  "mkdir -p ${KI2_DESTDIR}/usr/share/zoneinfo ${KI2_DESTDIR}/usr/share/licenses/tzdata",
+  "cd ${KI2_SOURCE_DIR} && zic -b fat -d ${KI2_DESTDIR}/usr/share/zoneinfo africa antarctica asia australasia europe northamerica southamerica etcetera backward",
+  "cd ${KI2_SOURCE_DIR} && cp iso3166.tab zone.tab zone1970.tab zonenow.tab leapseconds version ${KI2_DESTDIR}/usr/share/zoneinfo/",
+  "cp ${KI2_SOURCE_DIR}/LICENSE ${KI2_DESTDIR}/usr/share/licenses/tzdata/LICENSE",
+  "test -s ${KI2_DESTDIR}/usr/share/zoneinfo/Asia/Seoul && test -s ${KI2_DESTDIR}/usr/share/zoneinfo/Etc/UTC"
+]

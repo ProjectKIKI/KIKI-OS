@@ -68,6 +68,26 @@ ISO의 Stage-1 무인 설치는 기존 커널 인자
 
 ## GTK 4 실행
 
+### Dark-blue 브랜딩 (후속 빌드 대상)
+
+선택한 `assets/brand/kikios-dark-blue-app-icon-v7.png` 원본을 수정 없이
+`/usr/share/pixmaps/kiki-installer.png`에 포함한다. GTK 헤더는 런타임에
+비율을 유지해 40px로 표시하고 창 아이콘도 같은 파일 이름을 사용한다.
+개발 실행에서 `KIKI_INSTALLER_LOGO`로 이미지 경로를 지정할 수 있다.
+이미지가 없거나 디코딩에 실패하면 경고를 남기고 텍스트 제목으로 계속 실행한다.
+필수 브랜드 원본이 빠진 패키지 빌드는 오류로 처리한다.
+
+버튼 강조색과 패키지 개수 표시도 dark-blue 계열로 맞췄다. 오류의 빨간색은
+의미 구분을 위해 유지한다. GTK 레시피 릴리스 8의 코드 변경이며, 현재 배포한
+`20260908-gpt-tui-validation.iso`는 릴리스 7이므로 이 로고 변경을 포함하지 않는다.
+컴파일, 원본 복사 테스트와 릴리스 8 패키지 내부 로고/실행 파일/CSS 포함 검증을
+완료했다. 실제 화면·부팅 로고 검증과 새 ISO 반영은 남아 있다.
+
+후속 ISO 빌드는 `assets/brand/grub-theme.txt`와 같은 원본 PNG를
+`/boot/grub/kiki/`에 포함한다. GRUB가 런타임에 이미지를 축소하므로 PNG를
+다시 생성하지 않는다. 구성은 [GNU GRUB 테마 형식](https://www.gnu.org/software/grub/manual/grub/html_node/Theme-file-format.html)을
+기준으로 작성했다. 설정 문법과 파일 복사는 검증했지만 실기 화면은 미검증이다.
+
 ```sh
 make -C cmd/kiki-installer-gtk
 KIKI_INSTALLER_TUI="$(pwd)/build/kiki-installer-tui" \

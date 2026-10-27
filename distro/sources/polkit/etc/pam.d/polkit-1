@@ -1,0 +1,7 @@
+#%PAM-1.0
+# Standalone local-password policy; no dependency on host distribution includes.
+# Empty passwords are not accepted. Account expiry/locking is checked by PAM.
+auth required pam_unix.so
+account required pam_unix.so
+password required pam_deny.so
+session required pam_unix.so

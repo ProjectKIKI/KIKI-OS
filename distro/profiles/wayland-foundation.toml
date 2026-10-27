@@ -1,0 +1,5 @@
+[profile]
+name = "wayland-foundation"
+description = "Native Wayland protocol and libraries validation"
+arch = "x86_64"
+packages = ["wayland"]

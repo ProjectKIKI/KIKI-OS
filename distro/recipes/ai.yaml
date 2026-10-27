@@ -93,8 +93,8 @@ recipes:
 
   - name: kiki-ai-console
     version: "0.1.0"
-    release: 2
-    summary: Korean approval-gated AI system management console
+    release: 7
+    summary: Approval-gated AI console with optional Korean two-set input
     license: GPL-3.0-or-later
     tier: kiki
     architectures: [x86_64]
@@ -109,7 +109,7 @@ recipes:
         - internal/aiconsole
     depends:
       build: []
-      runtime: [glibc, systemd, iproute2, util-linux]
+      runtime: [glibc, systemd, iproute2, util-linux, kiki-kmscon]
     build:
       system: go
       skip_sysroot: true
@@ -124,6 +124,7 @@ recipes:
         - install -Dm755 "${KI2_BUILD_DIR}/kiki-ai-console" "${KI2_DESTDIR}/usr/bin/kiki-ai-console"
         - install -Dm640 "${KI2_SOURCE_DIR}/etc/kiki/ai-console.json" "${KI2_DESTDIR}/etc/kiki/ai-console.json"
         - install -Dm644 "${KI2_SOURCE_DIR}/etc/systemd/system/kiki-ai-console@.service" "${KI2_DESTDIR}/etc/systemd/system/kiki-ai-console@.service"
+        - install -Dm644 "${KI2_SOURCE_DIR}/etc/systemd/system/kiki-ai-console-kmscon@.service" "${KI2_DESTDIR}/etc/systemd/system/kiki-ai-console-kmscon@.service"
         - install -Dm644 "${KI2_SOURCE_DIR}/etc/systemd/system/kiki-llama-server.service" "${KI2_DESTDIR}/etc/systemd/system/kiki-llama-server.service"
         - install -Dm755 "${KI2_SOURCE_DIR}/usr/libexec/kiki-llama-runtime" "${KI2_DESTDIR}/usr/libexec/kiki-llama-runtime"
         - install -Dm644 "${KI2_SOURCE_DIR}/var/lib/machines/kiki-ai/etc/os-release" "${KI2_DESTDIR}/var/lib/machines/kiki-ai/etc/os-release"

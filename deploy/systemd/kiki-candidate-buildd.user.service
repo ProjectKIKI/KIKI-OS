@@ -1,0 +1,19 @@
+[Unit]
+Description=KIKI candidate package and OS web builder (rootless container)
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=TMPDIR=/build-kikios/kiki-containers/tmp
+Nice=10
+WorkingDirectory=/build-kikios/kiki-build/candidates/mesa-native-20261023/repo
+ExecStartPre=/build-kikios/kiki-build/host-prep-20261023/bin/host-run /usr/bin/true
+ExecStart=/usr/bin/podman run --replace --rm --name kiki-candidate-buildd --user 0:0 --memory 6g --memory-swap 6g --pids-limit 2048 --network slirp4netns -p 127.0.0.1:8091:8090 -v /build-kikios/kiki-build/candidates/mesa-native-20261023/repo:/work:Z -v /build-kikios/kiki-build/candidates/mesa-native-20261023/inputs:/inputs:ro,Z -v /build-kikios/kiki-build/candidates/mesa-native-20261023/work:/candidate-work:Z localhost/kiki-buildd:native-20261023
+ExecStop=/usr/bin/podman stop --time 90 kiki-candidate-buildd
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=110
+UMask=0027
+
+[Install]
+WantedBy=default.target

@@ -20,3 +20,12 @@ __pycache__/
 /kiki-infraopsd
 /kiki-model-builder
 /kiki-supplychain
+
+# Local build outputs and deployment evidence; keep source repositories small.
+/artifacts/
+/x86_64/
+/cmd/kiki-installer-gtk/kiki-installer-gtk
+*.ki2
+*.iso
+*.vhdx
+*.qcow2

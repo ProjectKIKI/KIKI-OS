@@ -1,0 +1,5 @@
+[profile]
+name = "x11-foundation"
+description = "Native X11 client prerequisites, not a complete X server"
+arch = "x86_64"
+packages = ["xorgproto", "xcb-proto", "libxau", "libxcb"]

@@ -1,0 +1,6 @@
+# Build the graphical installer runtime; not an installed desktop profile.
+[profile]
+name = "installer-gui"
+description = "GTK installer and console fallback runtime"
+arch = "x86_64"
+packages = ["kiki-installer-gtk"]

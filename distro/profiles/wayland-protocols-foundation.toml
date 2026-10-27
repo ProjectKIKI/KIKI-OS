@@ -1,0 +1,5 @@
+[profile]
+name = "wayland-protocols-foundation"
+description = "Wayland protocol code-generation and upstream tests"
+arch = "x86_64"
+packages = ["wayland-protocols"]

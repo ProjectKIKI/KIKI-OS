@@ -1,0 +1,334 @@
+# Native GNOME foundation. Not exposed as a complete desktop profile yet.
+[[recipe]]
+name = "libimobiledevice"
+version = "1.4.0"
+release = 1
+summary = "Mobile device integration library using GnuTLS"
+license = "LGPL-2.1-or-later AND GPL-2.0-or-later AND Zlib AND LicenseRef-Stanford-SRP"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://github.com/libimobiledevice/libimobiledevice/releases/download/1.4.0/libimobiledevice-1.4.0.tar.bz2"
+file = "libimobiledevice-1.4.0.tar.bz2"
+sha256 = "23cc0077e221c7d991bd0eb02150a0d49199bcca1ddf059edccee9ffd914939d"
+[recipe.dependencies]
+build = ["linux-headers"]
+runtime = ["glibc", "libplist", "libimobiledevice-glue", "libusbmuxd", "libtatsu", "gnutls", "libgcrypt", "libtasn1"]
+[recipe.build]
+system = "gnu"
+inputs = ["distro/scripts/ki2-target-pkg-config"]
+configure = [
+  'cp -a "${KI2_SOURCE_DIR}/3rd_party" "${KI2_BUILD_DIR}/source-notices"',
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"',
+  'cd "${KI2_SOURCE_DIR}" && PKG_CONFIG="${KI2_BUILD_DIR}/target-pkg-config" ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --enable-shared --disable-static --without-cython --with-gnutls --without-openssl',
+  'sed -i -e "s/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=/" -e "s/^runpath_var=.*/runpath_var=/" "${KI2_SOURCE_DIR}/libtool"',
+]
+compile = ['make -C "${KI2_SOURCE_DIR}" -j "${KI2_JOBS}"']
+install = [
+  'make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install',
+  'rm -f "${KI2_DESTDIR}/usr/lib/libimobiledevice-1.0.la"',
+  'install -d "${KI2_DESTDIR}/usr/share/licenses/libimobiledevice"',
+  'install -m644 "${KI2_SOURCE_DIR}/COPYING" "${KI2_SOURCE_DIR}/COPYING.LESSER" "${KI2_DESTDIR}/usr/share/licenses/libimobiledevice/"',
+  'cp -a "${KI2_BUILD_DIR}/source-notices" "${KI2_DESTDIR}/usr/share/licenses/libimobiledevice/source-notices"',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libimobiledevice-1.0.so.6" "${KI2_DESTDIR}/usr/bin/ideviceinfo" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CC = "cc --sysroot=${KI2_SYSROOT}"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+[[recipe]]
+name = "libtatsu"
+version = "1.0.5"
+release = 4
+summary = "TSS request library required by the GNOME mobile device stack"
+license = "LGPL-2.1-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://github.com/libimobiledevice/libtatsu/releases/download/1.0.5/libtatsu-1.0.5.tar.bz2"
+file = "libtatsu-1.0.5.tar.bz2"
+sha256 = "536fa228b14f156258e801a7f4d25a3a9dd91bb936bf6344e23171403c57e440"
+[recipe.dependencies]
+build = ["libplist", "curl"]
+runtime = ["libplist", "curl"]
+[recipe.build]
+system = "gnu"
+configure = [
+  'cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --libdir=/usr/lib --enable-shared --disable-static',
+  'sed -i -e "s/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=/" -e "s/^runpath_var=.*/runpath_var=/" "${KI2_SOURCE_DIR}/libtool"',
+]
+compile = ['make -C "${KI2_SOURCE_DIR}" -j "${KI2_JOBS}"']
+install = [
+  'make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install',
+  'rm -f "${KI2_DESTDIR}/usr/lib/libtatsu.la"',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libtatsu.so.0.0.3" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CC = "cc"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+[[recipe]]
+name = "libusbmuxd"
+version = "2.1.1"
+release = 2
+summary = "USB multiplexing client library with iproxy and inetcat tools"
+license = "LGPL-2.1-or-later AND GPL-2.0-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://github.com/libimobiledevice/libusbmuxd/releases/download/2.1.1/libusbmuxd-2.1.1.tar.bz2"
+file = "libusbmuxd-2.1.1.tar.bz2"
+sha256 = "5546f1aba1c3d1812c2b47d976312d00547d1044b84b6a461323c621f396efce"
+[recipe.dependencies]
+build = ["libplist", "libimobiledevice-glue"]
+runtime = ["libplist", "libimobiledevice-glue"]
+[recipe.build]
+system = "gnu"
+configure = [
+  'cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --libdir=/usr/lib --enable-shared --disable-static',
+  'sed -i -e "s/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=/" -e "s/^runpath_var=.*/runpath_var=/" "${KI2_SOURCE_DIR}/libtool"',
+]
+compile = ['make -C "${KI2_SOURCE_DIR}" -j "${KI2_JOBS}"']
+install = [
+  'make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install',
+  'rm -f "${KI2_DESTDIR}/usr/lib/libusbmuxd-2.0.la"',
+  'for file in usr/lib/libusbmuxd-2.0.so.7.0.1 usr/bin/iproxy usr/bin/inetcat; do readelf -d "${KI2_DESTDIR}/$file" > "${KI2_BUILD_DIR}/elf-dynamic.txt" || exit 1; if grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"; then exit 1; fi; done',
+]
+[recipe.build.env]
+CC = "cc"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+[[recipe]]
+name = "libimobiledevice-glue"
+version = "1.3.2"
+release = 4
+summary = "Common device integration helpers for the GNOME mobile device stack"
+license = "LGPL-2.1-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://github.com/libimobiledevice/libimobiledevice-glue/releases/download/1.3.2/libimobiledevice-glue-1.3.2.tar.bz2"
+file = "libimobiledevice-glue-1.3.2.tar.bz2"
+sha256 = "6489a3411b874ecd81c87815d863603f518b264a976319725e0ed59935546774"
+[recipe.dependencies]
+build = ["libplist"]
+runtime = ["libplist"]
+[recipe.build]
+system = "gnu"
+configure = [
+  'cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --libdir=/usr/lib --enable-shared --disable-static',
+  'sed -i -e "s/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=/" -e "s/^runpath_var=.*/runpath_var=/" "${KI2_SOURCE_DIR}/libtool"',
+]
+compile = ['make -C "${KI2_SOURCE_DIR}" -j "${KI2_JOBS}"']
+install = [
+  'make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install',
+  'rm -f "${KI2_DESTDIR}/usr/lib/libimobiledevice-glue-1.0.la"',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libimobiledevice-glue-1.0.so.0.3.2" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CC = "cc"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+[[recipe]]
+name = "libplist"
+version = "2.7.0"
+release = 3
+summary = "Property list C/C++ libraries and conversion tools for device integration"
+license = "LGPL-2.1-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://github.com/libimobiledevice/libplist/releases/download/2.7.0/libplist-2.7.0.tar.bz2"
+file = "libplist-2.7.0.tar.bz2"
+sha256 = "7ac42301e896b1ebe3c654634780c82baa7cb70df8554e683ff89f7c2643eb8b"
+[recipe.dependencies]
+build = ["libstdcxx", "libgcc"]
+runtime = ["libstdcxx", "libgcc"]
+[recipe.build]
+system = "gnu"
+patches = ["distro/patches/libplist/0001-fix-format-test-exit-checks.patch"]
+configure = ['cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --libdir=/usr/lib --without-cython --with-tools --with-tests --enable-shared --disable-static']
+compile = ['make -C "${KI2_SOURCE_DIR}" -j "${KI2_JOBS}"']
+install = [
+  'make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install',
+  'rm -f "${KI2_DESTDIR}/usr/lib/libplist-2.0.la" "${KI2_DESTDIR}/usr/lib/libplist++-2.0.la"',
+]
+[recipe.build.env]
+CC = "cc"
+CXX = "g++"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+CXXFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now -shared-libgcc"
+
+[[recipe]]
+name = "libusb"
+version = "1.0.29"
+release = 1
+summary = "USB userspace library for GNOME power and device integration"
+license = "LGPL-2.1-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://github.com/libusb/libusb/releases/download/v1.0.29/libusb-1.0.29.tar.bz2"
+file = "libusb-1.0.29.tar.bz2"
+sha256 = "5977fc950f8d1395ccea9bd48c06b3f808fd3c2c961b44b0c2e6e29fc3a70a85"
+[recipe.dependencies]
+build = ["systemd"]
+runtime = ["systemd"]
+[recipe.build]
+system = "gnu"
+configure_options = ["--build=x86_64-pc-linux-gnu", "--host=x86_64-kiki-linux-gnu", "--libdir=/usr/lib", "--enable-udev", "--enable-shared", "--disable-static", "--enable-tests-build", "--disable-examples-build"]
+[recipe.build.env]
+CC = "cc"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+[[recipe]]
+name = "dconf"
+version = "0.49.0"
+release = 1
+summary = "GNOME settings database, GSettings backend and user-session service"
+license = "LGPL-2.1-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://download.gnome.org/sources/dconf/0.49/dconf-0.49.0.tar.xz"
+file = "dconf-0.49.0.tar.xz"
+sha256 = "16a47e49a58156dbb96578e1708325299e4c19eea9be128d5bd12fd0963d6c36"
+[recipe.dependencies]
+build = ["glib", "dbus"]
+runtime = ["glib", "dbus"]
+[recipe.build]
+system = "meson"
+sysroot_exclude = ["glibc"]
+configure_options = ["--sysconfdir=/etc", "--libexecdir=libexec", "-Ddefault_library=shared", "-Dman=false", "-Dgtk_doc=false", "-Dvapi=false", "-Dbash_completion=false", "-Dsystemduserunitdir=/usr/lib/systemd/user"]
+[recipe.build.env]
+CFLAGS = "${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+[[recipe]]
+name = "gsettings-desktop-schemas"
+version = "50.1"
+release = 1
+summary = "GNOME desktop settings schemas and GDesktopEnums introspection data"
+license = "LGPL-2.1-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://download.gnome.org/sources/gsettings-desktop-schemas/50/gsettings-desktop-schemas-50.1.tar.xz"
+file = "gsettings-desktop-schemas-50.1.tar.xz"
+sha256 = "0a2aa25082672585d16fcdab61c7b0e33f035fb87476505c794f29565afa485b"
+[recipe.dependencies]
+build = ["glib", "gobject-introspection"]
+runtime = ["glib", "gobject-introspection"]
+[recipe.build]
+system = "meson"
+sysroot_exclude = ["glibc"]
+configure_options = ["-Dintrospection=true"]
+inputs = ["distro/scripts/ki2-target-python3", "distro/scripts/ki2-target-g-ir-compiler", "distro/scripts/ki2-target-run"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3" "${KI2_BUILD_DIR}/target-python3"',
+  'sed -i "1c #!/usr/bin/env ${KI2_BUILD_DIR}/target-python3" "${KI2_SYSROOT}/usr/bin/g-ir-scanner"',
+  'install -m755 "${KI2_SYSROOT}/usr/bin/g-ir-compiler" "${KI2_BUILD_DIR}/g-ir-compiler.real"',
+  'install -m755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-compiler" "${KI2_SYSROOT}/usr/bin/g-ir-compiler"',
+  'meson setup "${KI2_BUILD_DIR}/schemas" "${KI2_SOURCE_DIR}" --prefix=/usr --libdir=lib -Dintrospection=true',
+]
+compile = ['meson compile -C "${KI2_BUILD_DIR}/schemas" -j "${KI2_JOBS}"']
+install = ['DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/schemas"']
+[recipe.build.env]
+CFLAGS = "${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+PYTHONDONTWRITEBYTECODE = "1"
+PYTHONHASHSEED = "0"
+
+[[recipe]]
+name = "json-glib"
+version = "1.10.8"
+release = 1
+summary = "GLib JSON parser, generator and introspection data for GNOME"
+license = "LGPL-2.1-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://download.gnome.org/sources/json-glib/1.10/json-glib-1.10.8.tar.xz"
+file = "json-glib-1.10.8.tar.xz"
+sha256 = "55c5c141a564245b8f8fbe7698663c87a45a7333c2a2c56f06f811ab73b212dd"
+[recipe.dependencies]
+build = ["glib", "gobject-introspection"]
+runtime = ["glib", "gobject-introspection"]
+[recipe.build]
+system = "meson"
+sysroot_exclude = ["glibc"]
+configure_options = ["-Dintrospection=enabled", "-Ddocumentation=disabled", "-Dman=false", "-Dtests=true", "-Dinstalled_tests=false", "-Dconformance=false"]
+inputs = ["distro/scripts/ki2-target-python3", "distro/scripts/ki2-target-g-ir-scanner", "distro/scripts/ki2-target-g-ir-compiler", "distro/scripts/ki2-target-pkg-config", "distro/scripts/ki2-target-run"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3" "${KI2_BUILD_DIR}/target-python3"',
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-scanner" "${KI2_BUILD_DIR}/tools/g-ir-scanner"',
+  'sed -i "1c #!/usr/bin/env ${KI2_BUILD_DIR}/target-python3" "${KI2_SYSROOT}/usr/bin/g-ir-scanner"',
+  'install -m755 "${KI2_SYSROOT}/usr/bin/g-ir-compiler" "${KI2_BUILD_DIR}/g-ir-compiler.real"',
+  'install -m755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-compiler" "${KI2_SYSROOT}/usr/bin/g-ir-compiler"',
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"',
+  'PATH="${KI2_BUILD_DIR}/tools:$PATH" meson setup "${KI2_BUILD_DIR}/json" "${KI2_SOURCE_DIR}" --prefix=/usr --libdir=lib -Dintrospection=enabled -Ddocumentation=disabled -Dman=false -Dtests=true -Dinstalled_tests=false -Dconformance=false',
+]
+compile = ['meson compile -C "${KI2_BUILD_DIR}/json" -j "${KI2_JOBS}"']
+install = ['DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/json"']
+[recipe.build.env]
+PKG_CONFIG = "${KI2_BUILD_DIR}/target-pkg-config"
+CFLAGS = "${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+PYTHONDONTWRITEBYTECODE = "1"
+PYTHONHASHSEED = "0"
+
+[[recipe]]
+name = "libgudev"
+version = "238"
+release = 1
+summary = "GObject device discovery library and introspection data for GNOME"
+license = "LGPL-2.1-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://download.gnome.org/sources/libgudev/238/libgudev-238.tar.xz"
+file = "libgudev-238.tar.xz"
+sha256 = "61266ab1afc9d73dbc60a8b2af73e99d2fdff47d99544d085760e4fa667b5dd1"
+[recipe.dependencies]
+build = ["glib", "gobject-introspection", "systemd"]
+runtime = ["glib", "gobject-introspection", "systemd"]
+[recipe.build]
+system = "meson"
+sysroot_exclude = []
+configure_options = ["-Dintrospection=enabled", "-Dgtk_doc=false", "-Dtests=disabled", "-Dvapi=disabled"]
+inputs = ["distro/scripts/ki2-target-python3", "distro/scripts/ki2-target-g-ir-scanner", "distro/scripts/ki2-target-g-ir-compiler", "distro/scripts/ki2-target-pkg-config", "distro/scripts/ki2-target-run"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3" "${KI2_BUILD_DIR}/target-python3"',
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-scanner" "${KI2_BUILD_DIR}/tools/g-ir-scanner"',
+  'sed -i "1c #!/usr/bin/env ${KI2_BUILD_DIR}/target-python3" "${KI2_SYSROOT}/usr/bin/g-ir-scanner"',
+  'install -m755 "${KI2_SYSROOT}/usr/bin/g-ir-compiler" "${KI2_BUILD_DIR}/g-ir-compiler.real"',
+  'install -m755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-compiler" "${KI2_SYSROOT}/usr/bin/g-ir-compiler"',
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"',
+  'PATH="${KI2_BUILD_DIR}/tools:$PATH" meson setup "${KI2_BUILD_DIR}/gudev" "${KI2_SOURCE_DIR}" --prefix=/usr --libdir=lib -Dintrospection=enabled -Dgtk_doc=false -Dtests=disabled -Dvapi=disabled',
+]
+compile = ['meson compile -C "${KI2_BUILD_DIR}/gudev" -j "${KI2_JOBS}"']
+install = ['DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/gudev"']
+[recipe.build.env]
+PKG_CONFIG = "${KI2_BUILD_DIR}/target-pkg-config"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+PYTHONDONTWRITEBYTECODE = "1"
+PYTHONHASHSEED = "0"
+KI2_USE_TARGET_LOADER = "1"
+GI_CROSS_LAUNCHER = "/bin/sh ${KI2_REPO_ROOT}/distro/scripts/ki2-target-run"

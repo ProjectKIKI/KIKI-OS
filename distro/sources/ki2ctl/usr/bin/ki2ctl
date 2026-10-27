@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ from typing import Any
 
 
 APP_VERSION = "0.1.0"
+GENERATED_INFO_INDEX = "/usr/share/info/dir"
 DEFAULT_ARCH = "x86_64"
 DEFAULT_REPO_NAME = "default"
 INSTALLED_SCHEMA = "ki2-installed-v1"
@@ -667,6 +669,8 @@ def package_payload_entries(package: Path) -> list[dict[str, str]]:
             rel = member.name[len("rootfs/") :]
             if not rel:
                 continue
+            if "/" + rel == GENERATED_INFO_INDEX:
+                continue
             kind = "other"
             if member.isdir():
                 kind = "dir"
@@ -692,6 +696,8 @@ def extract_package(package: Path, root: Path) -> list[str]:
                 continue
             rel = member.name[len("rootfs/") :]
             if not rel:
+                continue
+            if "/" + rel == GENERATED_INFO_INDEX:
                 continue
             target = safe_target(root, rel)
             if member.isdir():
@@ -765,12 +771,17 @@ def save_pending_hooks(root: Path, data: dict[str, Any]) -> None:
 def detect_post_install_hooks(files: list[str]) -> list[str]:
     hooks: set[str] = set()
     for path in files:
+        if path.startswith("/usr/share/glib-2.0/schemas/") and path.endswith((".xml", ".gschema.override")):
+            hooks.add("glib-compile-schemas")
         if re.search(r"/(?:lib|lib64|usr/lib|usr/lib64)/.*\.so(?:\.|$)", path):
             hooks.add("ldconfig")
         if path.startswith("/usr/lib/systemd/system/") or path.startswith("/etc/systemd/system/"):
             hooks.add("systemd-daemon-reload")
         if path.startswith("/usr/lib/tmpfiles.d/") or path.startswith("/etc/tmpfiles.d/"):
             hooks.add("systemd-tmpfiles-create")
+        if path.startswith("/usr/share/info/") and (
+                path.endswith((".info", ".info.gz", ".info.xz", ".info.bz2")) or path == "/usr/share/info/dir"):
+            hooks.add("info-index-rebuild")
     return sorted(hooks)
 
 
@@ -782,7 +793,7 @@ def record_pending_hooks(root: Path, package_name: str, files: list[str], *, pha
     existing = {
         (item.get("action"), item.get("package"), item.get("phase", "post-install"))
         for item in data.get("hooks", [])
-        if isinstance(item, dict)
+        if isinstance(item, dict) and item.get("status") != "applied"
     }
     hooks = data.setdefault("hooks", [])
     for action in actions:
@@ -866,6 +877,8 @@ def file_owner_sets(db: dict[str, Any]) -> dict[str, set[str]]:
         if not isinstance(record, dict):
             continue
         for path in record.get("files", []):
+            if str(path) == GENERATED_INFO_INDEX:
+                continue
             owner_sets.setdefault(str(path), set()).add(str(name))
     return owner_sets
 
@@ -977,6 +990,7 @@ def remember_backup(root: Path, tx: dict[str, Any], path: str) -> None:
 
 
 def prepare_backups(root: Path, tx: dict[str, Any], planned: list[tuple[Repo, dict[str, Any], Path]]) -> None:
+    remember_backup(root, tx, "/" + pending_hooks_path(root).relative_to(root).as_posix())
     for _repo, _pkg, package_path in planned:
         for entry in package_payload_entries(package_path):
             if entry["kind"] == "dir":
@@ -987,6 +1001,7 @@ def prepare_backups(root: Path, tx: dict[str, Any], planned: list[tuple[Repo, di
 
 
 def prepare_remove_backups(root: Path, tx: dict[str, Any], records: list[dict[str, Any]]) -> None:
+    remember_backup(root, tx, "/" + pending_hooks_path(root).relative_to(root).as_posix())
     for record in records:
         for path in record.get("files", []):
             remember_backup(root, tx, str(path))
@@ -1446,6 +1461,8 @@ def command_remove(args: argparse.Namespace) -> None:
         for name in args.names:
             files = sorted(packages[name].get("files", []), reverse=True)
             for item in files:
+                if str(item) == GENERATED_INFO_INDEX:
+                    continue
                 print(f"remove {item}")
                 other_owners = owner_sets.get(str(item), set()) - removing
                 if other_owners:
@@ -1524,27 +1541,67 @@ def command_hooks_list(args: argparse.Namespace) -> None:
         print(f"{item.get('status', 'pending')}\t{item.get('phase', 'post-install')}\t{item.get('action')}\t{item.get('package')}")
 
 
-def run_hook_action(action: str, root: Path, dry_run: bool) -> None:
+def rebuild_info_index(root: Path) -> None:
+    directory = root / "usr/share/info"
+    if not directory.exists():
+        return
+    if directory.is_symlink() or not directory.resolve().is_relative_to(root.resolve()):
+        raise Ki2CtlError("Info directory must stay inside target root")
+    output = directory / "dir"
+    if output.is_symlink():
+        raise Ki2CtlError("Info index must not be a symlink")
+    manuals = sorted(p for p in directory.iterdir()
+                     if p.name.endswith((".info", ".info.gz", ".info.xz", ".info.bz2")))
+    if any(p.is_symlink() or not p.is_file() for p in manuals):
+        raise Ki2CtlError("Info manuals must be regular files")
+    tool = shutil.which("install-info")
+    if tool is None:
+        raise Ki2CtlError("missing command for info-index-rebuild: install-info")
+    environment = os.environ.copy()
+    for key in ("LD_LIBRARY_PATH", "LD_PRELOAD"):
+        environment.pop(key, None)
+    environment["LC_ALL"] = "C"
+    try:
+        with tempfile.TemporaryDirectory(prefix=".ki2-info-", dir=directory) as temporary:
+            index = Path(temporary) / "dir"
+            index.write_text("\x1f\nFile: dir, Node: Top\n\n* Menu:\n", encoding="utf-8")
+            for manual in manuals:
+                subprocess.run([tool, "--dir-file=" + str(index), str(manual)],
+                               env=environment, check=True, capture_output=True, text=True, timeout=30)
+            index.chmod(0o644)
+            index.replace(output)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise Ki2CtlError(f"Info index rebuild failed: {exc}") from exc
+
+
+def run_hook_action(action: str, root: Path, dry_run: bool) -> bool:
     if dry_run:
         print(f"would run {action}")
-        return
+        return False
     if root != Path("/"):
         print(f"deferred {action}: apply inside the installed system or run with --root /")
-        return
+        return False
+    if action == "info-index-rebuild":
+        rebuild_info_index(root)
+        print(f"ran {action}")
+        return True
     commands = {
+        "glib-compile-schemas": ["glib-compile-schemas", "--strict", "/usr/share/glib-2.0/schemas"],
         "ldconfig": ["ldconfig"],
         "systemd-daemon-reload": ["systemctl", "daemon-reload"],
         "systemd-tmpfiles-create": ["systemd-tmpfiles", "--create"],
     }
     command = commands.get(action)
     if not command:
-        print(f"unknown hook action: {action}")
-        return
+        raise Ki2CtlError(f"unknown hook action: {action}")
     if shutil.which(command[0]) is None:
-        print(f"missing command for {action}: {command[0]}")
-        return
-    subprocess.run(command, check=False)
+        raise Ki2CtlError(f"missing command for {action}: {command[0]}")
+    try:
+        subprocess.run(command, check=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise Ki2CtlError(f"hook failed: {action}: {exc}") from exc
     print(f"ran {action}")
+    return True
 
 
 def command_hooks_apply(args: argparse.Namespace) -> None:
@@ -1557,9 +1614,16 @@ def command_hooks_apply(args: argparse.Namespace) -> None:
         if item.get("status") == "applied":
             continue
         action = str(item.get("action", ""))
-        run_hook_action(action, args.root, args.dry_run)
-        if not args.dry_run and args.root == Path("/"):
+        try:
+            applied = run_hook_action(action, args.root, args.dry_run)
+        except Ki2CtlError as exc:
+            item["status"] = "failed"
+            item["last_error"] = str(exc)
+            save_pending_hooks(args.root, data)
+            raise
+        if applied:
             item["status"] = "applied"
+            item.pop("last_error", None)
             item["applied_at"] = dt.datetime.now(UTC).isoformat()
     if not args.dry_run:
         save_pending_hooks(args.root, data)

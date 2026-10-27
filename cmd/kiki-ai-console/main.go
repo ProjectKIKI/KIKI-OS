@@ -46,13 +46,13 @@ func loadConfig(path string) (config, error) {
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&result); err != nil {
-		return result, fmt.Errorf("설정 파일 해석: %w", err)
+		return result, fmt.Errorf("Parse configuration: %w", err)
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return result, errors.New("설정 파일 뒤에 허용되지 않은 데이터가 있습니다")
+		return result, errors.New("Unexpected trailing configuration data")
 	}
 	if result.Endpoint == "" || result.Model == "" {
-		return result, errors.New("endpoint와 model 설정이 필요합니다")
+		return result, errors.New("endpoint and model are required")
 	}
 	return result, nil
 }
@@ -69,37 +69,37 @@ func readAPIKey(path string) (string, error) {
 }
 
 func main() {
-	configPath := flag.String("config", "/etc/kiki/ai-console.json", "설정 파일")
-	once := flag.String("once", "", "요청 하나를 계획만 하고 종료")
-	waitLocalRuntime := flag.Duration("wait-local-runtime", 0, "로컬 AI 런타임 준비 대기 시간")
+	configPath := flag.String("config", "/etc/kiki/ai-console.json", "Configuration file")
+	once := flag.String("once", "", "Plan one request without execution, then exit")
+	waitLocalRuntime := flag.Duration("wait-local-runtime", 0, "Local AI runtime readiness timeout")
 	flag.Parse()
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "KIKI AI 콘솔 설정 오류:", err)
+		fmt.Fprintln(os.Stderr, "KIKI AI console configuration error:", err)
 		os.Exit(1)
 	}
 	apiKey, err := readAPIKey(cfg.APIKeyFile)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "API 키 읽기 오류:", err)
+		fmt.Fprintln(os.Stderr, "Cannot read API key:", err)
 		os.Exit(1)
 	}
 	if *waitLocalRuntime > 0 && isLoopbackEndpoint(cfg.Endpoint) {
-		fmt.Fprintln(os.Stdout, "로컬 AI 런타임 준비를 기다리는 중입니다...")
+		fmt.Fprintln(os.Stdout, "Waiting for the local AI runtime...")
 		waitContext, cancel := context.WithTimeout(context.Background(), *waitLocalRuntime)
 		err := waitForRuntime(waitContext, cfg.Endpoint)
 		cancel()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "경고: 로컬 AI 런타임이 준비되지 않았습니다:", err)
-			fmt.Fprintln(os.Stderr, "tty2에서 systemctl status kiki-llama-server.service 및 journalctl -u kiki-llama-server.service를 확인하십시오.")
+			fmt.Fprintln(os.Stderr, "Warning: local AI runtime is not ready:", err)
+			fmt.Fprintln(os.Stderr, "Use tty2: systemctl status kiki-llama-server.service; journalctl -u kiki-llama-server.service")
 		} else {
-			fmt.Fprintln(os.Stdout, "로컬 AI 런타임이 준비되었습니다.")
+			fmt.Fprintln(os.Stdout, "Local AI runtime is ready.")
 		}
 	}
 	console := newConsole(cfg, apiKey, os.Stdin, os.Stdout, os.Stderr)
 	if *once != "" {
 		if err := console.planOnly(context.Background(), *once); err != nil {
-			fmt.Fprintln(os.Stderr, "계획 생성 오류:", err)
+			fmt.Fprintln(os.Stderr, "Planning error:", err)
 			os.Exit(1)
 		}
 		return
@@ -123,7 +123,7 @@ func isLoopbackEndpoint(rawEndpoint string) bool {
 func runtimeHealthURL(rawEndpoint string) (string, error) {
 	parsed, err := url.Parse(rawEndpoint)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return "", errors.New("유효하지 않은 AI 엔드포인트")
+		return "", errors.New("Invalid AI endpoint")
 	}
 	parsed.Path = "/health"
 	parsed.RawPath = ""
@@ -155,14 +155,14 @@ func waitForRuntimeWithClient(ctx context.Context, endpoint string, client *http
 			if response.StatusCode != http.StatusServiceUnavailable && response.StatusCode < 500 {
 				return nil
 			}
-			lastError = fmt.Errorf("%s 응답: HTTP %d", healthURL, response.StatusCode)
+			lastError = fmt.Errorf("%s response: HTTP %d", healthURL, response.StatusCode)
 		} else {
 			lastError = requestErr
 		}
 		select {
 		case <-ctx.Done():
 			if lastError != nil {
-				return fmt.Errorf("%w (마지막 오류: %v)", ctx.Err(), lastError)
+				return fmt.Errorf("%w (last error: %v)", ctx.Err(), lastError)
 			}
 			return ctx.Err()
 		case <-ticker.C:
@@ -178,31 +178,41 @@ type console struct {
 	planner  planner
 	executor aiconsole.Executor
 	reader   *bufio.Scanner
+	hangul   *hangulLineReader
 	out      io.Writer
 	errOut   io.Writer
 	auditLog string
 }
 
 func newConsole(cfg config, apiKey string, in io.Reader, out, errOut io.Writer) *console {
+	in, hangul := maybeHangulInput(in, out)
 	reader := bufio.NewScanner(in)
 	reader.Buffer(make([]byte, 4096), 1024*1024)
 	return &console{
 		planner:  aiconsole.Client{Endpoint: cfg.Endpoint, Model: cfg.Model, APIKey: apiKey},
 		executor: aiconsole.Executor{Stdout: out, Stderr: errOut},
 		reader:   reader,
+		hangul:   hangul,
 		out:      out,
 		errOut:   errOut,
 		auditLog: cfg.AuditLog,
 	}
 }
 
+func (c *console) scan(prompt string) bool {
+	if c.hangul != nil {
+		c.hangul.prompt = strings.TrimLeft(prompt, "\n")
+	}
+	fmt.Fprint(c.out, prompt)
+	return c.reader.Scan()
+}
+
 func (c *console) run(ctx context.Context) {
-	fmt.Fprintln(c.out, "KIKI OS 한국어 AI 관리 콘솔 (tty1)")
-	fmt.Fprintln(c.out, "명령은 반드시 화면에 표시한 뒤 '실행' 확인을 받아 수행합니다.")
-	fmt.Fprintln(c.out, "독립 복구 셸은 Ctrl+Alt+F2 (tty2), 도움말은 /도움말 입니다.")
+	fmt.Fprintln(c.out, "KIKI OS AI management console (tty1)")
+	fmt.Fprintln(c.out, "Commands are displayed first and require explicit 'execute' approval.")
+	fmt.Fprintln(c.out, "Recovery shell: Ctrl+Alt+F2 (tty2). Help: /help. Status: /status.")
 	for {
-		fmt.Fprint(c.out, "\nkiki-ai> ")
-		if !c.reader.Scan() {
+		if !c.scan("\nkiki-ai> ") {
 			return
 		}
 		request := strings.TrimSpace(c.reader.Text())
@@ -212,15 +222,16 @@ func (c *console) run(ctx context.Context) {
 		case "/종료", "/exit", "exit", "quit":
 			return
 		case "/도움말", "/help":
-			fmt.Fprintln(c.out, "자연어로 원하는 작업을 입력하세요. 예: '고정 IP를 설정해줘'.")
-			fmt.Fprintln(c.out, "계획 확인 단계: 실행 / 수정 / 취소")
+			fmt.Fprintln(c.out, "Greetings and questions receive display-only replies; no commands are executed.")
+			fmt.Fprintln(c.out, "Describe a task, for example: 'Configure a static IP address'.")
+			fmt.Fprintln(c.out, "Review choices: execute / edit / cancel")
 			continue
-		case "/상태":
+		case "/상태", "/status":
 			fmt.Fprintln(c.out, aiconsole.CollectInventory(ctx))
 			continue
 		}
 		if err := c.handle(ctx, request); err != nil {
-			fmt.Fprintln(c.errOut, "요청 처리 오류:", err)
+			fmt.Fprintln(c.errOut, "Request error:", err)
 		}
 	}
 }
@@ -235,7 +246,7 @@ func (c *console) planOnly(ctx context.Context, request string) error {
 }
 
 func (c *console) makePlan(ctx context.Context, request string) (aiconsole.Plan, error) {
-	fmt.Fprintln(c.out, "시스템 상태를 확인하고 실행 계획을 만드는 중입니다...")
+	fmt.Fprintln(c.out, "Inspecting the system and preparing a response...")
 	planContext, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	return c.planner.Plan(planContext, request, aiconsole.CollectInventory(planContext))
@@ -248,89 +259,98 @@ func (c *console) handle(ctx context.Context, request string) error {
 			return err
 		}
 		renderPlan(c.out, plan)
-		fmt.Fprint(c.out, "\n선택 [실행/수정/취소]: ")
-		if !c.reader.Scan() {
+		if plan.Schema == aiconsole.MessageSchema {
+			return nil
+		}
+		if !c.scan("\nChoose [execute/edit/cancel]: ") {
 			return io.EOF
 		}
 		switch strings.TrimSpace(c.reader.Text()) {
 		case "취소", "cancel":
 			_ = aiconsole.AppendAudit(c.auditLog, aiconsole.AuditEntry{Event: "cancelled", Request: request, Plan: &plan})
-			fmt.Fprintln(c.out, "취소했습니다. 어떤 명령도 실행하지 않았습니다.")
+			fmt.Fprintln(c.out, "Cancelled. No commands were executed.")
 			return nil
 		case "수정", "edit":
-			fmt.Fprint(c.out, "수정할 내용을 입력하세요: ")
-			if !c.reader.Scan() {
+			if !c.scan("Enter the requested changes: ") {
 				return io.EOF
 			}
-			request += "\n추가 수정 요청: " + strings.TrimSpace(c.reader.Text())
+			request += "\nAdditional changes: " + strings.TrimSpace(c.reader.Text())
 			continue
 		case "실행", "execute":
 			if err := aiconsole.AppendAudit(c.auditLog, aiconsole.AuditEntry{Event: "approved", Request: request, Plan: &plan}); err != nil {
-				return fmt.Errorf("감사 로그 기록: %w", err)
+				return fmt.Errorf("Write audit log: %w", err)
 			}
 			results := c.executor.Run(ctx, plan.Commands)
 			_ = aiconsole.AppendAudit(c.auditLog, aiconsole.AuditEntry{Event: "executed", Plan: &plan, Results: results})
 			if failed(results) {
-				fmt.Fprintln(c.errOut, "명령 실행이 중단되었습니다.")
+				fmt.Fprintln(c.errOut, "Command execution stopped.")
 				return c.offerRollback(ctx, plan)
 			}
 			if len(plan.Verification) > 0 {
-				fmt.Fprintln(c.out, "\n검증 명령을 실행합니다.")
+				fmt.Fprintln(c.out, "\nRunning verification commands.")
 				verification := c.executor.Run(ctx, plan.Verification)
 				_ = aiconsole.AppendAudit(c.auditLog, aiconsole.AuditEntry{Event: "verified", Plan: &plan, Results: verification})
 				if failed(verification) {
-					fmt.Fprintln(c.errOut, "검증이 실패했습니다.")
+					fmt.Fprintln(c.errOut, "Verification failed.")
 					return c.offerRollback(ctx, plan)
 				}
 			}
-			fmt.Fprintln(c.out, "작업과 검증을 완료했습니다.")
+			fmt.Fprintln(c.out, "Task and verification completed.")
 			return nil
 		default:
-			fmt.Fprintln(c.out, "'실행', '수정', '취소' 중 하나를 정확히 입력하세요.")
+			fmt.Fprintln(c.out, "Enter exactly 'execute', 'edit', or 'cancel'.")
 		}
 	}
 }
 
 func (c *console) offerRollback(ctx context.Context, plan aiconsole.Plan) error {
 	if len(plan.Rollback) == 0 {
-		fmt.Fprintln(c.errOut, "제공된 자동 롤백 명령이 없습니다. tty2 복구 셸을 사용하세요.")
+		fmt.Fprintln(c.errOut, "No rollback commands provided. Use the tty2 recovery shell.")
 		return nil
 	}
-	fmt.Fprintln(c.out, "\n사용 가능한 롤백 명령:")
+	fmt.Fprintln(c.out, "\nAvailable rollback commands:")
 	renderCommands(c.out, plan.Rollback)
-	fmt.Fprint(c.out, "롤백하려면 '롤백' 입력, 아니면 Enter: ")
-	if !c.reader.Scan() || strings.TrimSpace(c.reader.Text()) != "롤백" {
+	if !c.scan("Type 'rollback' to roll back, or press Enter to skip: ") {
+		return nil
+	}
+	choice := strings.TrimSpace(c.reader.Text())
+	if choice != "rollback" && choice != "롤백" {
 		return nil
 	}
 	results := c.executor.Run(ctx, plan.Rollback)
 	_ = aiconsole.AppendAudit(c.auditLog, aiconsole.AuditEntry{Event: "rolled_back", Plan: &plan, Results: results})
 	if failed(results) {
-		return errors.New("롤백 명령 일부가 실패했습니다. tty2 복구 셸을 사용하세요")
+		return errors.New("Rollback failed. Use the tty2 recovery shell")
 	}
-	fmt.Fprintln(c.out, "롤백을 완료했습니다.")
+	fmt.Fprintln(c.out, "Rollback completed.")
 	return nil
 }
 
 func renderPlan(out io.Writer, plan aiconsole.Plan) {
-	fmt.Fprintf(out, "\n요약: %s\n위험 등급: %s\n영향: %s\n", plan.SummaryKO, plan.Risk, plan.ImpactKO)
-	fmt.Fprintln(out, "\n실행할 정확한 명령:")
+	if plan.Schema == aiconsole.MessageSchema {
+		fmt.Fprintln(out, plan.Reply)
+		fmt.Fprintln(out, "No commands were executed.")
+		return
+	}
+	fmt.Fprintf(out, "\nSummary: %s\nRisk: %s\nImpact: %s\n", plan.SummaryKO, plan.Risk, plan.ImpactKO)
+	fmt.Fprintln(out, "\nExact commands to execute:")
 	renderCommands(out, plan.Commands)
 	if len(plan.Verification) > 0 {
-		fmt.Fprintln(out, "\n실행 후 검증:")
+		fmt.Fprintln(out, "\nPost-execution verification:")
 		renderCommands(out, plan.Verification)
 	}
 	if len(plan.Rollback) > 0 {
-		fmt.Fprintln(out, "\n실패 시 롤백 후보:")
+		fmt.Fprintln(out, "\nRollback commands:")
 		renderCommands(out, plan.Rollback)
 	}
-	fmt.Fprintln(out, "\n확인:", plan.ConfirmationKO)
+	fmt.Fprintln(out, "\nConfirmation:", plan.ConfirmationKO)
 }
 
 func renderCommands(out io.Writer, commands []aiconsole.Command) {
 	for index, command := range commands {
 		fmt.Fprintf(out, "  %d. %s\n     $ %s\n", index+1, command.DescriptionKO, aiconsole.QuoteArgv(command.Argv))
 		if command.Directory != "" {
-			fmt.Fprintf(out, "     작업 경로: %s\n", command.Directory)
+			fmt.Fprintf(out, "     Working directory: %s\n", command.Directory)
 		}
 		if len(command.Environment) > 0 {
 			keys := make([]string, 0, len(command.Environment))
@@ -339,7 +359,7 @@ func renderCommands(out io.Writer, commands []aiconsole.Command) {
 			}
 			sort.Strings(keys)
 			for _, key := range keys {
-				fmt.Fprintf(out, "     환경 변수: %s=%s\n", key, command.Environment[key])
+				fmt.Fprintf(out, "     Environment: %s=%s\n", key, command.Environment[key])
 			}
 		}
 	}

@@ -1,0 +1,5 @@
+[profile]
+name = "installer-refresh"
+description = "Build current installer and console packages for release validation"
+arch = "x86_64"
+packages = ["kiki-installer-tui", "kiki-installer-gtk", "kiki-ai-console", "kiki-kmscon"]

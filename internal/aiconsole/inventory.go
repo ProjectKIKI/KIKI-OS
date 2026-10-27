@@ -17,13 +17,13 @@ type inventoryCommand struct {
 
 func CollectInventory(ctx context.Context) string {
 	commands := []inventoryCommand{
-		{Name: "커널", Argv: []string{"uname", "-a"}},
-		{Name: "네트워크 링크", Argv: []string{"ip", "-j", "link"}},
-		{Name: "네트워크 주소", Argv: []string{"ip", "-j", "address"}},
-		{Name: "라우팅", Argv: []string{"ip", "-j", "route"}},
-		{Name: "블록 장치", Argv: []string{"lsblk", "-J", "-o", "NAME,KNAME,PATH,SIZE,TYPE,FSTYPE,FSVER,LABEL,UUID,MOUNTPOINTS,MODEL,SERIAL,RO,RM"}},
-		{Name: "마운트", Argv: []string{"findmnt", "-J"}},
-		{Name: "실패 서비스", Argv: []string{"systemctl", "--failed", "--no-legend", "--plain"}},
+		{Name: "Kernel", Argv: []string{"uname", "-a"}},
+		{Name: "Network links", Argv: []string{"ip", "-j", "link"}},
+		{Name: "Network addresses", Argv: []string{"ip", "-j", "address"}},
+		{Name: "Routes", Argv: []string{"ip", "-j", "route"}},
+		{Name: "Block devices", Argv: []string{"lsblk", "-J", "-o", "NAME,KNAME,PATH,SIZE,TYPE,FSTYPE,FSVER,LABEL,UUID,MOUNTPOINTS,MODEL,SERIAL,RO,RM"}},
+		{Name: "Mounts", Argv: []string{"findmnt", "-J"}},
+		{Name: "Failed services", Argv: []string{"systemctl", "--failed", "--no-legend", "--plain"}},
 	}
 	var output strings.Builder
 	for _, item := range commands {
@@ -36,7 +36,7 @@ func CollectInventory(ctx context.Context) string {
 		cancel()
 		fmt.Fprintf(&output, "[%s]\n", item.Name)
 		if err != nil {
-			fmt.Fprintf(&output, "사용 불가: %v %s\n", err, truncate(stderr.String(), 1024))
+			fmt.Fprintf(&output, "Unavailable: %v %s\n", err, truncate(stderr.String(), 1024))
 			continue
 		}
 		text := truncate(stdout.String(), 32<<10)
@@ -46,7 +46,7 @@ func CollectInventory(ctx context.Context) string {
 		}
 	}
 	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
-		output.WriteString("[메모리]\n")
+		output.WriteString("[Memory]\n")
 		output.WriteString(truncate(string(data), 4096))
 	}
 	return truncate(output.String(), 128<<10)
@@ -56,5 +56,5 @@ func truncate(value string, limit int) string {
 	if len(value) <= limit {
 		return value
 	}
-	return value[:limit] + "\n... 생략됨 ...\n"
+	return value[:limit] + "\n... truncated ...\n"
 }

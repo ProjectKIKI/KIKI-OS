@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -83,7 +85,10 @@ def verify_contract(repo_root: Path) -> dict[str, Any]:
     require("-mod=vendor" in commands and "-buildvcs=false" in commands, "kiki-agent build must use vendored reproducible inputs")
     ki2ctl_recipe = recipes.get("ki2ctl")
     require(ki2ctl_recipe is not None, "ki2ctl recipe is missing")
-    require(ki2ctl_recipe.dependencies.get("runtime", []) == ["python"], "ki2ctl verification must not add a client-side crypto process dependency")
+    require(
+        set(ki2ctl_recipe.dependencies.get("runtime", [])) == {"python", "install-info"},
+        "ki2ctl must include Python and the documentation index tool without a client-side crypto process dependency",
+    )
     policy_path = repo_root / "distro/sources/ki2ctl/etc/ki2/policy.json"
     policy = json.loads(policy_path.read_text(encoding="utf-8"))
     require(policy.get("require_repository_signature") is True, "installed repository policy must require signatures")
@@ -212,7 +217,13 @@ def verify_contract(repo_root: Path) -> dict[str, Any]:
         == ["glibc", "gmp", "jansson", "readline", "libmnl", "libnftnl", "iptables"],
         "nftables runtime library stack is incomplete",
     )
-    require(nftables.build.get("sysroot_exclude") == ["glibc"], "nftables must consume KIKI libraries from its sysroot")
+    require("glibc" not in nftables.build.get("sysroot_exclude", []), "nftables must include target glibc with its target GMP")
+    nftables_env = nftables.build.get("env", {})
+    require(
+        "--sysroot=${KI2_SYSROOT}" in str(nftables_env.get("CC", ""))
+        and "--sysroot=${KI2_SYSROOT}" in str(nftables_env.get("LDFLAGS", "")),
+        "nftables must compile and link with the target sysroot",
+    )
     nftables_install = "\n".join(str(command) for command in nftables.build.get("install", []))
     require(
         all(path in nftables_install for path in ("py/src/__init__.py", "py/src/nftables.py", "py/src/schema.json")),
@@ -436,7 +447,8 @@ def verify_contract(repo_root: Path) -> dict[str, Any]:
         services = set(profile.get("services", {}).get("enable", []))
         require("kiki-ai-console" in profile.get("packages", []), f"{profile_path.name}: AI console package is missing")
         require("llama-cpp" in profile.get("packages", []), f"{profile_path.name}: local llama.cpp runtime is missing")
-        require("kiki-ai-console@tty1.service" in services, f"{profile_path.name}: tty1 AI console is missing")
+        require("kiki-kmscon" in profile.get("packages", []), f"{profile_path.name}: Korean console runtime is missing")
+        require("kiki-ai-console-kmscon@tty1.service" in services, f"{profile_path.name}: tty1 Korean AI console is missing")
         require("getty@tty2.service" in services, f"{profile_path.name}: tty2 recovery shell is missing")
         require("getty@tty1.service" not in services, f"{profile_path.name}: tty1 getty conflicts with the AI console")
     server_profile = ki2build.load_profile(repo_root / "distro/profiles/server-core.toml")
@@ -549,6 +561,21 @@ def smoke_repository_signature(repo_root: Path) -> dict[str, Any]:
         target = base / "target"
         for path in (packages, repository, iso):
             path.mkdir(parents=True)
+        # Exercise a real nonempty signed index, independently of built artifacts.
+        fixture = {
+            "name": "stage3-signature-probe", "version": "1", "release": "1",
+            "arch": "x86_64", "license": "MIT", "tier": "test",
+            "dependencies": {"build": [], "runtime": []}, "payload": {"file_count": 1},
+        }
+        with tarfile.open(packages / "stage3-signature-probe-1-1.x86_64.ki2", "w:gz") as archive:
+            for name, data in (
+                ("manifest.json", json.dumps(fixture).encode("utf-8")),
+                ("rootfs/usr/share/kiki/signature-probe.txt", b"Stage 3 signature smoke\n"),
+            ):
+                entry = tarfile.TarInfo(name)
+                entry.size = len(data)
+                entry.mode = 0o644
+                archive.addfile(entry, io.BytesIO(data))
         common = [
             sys.executable,
             "tools/ki2repo.py",
@@ -574,6 +601,7 @@ def smoke_repository_signature(repo_root: Path) -> dict[str, Any]:
             [
                 *common,
                 "generate",
+                "--include-all-staged",
                 "--channel",
                 "stage3-v3",
                 "--sign-key",

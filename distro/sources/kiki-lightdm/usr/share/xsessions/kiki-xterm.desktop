@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=KIKI OS X11 Terminal
+Comment=Minimal X11 session
+Exec=/usr/bin/xterm -fa monospace -fs 12
+Type=Application
+DesktopNames=KIKI

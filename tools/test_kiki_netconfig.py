@@ -4,10 +4,59 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import runpy
+import io
+from unittest.mock import patch
+from contextlib import redirect_stdout
 from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "distro/sources/kiki-netconfig/usr/bin/kiki-netconfig"
+MODULE = runpy.run_path(str(SCRIPT))
+
+
+class TuiTests(unittest.TestCase):
+    def run_tui(self, root, answers, preview=False):
+        args = MODULE['build_parser']().parse_args(['--root', str(root), 'tui'] + (['--dry-run'] if preview else []))
+        devices = [{'ifname': 'eth0', 'operstate': 'UP', 'addr_info': []}]
+        with patch.dict(MODULE['command_tui'].__globals__, interfaces=lambda: devices), patch('builtins.input', side_effect=answers), redirect_stdout(io.StringIO()):
+            return MODULE['command_tui'](args)
+
+    def test_cancel_and_preview_do_not_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.run_tui(root, ['']), 0)
+            self.assertEqual(self.run_tui(root, ['1', '1', '']), 0)
+            self.assertEqual(self.run_tui(root, ['1', '2', '10.0.2.15/24', '10.0.2.2', '10.0.2.3', ''], True), 0)
+            self.assertEqual(list(root.iterdir()), [])
+
+    def test_save_and_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.run_tui(root, ['1', '1', 's'])
+            target = root / 'etc/systemd/network/10-kiki-eth0.network'
+            old = target.read_bytes()
+            self.run_tui(root, ['1', '2', '10.0.2.15/24', '10.0.2.2', '10.0.2.3', 's'])
+            self.assertIn('Address=10.0.2.15/24', target.read_text())
+            self.assertEqual(next(target.parent.glob('*.bak-*')).read_bytes(), old)
+
+    def test_refuses_unmanaged_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / 'etc/systemd/network/10-kiki-eth0.network'
+            target.parent.mkdir(parents=True)
+            target.write_text('# user configuration\n')
+            with self.assertRaises(ValueError):
+                MODULE['save_tui_profile'](Path(tmp), 'eth0', 'replacement')
+            self.assertEqual(target.read_text(), '# user configuration\n')
+
+    def test_static_validation(self):
+        for address, gateway, dns in [('10.0.2.15', '', []), ('10.0.2.15/24', '192.168.1.1', []), ('10.0.2.15/24', '', ['bad']), ('127.0.0.1/8', '', [])]:
+            with self.subTest(address=address, gateway=gateway, dns=dns), self.assertRaises(ValueError):
+                MODULE['validate_static_settings'](address, gateway, dns)
+
+    def test_apply_requires_exact_confirmation(self):
+        with patch.dict(MODULE['command_tui'].__globals__, save_tui_profile=lambda *a: self.fail('must not save')):
+            self.assertEqual(self.run_tui(Path('/'), ['1', '1', 'a', 'no']), 0)
 
 
 class KikiNetconfigTests(unittest.TestCase):

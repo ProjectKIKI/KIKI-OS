@@ -1,0 +1,5 @@
+[profile]
+name = "auth-foundation"
+description = "Authentication library build and validation, not a login policy"
+arch = "x86_64"
+packages = ["linux-pam", "duktape", "polkit"]

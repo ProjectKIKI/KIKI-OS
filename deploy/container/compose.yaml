@@ -10,7 +10,7 @@ services:
     container_name: kiki-buildd
     working_dir: /work
     ports:
-      - "${KIKI_PORT:-8090}:8090"
+      - "127.0.0.1:${KIKI_PORT:-8090}:8090"
     environment:
       KIKI_JOBS: ${KIKI_JOBS:-4}
       KIKI_PORT: 8090

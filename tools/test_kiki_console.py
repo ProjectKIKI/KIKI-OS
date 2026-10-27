@@ -11,6 +11,25 @@ import kiki_console
 
 
 class KikiConsoleTests(unittest.TestCase):
+    def test_shell_filters_defaults_for_status_and_preserves_explicit_jobs(self):
+        base = ["--repo-root", "/repo", "--arch", "x86_64", "--jobs", "8", "--build-plan", "plan.yaml"]
+        with mock.patch.object(kiki_console, "command_status", return_value=0) as status:
+            self.assertEqual(kiki_console.shell_dispatch("status --json", base), 0)
+            self.assertTrue(status.call_args.args[0].json)
+        with mock.patch.object(kiki_console, "command_plan", return_value=0) as plan:
+            self.assertEqual(kiki_console.shell_dispatch("plan --jobs 3", base), 0)
+            self.assertEqual(plan.call_args.args[0].jobs, 3)
+
+    def test_build_jobs_forward_json_and_artifact_root(self):
+        args = kiki_console.build_parser().parse_args(["jobs", "--artifact-root", "build/custom", "--json"])
+        with mock.patch.object(kiki_console, "execute", return_value=0) as execute:
+            kiki_console.command_build_jobs(args)
+        command = execute.call_args.args[0]
+        self.assertIn("list-jobs", command)
+        self.assertIn("--json", command)
+        self.assertIn(str(Path("build/custom")), command)
+        self.assertFalse(execute.call_args.kwargs["announce"])
+
     def test_status_combines_stage_progress_and_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -47,7 +66,7 @@ class KikiConsoleTests(unittest.TestCase):
 
     def test_build_command_excludes_iso_and_iso_command_includes_it(self):
         parser = kiki_console.build_parser()
-        build_args = parser.parse_args(["build", "--repo-root", "/repo", "--jobs", "4", "--dry-run"])
+        build_args = parser.parse_args(["build", "--repo-root", "/repo", "--jobs", "4", "--dry-run", "--build-dir", "/tmp/work", "--rootfs-dir", "/tmp/rootfs"])
         iso_args = parser.parse_args(["iso", "--repo-root", "/repo", "--jobs", "4", "--yes"])
 
         build = kiki_console.osbuild_command(build_args, "run")
@@ -55,6 +74,10 @@ class KikiConsoleTests(unittest.TestCase):
 
         self.assertNotIn("--iso", build)
         self.assertIn("--dry-run", build)
+        self.assertIn("--build-dir", build)
+        self.assertIn(str(Path("/tmp/work")), build)
+        self.assertIn("--rootfs-dir", build)
+        self.assertIn(str(Path("/tmp/rootfs")), build)
         self.assertIn("--iso", iso)
 
     def test_noninteractive_iso_requires_explicit_yes(self):

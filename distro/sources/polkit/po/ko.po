@@ -1,0 +1,95 @@
+# Korean translations for the KIKI Polkit integration.
+# Distributed under the same license as Polkit.
+msgid ""
+msgstr ""
+"Project-Id-Version: polkit 127\n"
+"Report-Msgid-Bugs-To: https://github.com/polkit-org/polkit/issues\n"
+"PO-Revision-Date: 2026-09-09 00:00+0900\n"
+"Last-Translator: KIKI OS contributors\n"
+"Language-Team: Korean\n"
+"Language: ko\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Run a program as another user"
+msgstr "다른 사용자 권한으로 프로그램 실행"
+
+msgid "Authentication is required to run a program as another user"
+msgstr "다른 사용자 권한으로 프로그램을 실행하려면 인증이 필요합니다"
+
+msgid "Only output information about ACTION"
+msgstr "ACTION에 대한 정보만 출력"
+
+msgid "ACTION"
+msgstr "ACTION"
+
+msgid "Output detailed action information"
+msgstr "자세한 작업 정보 출력"
+
+msgid "Show version"
+msgstr "버전 표시"
+
+msgid "[--action-id ACTION]"
+msgstr "[--action-id ACTION]"
+
+#, c-format
+msgid "Report bugs to: %s\n%s home page: <%s>"
+msgstr "버그 신고: %s\n%s 홈페이지: <%s>"
+
+#, c-format
+msgid "%s: Unexpected argument `%s'\n"
+msgstr "%s: 예상하지 못한 인수 '%s'\n"
+
+#, c-format
+msgid "%s: Argument expected after `%s'\n"
+msgstr "%s: '%s' 뒤에 인수가 필요합니다\n"
+
+#, c-format
+msgid "%s: Invalid --process value `%s'\n"
+msgstr "%s: 잘못된 --process 값 '%s'\n"
+
+#, c-format
+msgid "%s: Two arguments expected after `--detail, -d'\n"
+msgstr "%s: '--detail, -d' 뒤에 두 인수가 필요합니다\n"
+
+#, c-format
+msgid "%s: Subject not specified\n"
+msgstr "%s: 권한 검사 대상이 지정되지 않았습니다\n"
+
+# Keep substitution tokens unchanged.
+msgid "Authentication is needed to run `$(cmdline_short)' as the super user"
+msgstr "관리자 권한으로 '$(cmdline_short)' 명령을 실행하려면 인증이 필요합니다"
+
+msgid "Authentication is needed to run `$(cmdline_short)' as user $(user.display)"
+msgstr "$(user.display) 사용자 권한으로 '$(cmdline_short)' 명령을 실행하려면 인증이 필요합니다"
+
+msgid "Don't replace existing agent if any"
+msgstr "기존 인증 에이전트가 있으면 교체하지 않음"
+
+msgid "Close FD when the agent is registered"
+msgstr "인증 에이전트 등록 후 파일 디스크립터 FD 닫기"
+
+msgid "FD"
+msgstr "FD"
+
+msgid "Register the agent for the specified process"
+msgstr "지정한 프로세스의 인증 에이전트 등록"
+
+msgid "PID[,START_TIME]"
+msgstr "PID[,START_TIME]"
+
+msgid "Register the agent for the owner of BUS_NAME"
+msgstr "BUS_NAME 소유자의 인증 에이전트 등록"
+
+msgid "BUS_NAME"
+msgstr "BUS_NAME"
+
+#, c-format
+msgid "%s: Options --process and --system-bus-name are mutually exclusive\n"
+msgstr "%s: --process와 --system-bus-name 옵션은 함께 사용할 수 없습니다\n"
+
+#, c-format
+msgid "%s: Invalid process specifier `%s'\n"
+msgstr "%s: 잘못된 프로세스 지정 값 '%s'\n"

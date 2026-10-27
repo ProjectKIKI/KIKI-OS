@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1086" height="362" viewBox="0 0 1086 362" role="img" aria-labelledby="title desc">
+  <title id="title">KIKI · 키키</title>
+  <desc id="desc">남색 복고풍 화면 캐릭터와 노란색 KIKI · 키키 글자가 있는 벡터 로고</desc>
+  <!-- Transparent canvas. All shapes and text remain independently editable. -->
+  <g id="mascot" transform="translate(18 25)">
+    <rect x="0" y="0" width="295" height="295" rx="72" fill="#071b43"/>
+    <path d="M53 270v18c0 13 10 23 23 23h29c12 0 22-10 22-22v-8M176 281v8c0 12 10 22 22 22h29c13 0 23-10 23-23v-18" fill="#071b43"/>
+    <rect x="35" y="47" width="225" height="187" rx="37" fill="#ffca16"/>
+    <rect x="84" y="90" width="29" height="69" rx="14" fill="#071b43"/>
+    <rect x="182" y="90" width="29" height="69" rx="14" fill="#071b43"/>
+    <circle cx="69" cy="183" r="17" fill="#ffa526"/>
+    <circle cx="226" cy="183" r="17" fill="#ffa526"/>
+    <path d="M116 183c19 30 44 30 63 0" fill="none" stroke="#071b43" stroke-width="16" stroke-linecap="round"/>
+    <circle cx="215" cy="257" r="12" fill="#ffca16"/>
+    <circle cx="249" cy="257" r="12" fill="#ffca16"/>
+  </g>
+  <g id="wordmark" fill="#ffca16" stroke="#071b43" stroke-width="7" stroke-linejoin="round" paint-order="stroke fill" font-family="Noto Sans CJK KR, Noto Sans KR, Malgun Gothic, NanumGothic, sans-serif" font-weight="900">
+    <text id="latin" x="345" y="241" font-size="165" letter-spacing="-9">KIKI</text>
+    <circle id="separator" cx="745" cy="180" r="15" fill="#ffca16" stroke="#071b43" stroke-width="6"/>
+    <text id="hangul" x="785" y="237" font-size="130" letter-spacing="-8">키키</text>
+  </g>
+</svg>

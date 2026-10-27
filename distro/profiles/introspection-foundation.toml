@@ -1,0 +1,5 @@
+[profile]
+name = "introspection-foundation"
+description = "Target GLib introspection development and validation"
+arch = "x86_64"
+packages = ["gobject-introspection"]

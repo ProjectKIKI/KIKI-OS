@@ -1,0 +1,18 @@
+[[recipe]]
+name = "kiki-kmscon"
+version = "10.0.3"
+release = 3
+summary = "Korean KMS console with Naver NanumGothicCoding and Noto fallback"
+license = "MIT AND LGPL-2.1-or-later AND OFL-1.1"
+tier = "base"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "build/ki2/host-kmscon-ko/rootfs"
+inputs = ["tools/ki2kmscon.py", "distro/sources/kiki-kmscon"]
+[recipe.dependencies]
+build = []
+runtime = ["glibc"]
+[recipe.build]
+system = "copy"
+skip_sysroot = true

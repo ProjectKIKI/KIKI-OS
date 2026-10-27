@@ -1,0 +1,40 @@
+#!/usr/bin/python3
+"""Fail closed when the shared graphics ABI differs from the tested baseline."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+import subprocess
+
+
+def sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+try:
+    data = json.loads(Path("/usr/share/kiki-x11/runtime-manifest.json").read_text())
+    if sha(Path("/usr/share/kiki-installer-gtk/runtime-manifest.json")) != data["base_graphics_sha256"]:
+        raise ValueError("graphics runtime version differs; rebuild X11 for this base")
+    for item in data["shared_base_files"]:
+        relative = Path(item["path"])
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("invalid shared file path")
+        path = Path("/") / relative
+        if item.get("link") is not None:
+            # ldconfig may legitimately retarget a SONAME to a newer native ABI.
+            # Retain the file-content checks and verify actual ELF resolution below.
+            valid = path.is_symlink() and path.is_file()
+        else:
+            valid = path.is_file() and not path.is_symlink() and sha(path) == item["sha256"]
+        if not valid:
+            raise ValueError("shared ABI mismatch: " + str(relative))
+    for binary in ["/usr/libexec/Xorg", "/usr/bin/Xvfb", "/usr/bin/xterm"]:
+        result = subprocess.run(["/lib64/ld-linux-x86-64.so.2", "--list", binary],
+                                capture_output=True, text=True)
+        if result.returncode or "not found" in result.stdout + result.stderr:
+            raise ValueError("ELF dependency resolution failed: " + binary)
+    print("KIKI X11 dependencies verified.")
+except (OSError, ValueError, KeyError) as error:
+    print("KIKI X11 preflight failed:", error, file=sys.stderr)
+    sys.exit(1)

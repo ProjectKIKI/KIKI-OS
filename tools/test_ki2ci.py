@@ -1,11 +1,62 @@
 import tempfile
 import unittest
+import threading
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 import ki2ci
 
 
 class Ki2CiTests(unittest.TestCase):
+    def test_web_package_form_and_rejects_unknown_recipe(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            config = ki2ci.CiConfig(repo_root, Path(tmp), "x86_64", 2, "test", Path(tmp) / "publish")
+            build_server = ki2ci.BuildServer(config)
+            job = build_server.store.create("package", package="kiki-installer-tui")
+            artifact = build_server.store.jobs_dir / job["id"] / "packages" / "x86_64" / "sample.ki2"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_bytes(b"ki2 fixture")
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), ki2ci.make_handler(build_server))
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            try:
+                url = f"http://127.0.0.1:{httpd.server_port}/package-build"
+                with urllib.request.urlopen(url) as response:
+                    self.assertIn(b"kiki-installer-tui", response.read())
+                with urllib.request.urlopen(f"http://127.0.0.1:{httpd.server_port}/jobs/{job['id']}/artifacts/sample.ki2") as response:
+                    self.assertEqual(response.read(), b"ki2 fixture")
+                request = urllib.request.Request(url, b"package=not-a-real-recipe", method="POST",
+                                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(request)
+                self.assertEqual(error.exception.code, 400)
+                error.exception.close()
+                self.assertEqual(len(build_server.store.list()), 1)
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=3)
+                build_server.close()
+
+    def test_single_package_job_uses_catalog_and_isolated_output(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            config = ki2ci.CiConfig(repo_root, Path(tmp), "x86_64", 2, "test", Path(tmp) / "publish")
+            server = ki2ci.BuildServer(config)
+            with self.assertRaises(ki2ci.CiError):
+                server.submit_package("kiki-kmscon; touch /tmp/unsafe")
+            job = server.store.create("package", package="kiki-installer-tui")
+            steps = ki2ci.package_build_steps(config, "kiki-installer-tui", job["id"])
+            profile = (server.store.jobs_dir / job["id"] / "package-profile.toml").read_text()
+            self.assertIn('packages = ["kiki-installer-tui"]', profile)
+            self.assertIn("--packages-dir", steps[0].command)
+            self.assertIn(str(server.store.jobs_dir / job["id"] / "packages"), steps[0].command)
+            server.close()
+
     def test_pipeline_registry_contains_expected_pipelines(self):
         self.assertEqual(
             ki2ci.pipeline_names(),
@@ -97,7 +148,8 @@ class Ki2CiTests(unittest.TestCase):
             )
             store = ki2ci.JobStore(Path(tmp))
 
-            overview = ki2ci.collect_overview(config, store)
+            with mock.patch.object(ki2ci, "package_artifacts", return_value={}):
+                overview = ki2ci.collect_overview(config, store)
 
             self.assertGreaterEqual(overview["package_count"], 40)
             self.assertGreaterEqual(overview["profile_count"], 1)
@@ -150,8 +202,10 @@ class Ki2CiTests(unittest.TestCase):
             ]
             for method_name in page_methods:
                 with self.subTest(method=method_name):
-                    body = getattr(instance, method_name)()
+                    with mock.patch.object(ki2ci, "package_artifacts", return_value={}):
+                        body = getattr(instance, method_name)()
                     self.assertIn(b"KIKI", body)
+            server.close()
 
 
 if __name__ == "__main__":

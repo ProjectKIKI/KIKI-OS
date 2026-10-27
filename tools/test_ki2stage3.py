@@ -3,6 +3,9 @@ from __future__ import annotations
 import importlib.util
 import sys
 import unittest
+from dataclasses import replace
+from types import SimpleNamespace
+from unittest import mock
 from pathlib import Path
 
 
@@ -15,6 +18,33 @@ SPEC.loader.exec_module(ki2stage3)
 
 
 class Ki2Stage3Tests(unittest.TestCase):
+    def test_signature_smoke_uses_nonempty_verified_repository(self):
+        result = ki2stage3.smoke_repository_signature(SCRIPT.parents[1])
+        self.assertEqual(result["algorithm"], "ed25519")
+        self.assertTrue(result["policy_enforced"])
+
+    def test_client_crypto_process_dependency_is_rejected(self):
+        repo = SCRIPT.parents[1]
+        recipes = ki2stage3.load_ki2build(repo).load_recipes(repo / "distro/recipes")
+        dependencies = dict(recipes["ki2ctl"].dependencies)
+        dependencies["runtime"] = ["python", "install-info", "openssl"]
+        recipes["ki2ctl"] = replace(recipes["ki2ctl"], dependencies=dependencies)
+        module = SimpleNamespace(load_recipes=lambda path: recipes)
+        with mock.patch.object(ki2stage3, "load_ki2build", return_value=module):
+            with self.assertRaisesRegex(ki2stage3.Stage3Error, "crypto process dependency"):
+                ki2stage3.verify_contract(repo)
+
+    def test_host_libc_fallback_for_target_nftables_is_rejected(self):
+        repo = SCRIPT.parents[1]
+        recipes = ki2stage3.load_ki2build(repo).load_recipes(repo / "distro/recipes")
+        build = dict(recipes["nftables"].build)
+        build["sysroot_exclude"] = ["glibc"]
+        recipes["nftables"] = replace(recipes["nftables"], build=build)
+        module = SimpleNamespace(load_recipes=lambda path: recipes)
+        with mock.patch.object(ki2stage3, "load_ki2build", return_value=module):
+            with self.assertRaisesRegex(ki2stage3.Stage3Error, "target glibc"):
+                ki2stage3.verify_contract(repo)
+
     def test_repository_contract(self):
         result = ki2stage3.verify_contract(SCRIPT.parents[1])
         self.assertEqual(result["profiles"], 4)

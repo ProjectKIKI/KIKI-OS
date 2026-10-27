@@ -1,0 +1,33 @@
+[[recipe]]
+name = "upower"
+version = "1.91.3"
+release = 1
+summary = "Power device daemon and client library for GNOME sessions"
+license = "GPL-2.0-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://deb.debian.org/debian/pool/main/u/upower/upower_1.91.3.orig.tar.bz2"
+file = "upower_1.91.3.orig.tar.bz2"
+sha256 = "12227b3dcd34c5097bbda25984b192ea0bd5e11dce479358d9ef70415a38e4b6"
+[recipe.dependencies]
+build = ["glib", "libgudev", "libimobiledevice", "libplist", "polkit", "systemd", "gobject-introspection"]
+runtime = ["glib", "libgudev", "libimobiledevice", "libplist", "polkit", "systemd"]
+[recipe.build]
+system = "meson"
+inputs = ["distro/scripts/ki2-target-pkg-config"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"',
+  'meson setup "${KI2_BUILD_DIR}/meson" "${KI2_SOURCE_DIR}" --prefix=/usr --libdir=lib --sysconfdir=/etc --buildtype=release --wrap-mode=nofallback -Dman=false -Dgtk-doc=false -Dinstalled_tests=false -Dintrospection=disabled -Didevice=enabled -Dpolkit=enabled -Dos_backend=linux -Dsystemdsystemunitdir=/usr/lib/systemd/system',
+]
+compile = ['meson compile -C "${KI2_BUILD_DIR}/meson" -j "${KI2_JOBS}"']
+install = [
+  'DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/meson"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/COPYING" "${KI2_DESTDIR}/usr/share/licenses/upower/COPYING"',
+]
+[recipe.build.env]
+PKG_CONFIG = "${KI2_BUILD_DIR}/target-pkg-config"
+GETTEXTDATADIRS = "${KI2_SYSROOT}/usr/share/gettext"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"

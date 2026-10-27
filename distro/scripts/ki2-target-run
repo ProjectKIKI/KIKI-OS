@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+: "${KI2_SYSROOT:?KI2_SYSROOT is required}"
+: "${KI2_SYSROOT_LIBRARY_PATH:?KI2_SYSROOT_LIBRARY_PATH is required}"
+unset LD_LIBRARY_PATH LD_PRELOAD
+for relative in usr/lib64 lib64 usr/lib lib; do
+    loader="${KI2_SYSROOT}/${relative}/ld-linux-x86-64.so.2"
+    if [ -f "$loader" ] && [ ! -L "$loader" ]; then
+        exec "$loader" --inhibit-cache --library-path "$KI2_SYSROOT_LIBRARY_PATH" "$@"
+    fi
+done
+echo 'KIKI x86_64 target loader not found' >&2
+exit 126

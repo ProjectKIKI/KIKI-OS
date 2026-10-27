@@ -1,0 +1,5 @@
+[profile]
+name = "thai-foundation"
+description = "Pango Thai text and dictionary dependency validation"
+arch = "x86_64"
+packages = ["libthai"]

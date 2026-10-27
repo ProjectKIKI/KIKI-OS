@@ -1,0 +1,25 @@
+[[recipe]]
+name = "xorgproto"
+version = "2025.1"
+release = 1
+summary = "X11 protocol headers for native graphics and input libraries"
+license = "MIT"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://www.x.org/releases/individual/proto/xorgproto-2025.1.tar.xz"
+file = "xorgproto-2025.1.tar.xz"
+sha256 = "56898c716c0578df8a2d828c9c3e5c528277705c0484381a81960fe1a67668e8"
+[recipe.dependencies]
+build = []
+runtime = []
+[recipe.build]
+system = "meson"
+configure = ['meson setup "${KI2_BUILD_DIR}/xorgproto" "${KI2_SOURCE_DIR}" --prefix=/usr --libdir=lib --buildtype=release --wrap-mode=nofallback -Dlegacy=false']
+compile = ['meson compile -C "${KI2_BUILD_DIR}/xorgproto" -j "${KI2_JOBS}"']
+install = [
+  'DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/xorgproto"',
+  'install -d "${KI2_DESTDIR}/usr/share/licenses/xorgproto" && install -m644 "${KI2_SOURCE_DIR}"/COPYING-* "${KI2_DESTDIR}/usr/share/licenses/xorgproto/"',
+  'test -s "${KI2_DESTDIR}/usr/include/X11/Xproto.h" && test -s "${KI2_DESTDIR}/usr/include/X11/extensions/XKBproto.h"',
+]

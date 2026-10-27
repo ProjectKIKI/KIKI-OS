@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+export LD_LIBRARY_PATH=/usr/lib/kiki-kmscon/lib
+export FONTCONFIG_FILE=/etc/kiki/kmscon-fonts.conf
+export XKB_CONFIG_ROOT=/usr/lib/kiki-kmscon/xkb
+exec /usr/lib/kiki-kmscon/kmscon --font-engine=freetype --font-name='NanumGothicCoding' --font-size=20 --xkb-compose-file=/usr/lib/kiki-kmscon/Compose --no-hwaccel --no-issue "$@"

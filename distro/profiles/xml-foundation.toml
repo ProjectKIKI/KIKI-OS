@@ -1,0 +1,5 @@
+[profile]
+name = "xml-foundation"
+description = "XML validation development profile for Wayland scanner"
+arch = "x86_64"
+packages = ["libxml2"]

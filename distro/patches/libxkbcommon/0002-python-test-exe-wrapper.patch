@@ -1,0 +1,38 @@
+--- a/test/tool-option-parsing.py
++++ b/test/tool-option-parsing.py
+@@ -9,6 +9,7 @@
+ import os
+ import re
+ import resource
++import shlex
+ import subprocess
+ import sys
+ import tempfile
+@@ -189,6 +190,7 @@
+ 
+ def run_command(args, input: str | None = None) -> tuple[int, str, str]:
+     logger.debug("run command: {}".format(" ".join(args)))
++    args = shlex.split(os.environ.get("MESON_EXE_WRAPPER", "")) + list(args)
+ 
+     try:
+         p = subprocess.run(
+--- a/test/test-keysym.py
++++ b/test/test-keysym.py
+@@ -10,6 +10,7 @@
+ import os
+ import re
+ import sys
++import shlex
+ 
+ # Template to force our key to TLDE
+ template = """
+@@ -50,7 +51,8 @@
+         env["XKB_CONFIG_EXTRA_PATH"] = tmpdir
+ 
+         result = subprocess.run(
+-            cmd, env=env, capture_output=True, universal_newlines=True
++            shlex.split(os.environ.get("MESON_EXE_WRAPPER", "")) + cmd,
++            env=env, capture_output=True, universal_newlines=True
+         )
+         if result.returncode != 0:
+             print("ERROR: Failed to compile:")

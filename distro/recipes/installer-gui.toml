@@ -1,9 +1,9 @@
 [[recipe]]
 name = "kiki-installer-gtk"
 version = "0.1.0"
-release = 7
-summary = "KIKI GTK4 installer with a pinned Cage Wayland kiosk runtime"
-license = "GPL-3.0-or-later AND LGPL-2.1-or-later AND MIT AND OFL-1.1"
+release = 20
+summary = "KIKI OS graphical installer and Cage runtime"
+license = "GPL-3.0-or-later AND LGPL-2.1-or-later AND MIT AND OFL-1.1 AND BSD-3-Clause AND Apache-2.0"
 tier = "desktop"
 architectures = ["x86_64"]
 [recipe.source]
@@ -11,8 +11,19 @@ type = "local"
 path = "build/ki2/host-graphics/rootfs"
 inputs = [
   "cmd/kiki-installer-gtk/main.c",
+  "cmd/kiki-installer-gtk/network.h",
+  "cmd/kiki-installer-gtk/disk.h",
   "cmd/kiki-installer-gtk/style.css",
+  "cmd/kiki-installer-gtk/Makefile",
+  "cmd/kiki-installer-gotk/main.go",
+  "cmd/kiki-installer-gotk/ui.go",
+  "cmd/kiki-installer-gotk/backend.go",
+  "cmd/kiki-installer-gotk/go.mod",
+  "cmd/kiki-installer-gotk/go.sum",
+  "cmd/kiki-installer-gotk/Makefile",
+  "assets/brand/kikios-kiki-wordmark-v1.png",
   "tools/ki2graphics.py",
+  "tools/ki2refreshinstaller.py",
 ]
 [recipe.dependencies]
 build = []

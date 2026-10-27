@@ -17,6 +17,7 @@ import argparse
 import datetime as dt
 import gzip
 import hashlib
+import re
 import json
 import os
 import shutil
@@ -65,6 +66,7 @@ typedef unsigned long long u64;
 #define SYS_select 23
 #define SYS_nanosleep 35
 #define SYS_dup2 33
+#define SYS_dup 32
 #define SYS_pause 34
 #define SYS_fork 57
 #define SYS_execve 59
@@ -75,6 +77,7 @@ typedef unsigned long long u64;
 #define SYS_mkdir 83
 #define SYS_unlink 87
 #define SYS_symlink 88
+#define SYS_readlink 89
 #define SYS_chmod 90
 #define SYS_chown 92
 #define SYS_setsid 112
@@ -266,19 +269,21 @@ static u64 parse_u64(const char *value) {
     return result;
 }
 
-static void write_bytes(int fd, const char *data, size_t len) {
+static int write_bytes(int fd, const char *data, size_t len) {
     while (len) {
         long written = ksys(SYS_write, fd, (long)data, (long)len, 0, 0, 0);
+        if (written == -EINTR) continue;
         if (written <= 0) {
-            return;
+            return 0;
         }
         data += written;
         len -= (size_t)written;
     }
+    return 1;
 }
 
-static void write_all(int fd, const char *text) {
-    write_bytes(fd, text, kstrlen(text));
+static int write_all(int fd, const char *text) {
+    return write_bytes(fd, text, kstrlen(text));
 }
 
 static int kopen(const char *path, long flags) {
@@ -289,10 +294,24 @@ static int kopen_mode(const char *path, long flags, long mode) {
     return (int)ksys(SYS_open, (long)path, flags, mode, 0, 0, 0);
 }
 
-static void kclose(int fd) {
+static int kclose(int fd) {
     if (fd >= 0) {
-        ksys(SYS_close, fd, 0, 0, 0, 0, 0);
+        /* On Linux a failed close must not be retried: the descriptor may be reused. */
+        return ksys(SYS_close, fd, 0, 0, 0, 0, 0) == 0;
     }
+    return 1;
+}
+
+static int finish_written_file(int fd, int ok) {
+    if (ok) {
+        long result;
+        do {
+            result = ksys(SYS_fsync, fd, 0, 0, 0, 0, 0);
+        } while (result == -EINTR);
+        if (result < 0) ok = 0;
+    }
+    if (!kclose(fd)) ok = 0;
+    return ok;
 }
 
 static void say(const char *text) {
@@ -346,10 +365,7 @@ static int write_text_file(const char *path, const char *text) {
     if (fd < 0) {
         return 0;
     }
-    write_all(fd, text);
-    ksys(SYS_fsync, fd, 0, 0, 0, 0, 0);
-    kclose(fd);
-    return 1;
+    return finish_written_file(fd, write_all(fd, text));
 }
 
 static int write_text_file_mode(const char *path, const char *text, long mode) {
@@ -357,11 +373,9 @@ static int write_text_file_mode(const char *path, const char *text, long mode) {
     if (fd < 0) {
         return 0;
     }
-    write_all(fd, text);
-    ksys(SYS_fsync, fd, 0, 0, 0, 0, 0);
-    kclose(fd);
-    ksys(SYS_chmod, (long)path, mode, 0, 0, 0, 0);
-    return 1;
+    int ok = write_all(fd, text);
+    if (ksys(SYS_chmod, (long)path, mode, 0, 0, 0, 0) < 0) ok = 0;
+    return finish_written_file(fd, ok);
 }
 
 static void remove_file(const char *path) {
@@ -416,11 +430,9 @@ static int append_text_file_mode(const char *path, const char *text, long mode) 
     if (fd < 0) {
         return 0;
     }
-    write_all(fd, text);
-    ksys(SYS_fsync, fd, 0, 0, 0, 0, 0);
-    kclose(fd);
-    ksys(SYS_chmod, (long)path, mode, 0, 0, 0, 0);
-    return 1;
+    int ok = write_all(fd, text);
+    if (ksys(SYS_chmod, (long)path, mode, 0, 0, 0, 0) < 0) ok = 0;
+    return finish_written_file(fd, ok);
 }
 
 static void make_symlink(const char *target, const char *linkpath) {
@@ -453,6 +465,7 @@ static int copy_file(const char *source_path, const char *dest_path) {
     }
     for (;;) {
         long got = ksys(SYS_read, source, (long)copy_buffer, sizeof(copy_buffer), 0, 0, 0);
+        if (got == -EINTR) continue;
         if (got == 0) {
             break;
         }
@@ -465,6 +478,7 @@ static int copy_file(const char *source_path, const char *dest_path) {
         char *ptr = copy_buffer;
         while (left > 0) {
             long written = ksys(SYS_write, dest, (long)ptr, left, 0, 0, 0);
+            if (written == -EINTR) continue;
             if (written <= 0) {
                 kclose(source);
                 kclose(dest);
@@ -474,10 +488,8 @@ static int copy_file(const char *source_path, const char *dest_path) {
             left -= written;
         }
     }
-    ksys(SYS_fsync, dest, 0, 0, 0, 0, 0);
-    kclose(source);
-    kclose(dest);
-    return 1;
+    int ok = kclose(source);
+    return finish_written_file(dest, ok);
 }
 
 static void sleep_msec(long msec) {
@@ -614,7 +626,11 @@ static int run_chroot_program_input(const char *root, const char *path, char **a
     if (pid == 0) {
         if (has_input) {
             kclose(pipes[1]);
-            ksys(SYS_dup2, pipes[0], STDIN_FILENO, 0, 0, 0, 0);
+            if (ksys(SYS_dup2, pipes[0], STDIN_FILENO, 0, 0, 0, 0) < 0) {
+                say("Cannot attach child input pipe.\n");
+                ksys(SYS_exit, 126, 0, 0, 0, 0, 0);
+                for (;;) { }
+            }
             if (pipes[0] > STDERR_FILENO) {
                 kclose(pipes[0]);
             }
@@ -634,10 +650,11 @@ static int run_chroot_program_input(const char *root, const char *path, char **a
         }
     }
 
+    int input_ok = 1;
     if (has_input) {
-        kclose(pipes[0]);
-        write_all(pipes[1], input);
-        kclose(pipes[1]);
+        if (!kclose(pipes[0])) input_ok = 0;
+        if (!write_all(pipes[1], input)) input_ok = 0;
+        if (!kclose(pipes[1])) input_ok = 0;
     }
 
     int status = 0;
@@ -650,7 +667,7 @@ static int run_chroot_program_input(const char *root, const char *path, char **a
             return 1;
         }
     }
-    return status == 0 ? 0 : 1;
+    return input_ok && status == 0 ? 0 : 1;
 }
 
 static int run_chroot_program(const char *root, const char *path, char **argv) {
@@ -796,7 +813,7 @@ static void tui_clear(void) {
 
 static void tui_header(const char *title) {
     tui_clear();
-    say("KIKI OS installer TUI\n");
+    say("KIKI OS Scratch Pad TUI\n");
     say("=====================\n");
     say(title);
     say("\n\n");
@@ -933,7 +950,7 @@ static void write_mbr_entry(unsigned char *entry, unsigned char type, u64 start,
 
 static void calculate_auto_partition_layout(u64 total_mib, u64 mem_mib, int omit_swap, u64 *esp_mib, u64 *swap_mib, u64 *root_mib) {
     u64 root_min_mib = 2048ULL;
-    u64 reserve_mib = 1ULL;
+    u64 reserve_mib = 2ULL;
     u64 desired_swap = mem_mib ? mem_mib * 2ULL : 1024ULL;
     *esp_mib = total_mib >= 8192ULL ? 768ULL : 512ULL;
     if (omit_swap) {
@@ -1014,7 +1031,7 @@ static void show_auto_partition_layout(const char *target, const char *esp_part,
     }
 }
 
-static int write_guided_mbr(const char *target, int omit_swap, u64 *esp_start, u64 *esp_sectors, u64 *swap_start, u64 *swap_sectors, u64 *root_start, u64 *root_sectors, u64 *disk_mib, u64 *mem_mib, u64 *esp_mib, u64 *swap_mib, u64 *root_mib) {
+static int write_guided_gpt(const char *target, int omit_swap, u64 *esp_start, u64 *esp_sectors, u64 *swap_start, u64 *swap_sectors, u64 *root_start, u64 *root_sectors, u64 *disk_mib, u64 *mem_mib, u64 *esp_mib, u64 *swap_mib, u64 *root_mib) {
     u64 total_sectors = 0;
     if (!read_block_sectors(target, &total_sectors)) {
         say("Cannot read target disk size from sysfs.\n");
@@ -1039,34 +1056,12 @@ static int write_guided_mbr(const char *target, int omit_swap, u64 *esp_start, u
     }
     *root_sectors = total_sectors - *root_start - 2048ULL;
 
-    unsigned char mbr[512];
-    for (int i = 0; i < 512; i++) {
-        mbr[i] = 0;
-    }
-    write_mbr_entry(mbr + 446, 0xef, *esp_start, *esp_sectors);
-    if (*swap_sectors > 0) {
-        write_mbr_entry(mbr + 462, 0x82, *swap_start, *swap_sectors);
-        write_mbr_entry(mbr + 478, 0x83, *root_start, *root_sectors);
-    } else {
-        write_mbr_entry(mbr + 462, 0x83, *root_start, *root_sectors);
-    }
-    mbr[510] = 0x55;
-    mbr[511] = 0xaa;
-
-    int fd = kopen(target, O_RDWR);
-    if (fd < 0) {
-        say("Cannot open target disk for partitioning.\n");
-        return 0;
-    }
-    long written = ksys(SYS_write, fd, (long)mbr, sizeof(mbr), 0, 0, 0);
-    ksys(SYS_fsync, fd, 0, 0, 0, 0, 0);
-    ksys(SYS_ioctl, fd, BLKRRPART, 0, 0, 0, 0);
-    kclose(fd);
-    if (written != (long)sizeof(mbr)) {
-        say("Failed to write MBR partition table.\n");
-        return 0;
-    }
-    return 1;
+    char esp_text[32], swap_text[32];
+    append_u64(esp_text, sizeof(esp_text), 0, *esp_mib);
+    append_u64(swap_text, sizeof(swap_text), 0, *swap_mib);
+    char *argv[] = {"/usr/bin/python3", "-B", "/usr/lib/kiki-installer/ki2disk.py",
+                    "--disk", (char *)target, "--esp-mib", esp_text, "--swap-mib", swap_text, NULL};
+    return run_program("/usr/bin/python3", argv) == 0;
 }
 
 static void partition_path(const char *target, int partno, char *out, size_t out_size) {
@@ -1563,8 +1558,8 @@ static void show_network_tools(void) {
     say("\nThe installer writes a systemd-networkd profile into the target rootfs.\n");
 }
 
-static char package_index_buffer[128 * 1024];
-#define MAX_SELECTED_PACKAGES 96
+static char package_index_buffer[4 * 1024 * 1024];
+#define MAX_SELECTED_PACKAGES 512
 #define PACKAGE_NAME_LEN 64
 static char selected_packages[MAX_SELECTED_PACKAGES][PACKAGE_NAME_LEN];
 static int selected_package_count = 0;
@@ -1880,10 +1875,12 @@ static int selected_remove(const char *name) {
 static void apply_ai_to_selected_packages(void) {
     if (kstrcmp(selected_ai_mode, "off") == 0) {
         selected_remove("kiki-ai-console");
+        selected_remove("kiki-kmscon");
         selected_remove("llama-cpp");
         return;
     }
     selected_add("kiki-ai-console");
+    selected_add("kiki-kmscon");
     if (kstrcmp(selected_ai_mode, "local") == 0) {
         selected_add("llama-cpp");
     } else {
@@ -1987,63 +1984,30 @@ static int select_package_set(const char *index_path, const char *profile, const
     return added;
 }
 
+/* KIKI_SHARED_PACKAGE_CATALOG */
 static void select_minimal_systemd_packages(const char *index_path) {
     selected_set_runtime("none");
-    const char *const defaults[] = {
-        "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
-        "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
-        "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
-        "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
-        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-netconfig", "kiki-installer-tui",
-        NULL,
-    };
-    select_package_set(index_path, "minimal-systemd", "minimal-systemd package set", defaults);
+    select_package_set(index_path, "minimal-systemd", "minimal-systemd package set", catalog_minimal);
 }
 
 static void select_server_core_packages(const char *index_path) {
-    selected_set_runtime("none");
-    const char *const defaults[] = {
-        "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
-        "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
-        "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
-        "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
-        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-netconfig", "kiki-installer-tui",
-        "bridge-utils", "ethtool", "nftables", "iptables", "conntrack-tools", "firewalld", "chrony",
-        NULL,
-    };
-    select_package_set(index_path, "server-core", "server-core general server package set", defaults);
+    select_minimal_systemd_packages(index_path);
+    select_package_set(index_path, "server-core", "server-core general server package set", catalog_server);
 }
 
 static void select_kube_profile_packages(const char *index_path, const char *profile, const char *label) {
     if (kstrcmp(selected_container_runtime, "none") == 0) {
         selected_set_runtime("cri-o");
     }
-    const char *const common[] = {
-        "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
-        "attr", "libcap", "libseccomp", "acl", "ncurses", "util-linux", "cfdisk", "xz", "zstd",
-        "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
-        "grep", "sed", "gawk", "tar", "gzip", "python", "e2fsprogs", "shadow",
-        "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-netconfig", "kiki-installer-tui",
-        "bridge-utils", "ethtool", "nftables", "iptables", "conntrack-tools", "firewalld",
-        "cni-plugins", "cri-tools", "socat", "chrony",
-        "kubelet", "kubeadm", "kubectl", "kiki-kubeadm",
-        NULL,
-    };
-    const char *const crio_runtime[] = {
-        "conmon", "crun", "cri-o", "kube-node-config",
-        NULL,
-    };
-    const char *const containerd_runtime[] = {
-        "runc", "containerd", "kube-node-config-containerd",
-        NULL,
-    };
-    select_package_set(index_path, profile, label, common);
+    select_package_set(index_path, profile, label, catalog_minimal);
+    select_package_set(index_path, profile, label, catalog_kubernetes_node);
     if (selected_runtime_is_containerd()) {
-        select_package_set(index_path, profile, "containerd runtime package set", containerd_runtime);
+        select_package_set(index_path, profile, "containerd runtime package set", catalog_container_containerd);
+        selected_add("kube-node-config-containerd");
         say("runtime selected: containerd, cgroup driver systemd, swap off for Kubernetes.\n");
     } else {
         selected_set_runtime("cri-o");
-        select_package_set(index_path, profile, "CRI-O runtime package set", crio_runtime);
+        select_package_set(index_path, profile, "CRI-O runtime package set", catalog_container_crio);
         say("runtime selected: CRI-O, cgroup driver systemd, swap off for Kubernetes.\n");
     }
 }
@@ -2090,6 +2054,18 @@ static int select_named_package_profile(const char *index_path, const char *prof
             say("Runtime override ignored for server-core; use server-container for container runtime profiles.\n");
         }
         select_server_core_packages(index_path);
+        return 1;
+    }
+
+    if (kstrcmp(effective_profile, "desktop-gnome") == 0) {
+        select_minimal_systemd_packages(index_path);
+        selected_set_profile("desktop-gnome");
+        if (!package_exists_in_index(index_path, "kiki-gnome-desktop")) {
+            say("GNOME desktop packages are not included on this installation media.\n");
+            return 0;
+        }
+        selected_add("kiki-gnome-desktop");
+        copy_string(selected_ai_mode, sizeof(selected_ai_mode), "off");
         return 1;
     }
 
@@ -2140,6 +2116,11 @@ static int select_named_package_profile(const char *index_path, const char *prof
 }
 
 static int ensure_selected_profile_packages(const char *index_path) {
+    if (!package_exists_in_index(index_path, "tzdata")) {
+        say("Required timezone package missing from installer media: tzdata. Rebuild the ISO before installing.\n");
+        return 0;
+    }
+    selected_add("tzdata");
     if (!selected_profile_is_kubernetes()) {
         return 1;
     }
@@ -2201,8 +2182,8 @@ static int ensure_selected_ai_packages(const char *index_path) {
     if (kstrcmp(selected_ai_mode, "off") == 0) {
         return 1;
     }
-    const char *const local_packages[] = {"kiki-ai-console", "llama-cpp", NULL};
-    const char *const remote_packages[] = {"kiki-ai-console", NULL};
+    const char *const local_packages[] = {"kiki-ai-console", "kiki-kmscon", "llama-cpp", NULL};
+    const char *const remote_packages[] = {"kiki-ai-console", "kiki-kmscon", NULL};
     const char *const *required = kstrcmp(selected_ai_mode, "local") == 0 ? local_packages : remote_packages;
     for (int i = 0; required[i]; i++) {
         if (!package_exists_in_index(index_path, required[i])) {
@@ -2521,6 +2502,43 @@ static int run_busybox_tar_extract(const char *package_path, const char *target_
     return run_program("/bin/busybox", argv);
 }
 
+static int verify_install_media(const char *media_root) {
+    char names[MAX_SELECTED_PACKAGES * PACKAGE_NAME_LEN + 1];
+    size_t out = 0;
+    for (int i = 0; i < selected_package_count; i++) {
+        out = append_string(names, sizeof(names), out, selected_packages[i]);
+        out = append_string(names, sizeof(names), out, "\n");
+    }
+    mkdir_p("/run/kiki", 0755);
+    if (!write_text_file_mode("/run/kiki/selected-packages", names, 0600)) return 0;
+    remove_file("/run/kiki/resolved-packages");
+    char *argv[] = {
+        "/usr/bin/python3", "-B", "/usr/lib/kiki-installer/ki2media.py",
+        "--media-root", (char *)media_root,
+        "--public-key", "/etc/ki2/trust/installer-repo.ed25519.pub",
+        "--selection-file", "/run/kiki/selected-packages",
+        "--resolved-file", "/run/kiki/resolved-packages", NULL,
+    };
+    say("Verifying repository signature, index and all package payloads before disk changes...\n");
+    if (run_program("/usr/bin/python3", argv) != 0) {
+        say("Media verification failed. Disk changes were not started.\n");
+        return 0;
+    }
+    long len = 0;
+    if (!read_small_file_raw("/run/kiki/resolved-packages", names, sizeof(names), &len)) return 0;
+    if (names[len - 1] != '\n') return 0;
+    selected_clear();
+    long start = 0;
+    for (long i = 0; i < len; i++) {
+        if (names[i] != '\n') continue;
+        names[i] = 0;
+        if (i == start || i - start >= PACKAGE_NAME_LEN || !selected_add(names + start)) return 0;
+        start = i + 1;
+    }
+    if (!selected_package_count) return 0;
+    return 1;
+}
+
 static int format_esp_partition(const char *esp_part) {
     char *argv[] = {
         "/bin/busybox",
@@ -2639,7 +2657,7 @@ static int write_installed_boot_config(const char *esp_root, const char *root_pa
     out = append_string(cfg, sizeof(cfg), out, "insmod font\n");
     out = append_string(cfg, sizeof(cfg), out, "insmod gfxterm\n");
     out = append_string(cfg, sizeof(cfg), out, "if loadfont /boot/grub/fonts/unicode.pf2; then\n");
-    out = append_string(cfg, sizeof(cfg), out, "    terminal_output gfxterm console\n");
+    out = append_string(cfg, sizeof(cfg), out, "    terminal_output gfxterm\n");
     out = append_string(cfg, sizeof(cfg), out, "else\n");
     out = append_string(cfg, sizeof(cfg), out, "    terminal_output console\n");
     out = append_string(cfg, sizeof(cfg), out, "fi\n");
@@ -2648,9 +2666,15 @@ static int write_installed_boot_config(const char *esp_root, const char *root_pa
     out = append_string(cfg, sizeof(cfg), out, "set gfxpayload=keep\n");
     out = append_string(cfg, sizeof(cfg), out, "set timeout=3\n");
     out = append_string(cfg, sizeof(cfg), out, "set default=0\n");
+    out = append_string(cfg, sizeof(cfg), out, "if [ -f /boot/grub/kiki/theme.txt -a -f /boot/grub/kiki/logo.png ]; then\n");
+    out = append_string(cfg, sizeof(cfg), out, "    if insmod gfxmenu; then\n");
+    out = append_string(cfg, sizeof(cfg), out, "        if insmod png; then\n");
+    out = append_string(cfg, sizeof(cfg), out, "            set theme=/boot/grub/kiki/theme.txt\n");
+    out = append_string(cfg, sizeof(cfg), out, "            export theme\n");
+    out = append_string(cfg, sizeof(cfg), out, "        fi\n    fi\nfi\n");
     out = append_string(cfg, sizeof(cfg), out, "menuentry 'KIKI OS installed (systemd handoff)' {\n");
     out = append_string(cfg, sizeof(cfg), out, "    set gfxpayload=keep\n");
-    out = append_string(cfg, sizeof(cfg), out, "    linux /boot/vmlinuz-kiki console=tty0 keep_bootcon loglevel=4 root=");
+    out = append_string(cfg, sizeof(cfg), out, "    linux /boot/vmlinuz-kiki console=tty0 loglevel=4 root=");
     out = append_string(cfg, sizeof(cfg), out, root_part);
     out = append_string(cfg, sizeof(cfg), out, " rw init=/init kiki.boot=installed\n");
     out = append_string(cfg, sizeof(cfg), out, "    initrd /boot/initramfs-kiki.img\n");
@@ -2728,6 +2752,17 @@ static int refresh_target_ld_cache(const char *target_root) {
     return run_program(ldconfig_path, argv) == 0;
 }
 
+static int refresh_target_gsettings_cache(const char *target_root) {
+    char *argv[] = {"/bin/sh", "-c",
+        "if [ -d /usr/share/glib-2.0/schemas ]; then exec /usr/bin/glib-compile-schemas --strict /usr/share/glib-2.0/schemas; fi",
+        NULL};
+    if (run_chroot_program(target_root, "/bin/sh", argv) != 0) {
+        say("Target GSettings schema cache generation failed.\n");
+        return 0;
+    }
+    return 1;
+}
+
 static void ensure_target_baseline_layout(void) {
     mkdir_p("/mnt/target/tmp", 01777);
     chmod_path("/mnt/target/tmp", 01777);
@@ -2775,51 +2810,163 @@ static void ensure_target_baseline_layout(void) {
     }
 }
 
-static void enable_default_systemd_units(void) {
+static int same_unit_link(const char *target, const char *linkpath, const char *actual) {
+    char resolved[512];
+    unsigned long used = 0, pos = 0;
+    if (actual[0] == '/') return kstrcmp(actual, target) == 0;
+    /* Normalize a relative link lexically inside the installed system, not the live root. */
+    if (!starts_with(linkpath, "/mnt/target/")) return 0;
+    linkpath += 11;
+    while (linkpath[pos]) {
+        if (used + 1 >= sizeof(resolved)) return 0;
+        resolved[used++] = linkpath[pos++];
+    }
+    while (used && resolved[used - 1] != '/') used--;
+    pos = 0;
+    while (actual[pos]) {
+        unsigned long start, length;
+        while (actual[pos] == '/') pos++;
+        start = pos;
+        while (actual[pos] && actual[pos] != '/') pos++;
+        length = pos - start;
+        if (!length || (length == 1 && actual[start] == '.')) continue;
+        if (length == 2 && actual[start] == '.' && actual[start + 1] == '.') {
+            if (used <= 1) return 0;
+            used--;
+            while (used && resolved[used - 1] != '/') used--;
+        } else {
+            if (used + length + 1 >= sizeof(resolved)) return 0;
+            for (unsigned long i = 0; i < length; i++) resolved[used++] = actual[start + i];
+            resolved[used++] = '/';
+        }
+    }
+    if (used > 1) used--;
+    resolved[used] = 0;
+    return kstrcmp(resolved, target) == 0;
+}
+
+static int required_unit_symlink(const char *target, const char *linkpath) {
+    char actual[512];
+    char *check[] = {"/bin/sh", "-c", "test -f \"$1\" && test -s \"$1\" && test -r \"$1\"",
+                     "kiki-check-unit", (char *)target, NULL};
+    /* Resolve absolute aliases in the installed root, never against the live installer. */
+    if (run_chroot_program("/mnt/target", "/bin/sh", check) != 0) {
+        say("Required service unit missing, empty or unreadable: ");
+        say(target);
+        say("\n");
+        return 0;
+    }
+    long result = ksys(SYS_symlink, (long)target, (long)linkpath, 0, 0, 0, 0);
+    if (result == 0) return 1;
+    if (result == -17) {
+        long length = ksys(SYS_readlink, (long)linkpath, (long)actual, sizeof(actual) - 1, 0, 0, 0);
+        if (length >= 0 && length < (long)sizeof(actual) - 1) {
+            actual[length] = 0;
+            if (same_unit_link(target, linkpath, actual)) return 1;
+        }
+    }
+    say("Required service link failed: ");
+    say(linkpath);
+    say("\n");
+    return 0;
+}
+
+static int prepare_gnome_target(void) {
+    if (selected_index("kiki-gnome-desktop") < 0) return 1;
+    if (!file_exists("/mnt/target/usr/lib/systemd/system/gdm.service") ||
+        !file_exists("/mnt/target/usr/libexec/kiki-desktop-prepare")) {
+        say("GNOME integration files are missing from the installed packages.\n");
+        return 0;
+    }
+    char *argv[] = {"/usr/libexec/kiki-desktop-prepare", NULL};
+    int proc_ready = mount_one("proc", "/mnt/target/proc", "proc", 0, "");
+    int dev_ready = proc_ready && mount_one("", "/mnt/target/dev", "/dev", 4096, "");
+    int sys_ready = dev_ready && mount_one("sysfs", "/mnt/target/sys", "sysfs", 0, "");
+    int status = sys_ready ? run_chroot_program("/mnt/target", argv[0], argv) : 1;
+    int cleanup_ok = 1;
+    if (sys_ready && ksys(SYS_umount2, (long)"/mnt/target/sys", 0, 0, 0, 0, 0) < 0) cleanup_ok = 0;
+    if (dev_ready && ksys(SYS_umount2, (long)"/mnt/target/dev", 0, 0, 0, 0, 0) < 0) cleanup_ok = 0;
+    if (proc_ready && ksys(SYS_umount2, (long)"/mnt/target/proc", 0, 0, 0, 0, 0) < 0) cleanup_ok = 0;
+    if (status != 0 || !cleanup_ok) {
+        say("GNOME account/cache preparation failed.\n");
+        return 0;
+    }
+    remove_file("/mnt/target/etc/systemd/system/getty.target.wants/getty@tty1.service");
+    remove_file("/mnt/target/etc/systemd/system/getty.target.wants/kiki-ai-console-kmscon@tty1.service");
+    remove_file("/mnt/target/etc/systemd/system/getty.target.wants/kiki-ai-console@tty1.service");
+    remove_file("/mnt/target/etc/systemd/system/default.target");
+    return required_unit_symlink("/usr/lib/systemd/system/graphical.target", "/mnt/target/etc/systemd/system/default.target") &&
+           required_unit_symlink("/usr/lib/systemd/system/gdm.service", "/mnt/target/etc/systemd/system/display-manager.service");
+}
+
+static int enable_default_systemd_units(void) {
+    int ok = 1;
     mkdir_p("/mnt/target/etc/systemd/system/basic.target.wants", 0755);
     mkdir_p("/mnt/target/etc/systemd/system/getty.target.wants", 0755);
     mkdir_p("/mnt/target/etc/systemd/system/multi-user.target.wants", 0755);
     mkdir_p("/mnt/target/etc/systemd/system/network-online.target.wants", 0755);
     mkdir_p("/mnt/target/etc/systemd/system/sockets.target.wants", 0755);
     mkdir_p("/mnt/target/etc/systemd/system/sysinit.target.wants", 0755);
-    make_symlink("/usr/lib/systemd/system/dbus.service", "/mnt/target/etc/systemd/system/basic.target.wants/dbus.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/dbus.service", "/mnt/target/etc/systemd/system/basic.target.wants/dbus.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/dbus.socket", "/mnt/target/etc/systemd/system/sockets.target.wants/dbus.socket");
     if (kstrcmp(selected_ai_mode, "off") == 0) {
-        make_symlink("/usr/lib/systemd/system/getty@.service", "/mnt/target/etc/systemd/system/getty.target.wants/getty@tty1.service");
+        ok &= required_unit_symlink("/usr/lib/systemd/system/getty@.service", "/mnt/target/etc/systemd/system/getty.target.wants/getty@tty1.service");
     } else {
-        make_symlink("/etc/systemd/system/kiki-ai-console@.service", "/mnt/target/etc/systemd/system/getty.target.wants/kiki-ai-console@tty1.service");
+        ok &= required_unit_symlink("/etc/systemd/system/kiki-ai-console-kmscon@.service", "/mnt/target/etc/systemd/system/getty.target.wants/kiki-ai-console-kmscon@tty1.service");
         if (kstrcmp(selected_ai_mode, "local") == 0) {
-            make_symlink("/etc/systemd/system/kiki-llama-server.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/kiki-llama-server.service");
+            ok &= required_unit_symlink("/etc/systemd/system/kiki-llama-server.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/kiki-llama-server.service");
         }
     }
-    make_symlink("/usr/lib/systemd/system/getty@.service", "/mnt/target/etc/systemd/system/getty.target.wants/getty@tty2.service");
-    make_symlink("/usr/lib/systemd/system/systemd-logind.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/systemd-logind.service");
-    make_symlink("/usr/lib/systemd/system/systemd-networkd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/systemd-networkd.service");
-    make_symlink("/usr/lib/systemd/system/systemd-networkd.socket", "/mnt/target/etc/systemd/system/sockets.target.wants/systemd-networkd.socket");
-    make_symlink("/usr/lib/systemd/system/systemd-network-generator.service", "/mnt/target/etc/systemd/system/sysinit.target.wants/systemd-network-generator.service");
-    make_symlink("/usr/lib/systemd/system/systemd-networkd-wait-online.service", "/mnt/target/etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service");
-    make_symlink("/usr/lib/systemd/system/systemd-resolved.service", "/mnt/target/etc/systemd/system/sysinit.target.wants/systemd-resolved.service");
-    make_symlink("/etc/systemd/system/kiki-boot-prepare.service", "/mnt/target/etc/systemd/system/sysinit.target.wants/kiki-boot-prepare.service");
-    make_symlink("/etc/systemd/system/sshd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/sshd.service");
-    make_symlink("/etc/systemd/system/kiki-agent.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/kiki-agent.service");
-    make_symlink("/usr/lib/systemd/system/dbus-org.freedesktop.login1.service", "/mnt/target/etc/systemd/system/dbus-org.freedesktop.login1.service");
-    make_symlink("/usr/lib/systemd/system/systemd-networkd.service", "/mnt/target/etc/systemd/system/dbus-org.freedesktop.network1.service");
-    make_symlink("/usr/lib/systemd/system/systemd-resolved.service", "/mnt/target/etc/systemd/system/dbus-org.freedesktop.resolve1.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/getty@.service", "/mnt/target/etc/systemd/system/getty.target.wants/getty@tty2.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/systemd-logind.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/systemd-logind.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/systemd-networkd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/systemd-networkd.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/systemd-networkd.socket", "/mnt/target/etc/systemd/system/sockets.target.wants/systemd-networkd.socket");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/systemd-network-generator.service", "/mnt/target/etc/systemd/system/sysinit.target.wants/systemd-network-generator.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/systemd-networkd-wait-online.service", "/mnt/target/etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/systemd-resolved.service", "/mnt/target/etc/systemd/system/sysinit.target.wants/systemd-resolved.service");
+    ok &= required_unit_symlink("/etc/systemd/system/kiki-boot-prepare.service", "/mnt/target/etc/systemd/system/sysinit.target.wants/kiki-boot-prepare.service");
+    ok &= required_unit_symlink("/etc/systemd/system/sshd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/sshd.service");
+    ok &= required_unit_symlink("/etc/systemd/system/kiki-agent.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/kiki-agent.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/dbus-org.freedesktop.login1.service", "/mnt/target/etc/systemd/system/dbus-org.freedesktop.login1.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/systemd-networkd.service", "/mnt/target/etc/systemd/system/dbus-org.freedesktop.network1.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/systemd-resolved.service", "/mnt/target/etc/systemd/system/dbus-org.freedesktop.resolve1.service");
+    return ok;
 }
 
-static void enable_kubernetes_systemd_units(void) {
+static int enable_kubernetes_systemd_units(void) {
+    int ok = 1;
     mkdir_p("/mnt/target/etc/systemd/system/multi-user.target.wants", 0755);
-    if (!selected_runtime_is_containerd() && file_exists("/mnt/target/usr/lib/systemd/system/crio.service")) {
-        make_symlink("/usr/lib/systemd/system/crio.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/crio.service");
+    if (!selected_runtime_is_containerd()) {
+        ok &= required_unit_symlink("/usr/lib/systemd/system/crio.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/crio.service");
     }
-    if (selected_runtime_is_containerd() && file_exists("/mnt/target/usr/lib/systemd/system/containerd.service")) {
-        make_symlink("/usr/lib/systemd/system/containerd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/containerd.service");
+    if (selected_runtime_is_containerd()) {
+        ok &= required_unit_symlink("/usr/lib/systemd/system/containerd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/containerd.service");
     }
-    if (file_exists("/mnt/target/usr/lib/systemd/system/kubelet.service")) {
-        make_symlink("/usr/lib/systemd/system/kubelet.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/kubelet.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/kubelet.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/kubelet.service");
+    ok &= required_unit_symlink("/usr/lib/systemd/system/chronyd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/chronyd.service");
+    return ok;
+}
+
+static int install_target_boot_branding(const char *media_root, const char *esp_root) {
+    char theme[512], image[512], background[512], target[512];
+    path3(theme, sizeof(theme), media_root, "/boot/grub/kiki/theme.txt", "");
+    path3(image, sizeof(image), media_root, "/boot/grub/kiki/logo.png", "");
+    path3(background, sizeof(background), media_root, "/boot/grub/kiki/background.png", "");
+    int has_theme = file_exists(theme);
+    int has_image = file_exists(image);
+    /* Older, unbranded media remain bootable. A partial asset set is an error. */
+    if (!has_theme && !has_image) return 1;
+    if (!has_theme || !has_image) return 0;
+    path3(target, sizeof(target), esp_root, "/boot/grub/kiki", "");
+    mkdir_p(target, 0755);
+    path3(target, sizeof(target), esp_root, "/boot/grub/kiki/logo.png", "");
+    if (!copy_file(image, target)) return 0;
+    if (file_exists(background)) {
+        path3(target, sizeof(target), esp_root, "/boot/grub/kiki/background.png", "");
+        if (!copy_file(background, target)) return 0;
     }
-    if (file_exists("/mnt/target/usr/lib/systemd/system/chronyd.service")) {
-        make_symlink("/usr/lib/systemd/system/chronyd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/chronyd.service");
-    }
+    path3(target, sizeof(target), esp_root, "/boot/grub/kiki/theme.txt", "");
+    return copy_file(theme, target);
 }
 
 static int install_uefi_boot_files(const char *media_root, const char *target_root, const char *esp_root, const char *root_part) {
@@ -2841,6 +2988,11 @@ static int install_uefi_boot_files(const char *media_root, const char *target_ro
     path3(dst, sizeof(dst), esp_root, "/boot/grub/fonts/unicode.pf2", "");
     copy_file(src, dst);
 
+    if (!install_target_boot_branding(media_root, esp_root)) {
+        say("Installed boot branding copy failed.\n");
+        return 0;
+    }
+
     path3(src, sizeof(src), media_root, "/boot/vmlinuz-kiki", "");
     path3(dst, sizeof(dst), esp_root, "/boot/vmlinuz-kiki", "");
     if (!copy_file(src, dst)) {
@@ -2848,7 +3000,10 @@ static int install_uefi_boot_files(const char *media_root, const char *target_ro
         return 0;
     }
     path3(dst, sizeof(dst), target_root, "/boot/vmlinuz-kiki", "");
-    copy_file(src, dst);
+    if (!copy_file(src, dst)) {
+        say("Kernel copy to target root failed.\n");
+        return 0;
+    }
 
     path3(src, sizeof(src), media_root, "/boot/initramfs-kiki-installed.img", "");
     if (!file_exists(src)) {
@@ -2860,7 +3015,10 @@ static int install_uefi_boot_files(const char *media_root, const char *target_ro
         return 0;
     }
     path3(dst, sizeof(dst), target_root, "/boot/initramfs-kiki.img", "");
-    copy_file(src, dst);
+    if (!copy_file(src, dst)) {
+        say("Installed initramfs copy to target root failed.\n");
+        return 0;
+    }
 
     if (!write_installed_boot_config(esp_root, root_part)) {
         say("Installed GRUB config write failed.\n");
@@ -3293,6 +3451,29 @@ static void collect_network_setup(struct network_setup *network, int quick_mode)
     }
 }
 
+static int selected_network_mac(const char *sysfs, const char *name, char *mac, size_t size) {
+    if (!name[0] || kstrlen(name) > 15 || size < 18) return 0;
+    if (kstrcmp(name, ".") == 0 || kstrcmp(name, "..") == 0) return 0;
+    for (size_t i = 0; name[i]; i++) {
+        char c = name[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.')) return 0;
+    }
+    char base[256], path[256], value[64];
+    path3(base, sizeof(base), sysfs, "/", name);
+    path3(path, sizeof(path), base, "/address", "");
+    if (!read_text_file(path, value, sizeof(value)) || kstrlen(value) != 17) return 0;
+    for (size_t i = 0; i < 17; i++) {
+        char c = value[i];
+        if (i % 3 == 2) { if (c != ':') return 0; }
+        else if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                   (c >= 'A' && c <= 'F'))) return 0;
+    }
+    if (kstrcmp(value, "00:00:00:00:00:00") == 0) return 0;
+    copy_string(mac, size, value);
+    return 1;
+}
+
 static int write_target_network_config(const char *target_root, const struct network_setup *network) {
     char path[256];
     char text[1536];
@@ -3305,11 +3486,24 @@ static int write_target_network_config(const char *target_root, const struct net
         out = append_string(text, sizeof(text), out, "# Network autoconfiguration disabled by installer plan.\n");
         return write_text_file(path, text);
     }
-    out = append_string(text, sizeof(text), out, "\n[Match]\nName=");
-    out = append_string(text, sizeof(text), out, network->match_name[0] ? network->match_name : "en* eth*");
+    char mac[18];
+    out = append_string(text, sizeof(text), out, "\n[Match]\n");
+    if (selected_network_mac("/sys/class/net", network->match_name, mac, sizeof(mac))) {
+        /* The selected NIC can be renamed by udev after installation. */
+        out = append_string(text, sizeof(text), out, "MACAddress=");
+        out = append_string(text, sizeof(text), out, mac);
+    } else {
+        out = append_string(text, sizeof(text), out, "Name=");
+        out = append_string(text, sizeof(text), out, network->match_name[0] ? network->match_name : "en* eth*");
+    }
     out = append_string(text, sizeof(text), out, "\n\n[Link]\nRequiredForOnline=routable\n\n[Network]\n");
     if (network->dhcp4) {
         out = append_string(text, sizeof(text), out, "DHCP=ipv4\n");
+        if (network->dns[0]) {
+            out = append_string(text, sizeof(text), out, "DNS=");
+            out = append_string(text, sizeof(text), out, network->dns);
+            out = append_string(text, sizeof(text), out, "\n");
+        }
     } else {
         out = append_string(text, sizeof(text), out, "DHCP=no\n");
         if (network->address[0]) {
@@ -3341,7 +3535,12 @@ static int write_target_network_config(const char *target_root, const struct net
     out = append_string(text, sizeof(text), out, "LLMNR=no\n");
     out = append_string(text, sizeof(text), out, "MulticastDNS=no\n");
     if (network->dhcp4) {
-        out = append_string(text, sizeof(text), out, "\n[DHCPv4]\nClientIdentifier=mac\nUseDNS=yes\nUseNTP=yes\nUseHostname=no\nRouteMetric=100\n");
+        out = append_string(text, sizeof(text), out, "\n[DHCPv4]\nClientIdentifier=mac\nUseDNS=");
+        out = append_string(text, sizeof(text), out, network->dns[0] ? "no" : "yes");
+        out = append_string(text, sizeof(text), out, "\nUseNTP=yes\nUseHostname=no\nRouteMetric=100\n");
+    }
+    if (network->dns[0] && network->ipv6_ra) {
+        out = append_string(text, sizeof(text), out, "\n[IPv6AcceptRA]\nUseDNS=no\n");
     }
     if (!write_text_file(path, text)) {
         return 0;
@@ -3353,7 +3552,8 @@ static int write_target_network_config(const char *target_root, const struct net
         "DNSStubListener=yes\n"
         "LLMNR=no\n"
         "MulticastDNS=no\n"
-        "DNSSEC=allow-downgrade\n"
+        "# Compatibility default; administrators may opt in via resolved.conf.d.\n"
+        "DNSSEC=no\n"
         "Cache=yes\n";
     if (!write_text_file(path, resolved)) {
         return 0;
@@ -3577,11 +3777,7 @@ static int write_target_sudoers(const char *target_root) {
     char path[256];
     mkdir_p("/mnt/target/etc/sudoers.d", 0750);
     path3(path, sizeof(path), target_root, "/etc/sudoers.d/kiki-admin", "");
-    if (!write_text_file(path, "%sudo ALL=(ALL:ALL) ALL\n")) {
-        return 0;
-    }
-    chmod_path(path, 0440);
-    return 1;
+    return write_text_file_mode(path, "%sudo ALL=(ALL:ALL) ALL\n", 0440);
 }
 
 static int apply_target_account_setup(const char *target_root, const struct account_setup *account) {
@@ -3597,7 +3793,7 @@ static int apply_target_account_setup(const char *target_root, const struct acco
         (char *)account->admin_user,
         NULL,
     };
-    char *argv_chpasswd[] = {"/usr/sbin/chpasswd", NULL};
+    char *argv_chpasswd[] = {"/usr/sbin/chpasswd", NULL, NULL, NULL};
     char *argv_lock_root[] = {"/usr/bin/passwd", "-l", "root", NULL};
 
     say("Creating admin user: ");
@@ -3619,6 +3815,16 @@ static int apply_target_account_setup(const char *target_root, const struct acco
         return 1;
     }
 
+    if (selected_index("kiki-gnome-desktop") >= 0) {
+        char *policy[] = {"/bin/sh", "-c",
+            "set -eu; sed -i 's/^ENCRYPT_METHOD[[:space:]].*/ENCRYPT_METHOD SHA512/' /etc/login.defs; grep -qx 'ENCRYPT_METHOD SHA512' /etc/login.defs", NULL};
+        if (run_chroot_program(target_root, policy[0], policy) != 0) {
+            say("GNOME password policy preparation failed.\n");
+            return 0;
+        }
+        argv_chpasswd[1] = "-c";
+        argv_chpasswd[2] = "SHA512";
+    }
     if (run_chroot_program(target_root, "/usr/sbin/useradd", argv_useradd) != 0) {
         say("Admin user creation failed.\n");
         return 0;
@@ -3716,7 +3922,7 @@ static void build_install_plan(struct install_plan *plan, int quick_mode, int un
 }
 
 static int write_install_plan_yaml(const char *path, const struct install_plan *plan) {
-    static char yaml[32768];
+    static char yaml[128 * 1024];
     size_t out = 0;
     mkdir_p("/run/kiki", 0755);
 
@@ -3735,7 +3941,7 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_string(yaml, sizeof(yaml), out, "  target:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "disk", plan->target_disk);
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "partitioning", plan->auto_layout ? "auto-whole-disk" : "manual-existing-partitions");
-    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "partition_table", plan->auto_layout ? "mbr" : "operator-managed");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "partition_table", plan->auto_layout ? "gpt" : "operator-managed");
     out = append_yaml_kv_u64(yaml, sizeof(yaml), out, "    ", "disk_mib", plan->disk_mib);
     out = append_yaml_kv_u64(yaml, sizeof(yaml), out, "    ", "memory_mib", plan->mem_mib);
     out = append_string(yaml, sizeof(yaml), out, "    filesystems:\n");
@@ -3802,15 +4008,18 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
         }
     }
     out = append_string(yaml, sizeof(yaml), out, "  services:\n");
+    out = append_string(yaml, sizeof(yaml), out, selected_index("kiki-gnome-desktop") >= 0 ? "    default_target: graphical.target\n" : "    default_target: multi-user.target\n");
     out = append_string(yaml, sizeof(yaml), out, "    enable:\n");
     out = append_string(yaml, sizeof(yaml), out, "      - dbus.service\n");
-    if (kstrcmp(selected_ai_mode, "off") == 0) {
+    if (selected_index("kiki-gnome-desktop") >= 0) {
+        out = append_string(yaml, sizeof(yaml), out, "      - gdm.service\n");
+    } else if (kstrcmp(selected_ai_mode, "off") == 0) {
         out = append_string(yaml, sizeof(yaml), out, "      - getty@tty1.service\n");
     } else {
         if (kstrcmp(selected_ai_mode, "local") == 0) {
             out = append_string(yaml, sizeof(yaml), out, "      - kiki-llama-server.service\n");
         }
-        out = append_string(yaml, sizeof(yaml), out, "      - kiki-ai-console@tty1.service\n");
+        out = append_string(yaml, sizeof(yaml), out, "      - kiki-ai-console-kmscon@tty1.service\n");
     }
     out = append_string(yaml, sizeof(yaml), out, "      - getty@tty2.service\n");
     out = append_string(yaml, sizeof(yaml), out, "      - systemd-logind.service\n");
@@ -3891,7 +4100,6 @@ static void show_runtime_status(void) {
 }
 
 static int write_target_localization_and_ai(void) {
-    char path[384];
     char content[512];
     size_t out = 0;
     mkdir_p("/mnt/target/etc/kiki", 0755);
@@ -3915,13 +4123,21 @@ static int write_target_localization_and_ai(void) {
     if (!write_text_file("/mnt/target/etc/timezone", content)) {
         return 0;
     }
-    path3(path, sizeof(path), "/mnt/target/usr/share/zoneinfo/", selected_timezone, "");
-    if (file_exists(path)) {
+    {
         char zone_source[160];
         size_t zone_out = 0;
         zone_out = append_string(zone_source, sizeof(zone_source), zone_out, "/usr/share/zoneinfo/");
         append_string(zone_source, sizeof(zone_source), zone_out, selected_timezone);
-        make_symlink(zone_source, "/mnt/target/etc/localtime");
+        char *argv[] = {"/bin/sh", "-c",
+            "test -f \"$1\" && test -s \"$1\" && test -r \"$1\" && ln -sfnT -- \"$1\" /etc/localtime",
+            "kiki-set-timezone", zone_source, NULL};
+        if (run_chroot_program("/mnt/target", "/bin/sh", argv) != 0) {
+            say("Selected timezone could not be applied.\n");
+            say("Expected timezone data from tzdata: ");
+            say(zone_source);
+            say("\nCheck that this IANA timezone exists in the installed tzdata package.\n");
+            return 0;
+        }
     }
 
     if (kstrcmp(selected_ai_mode, "off") != 0) {
@@ -3947,7 +4163,7 @@ static void run_installer_shell(void) {
 
 static void show_installer_dashboard(void) {
     tui_clear();
-    say("KIKI OS Installer CLI (safe fallback)\n\n");
+    say("KIKI OS Scratch Pad CLI (safe fallback)\n\n");
     say("Install Plan: " INSTALL_PLAN_PATH "\n\n");
     say("[OK] Locale      ");
     say(selected_locale);
@@ -3987,22 +4203,41 @@ static void show_installer_dashboard(void) {
     say("\n");
 }
 
-static void persist_install_plan_to_target(void) {
+static int persist_install_plan_to_target(void) {
     if (!file_exists(INSTALL_PLAN_PATH)) {
-        return;
+        say("Required declarative install plan is missing.\n");
+        return 0;
     }
     mkdir_p("/mnt/target/var/lib/ki2", 0755);
     if (copy_file(INSTALL_PLAN_PATH, TARGET_INSTALL_PLAN_PATH)) {
         say("Saved declarative install plan to /var/lib/ki2/install-plan.yaml\n");
+        return 1;
     } else {
         say("Failed to save declarative install plan to target root.\n");
+        return 0;
     }
+}
+
+static int finalize_target_mounts(void) {
+    int ok = 1;
+    ksys(SYS_sync, 0, 0, 0, 0, 0, 0);
+    if (ksys(SYS_umount2, (long)"/mnt/esp", 0, 0, 0, 0, 0) < 0) {
+        say("Failed to unmount the ESP. Installation is not complete.\n");
+        ok = 0;
+    }
+    if (ksys(SYS_umount2, (long)"/mnt/target", 0, 0, 0, 0, 0) < 0) {
+        say("Failed to unmount the target. Installation is not complete.\n");
+        ok = 0;
+    }
+    return ok;
 }
 
 static int cmdline_value(const char *key, char *out, size_t out_size);
 
 static int request_value(const char *buffer, const char *key, char *out, size_t out_size) {
     size_t key_len = kstrlen(key);
+    int found = 0;
+    if (!out_size) return -1;
     out[0] = 0;
     for (size_t i = 0; buffer[i];) {
         size_t line = i;
@@ -4013,53 +4248,83 @@ static int request_value(const char *buffer, const char *key, char *out, size_t 
         size_t matched = 0;
         while (matched < key_len && buffer[line + matched] == key[matched]) matched++;
         if (matched != key_len) continue;
+        if (found || end - (line + key_len + 1) >= out_size) {
+            out[0] = 0;
+            return -1;
+        }
         size_t used = 0;
         size_t value = line + key_len + 1;
         while (value < end && used + 1 < out_size) out[used++] = buffer[value++];
         out[used] = 0;
-        return 1;
+        found = 1;
     }
-    return 0;
+    return found;
+}
+
+static int read_install_request_text(const char *path, char *buffer, size_t size) {
+    size_t used = 0;
+    int ok = 0;
+    int fd = kopen(path, O_RDONLY);
+    if (fd >= 0) {
+        while (used < size) {
+            long got = ksys(SYS_read, fd, (long)(buffer + used), (long)(size - used), 0, 0, 0);
+            if (got == -4) continue;
+            if (got < 0) goto finished;
+            if (!got) break;
+            for (long i = 0; i < got; i++) if (!buffer[used + (size_t)i]) goto finished;
+            used += (size_t)got;
+        }
+        ok = used > 0 && used < size;
+    }
+finished:
+    if (!kclose(fd)) ok = 0;
+    if (ok) buffer[used] = 0;
+    else for (size_t i = 0; i < size; i++) ((volatile char *)buffer)[i] = 0;
+    return ok;
 }
 
 static int load_gui_install_request(struct gui_install_request *request) {
-    char buffer[16 * 1024];
+    char buffer[64 * 1024];
     char version[16];
-    long len = 0;
+    int fields_valid = 1;
     for (size_t i = 0; i < sizeof(*request); i++) ((char *)request)[i] = 0;
-    if (!read_small_file_raw(GUI_INSTALL_REQUEST_PATH, buffer, sizeof(buffer), &len)) return 0;
+    if (!read_install_request_text(GUI_INSTALL_REQUEST_PATH, buffer, sizeof(buffer))) return 0;
     int request_fd = kopen(GUI_INSTALL_REQUEST_PATH, O_WRONLY | O_TRUNC);
-    if (request_fd >= 0) kclose(request_fd);
+    if (request_fd < 0 || !kclose(request_fd)) goto invalid_request;
     if (!request_value(buffer, "version", version, sizeof(version)) || kstrcmp(version, "2") != 0) {
         say("Unsupported graphical installer request version.\n");
-        return 0;
+        goto invalid_request;
     }
-    request_value(buffer, "plan", request->plan_path, sizeof(request->plan_path));
-    request_value(buffer, "disk", request->target_disk, sizeof(request->target_disk));
-    request_value(buffer, "swap", request->swap_mode, sizeof(request->swap_mode));
-    request_value(buffer, "hostname", request->hostname, sizeof(request->hostname));
-    request_value(buffer, "user", request->admin_user, sizeof(request->admin_user));
-    request_value(buffer, "password", request->admin_password, sizeof(request->admin_password));
-    request_value(buffer, "confirmed", request->destructive_confirm, sizeof(request->destructive_confirm));
-    request_value(buffer, "locale", request->locale, sizeof(request->locale));
-    request_value(buffer, "keymap", request->keymap, sizeof(request->keymap));
-    request_value(buffer, "timezone", request->timezone, sizeof(request->timezone));
-    request_value(buffer, "network", request->network_mode, sizeof(request->network_mode));
-    request_value(buffer, "network_interface", request->network_interface, sizeof(request->network_interface));
-    request_value(buffer, "address", request->address, sizeof(request->address));
-    request_value(buffer, "gateway", request->gateway, sizeof(request->gateway));
-    request_value(buffer, "dns", request->dns, sizeof(request->dns));
-    request_value(buffer, "profile", request->profile, sizeof(request->profile));
-    request_value(buffer, "runtime", request->runtime, sizeof(request->runtime));
-    request_value(buffer, "ai", request->ai_mode, sizeof(request->ai_mode));
-    request_value(buffer, "ai_endpoint", request->ai_endpoint, sizeof(request->ai_endpoint));
+    fields_valid &= request_value(buffer, "plan", request->plan_path, sizeof(request->plan_path)) >= 0;
+    fields_valid &= request_value(buffer, "disk", request->target_disk, sizeof(request->target_disk)) >= 0;
+    fields_valid &= request_value(buffer, "swap", request->swap_mode, sizeof(request->swap_mode)) >= 0;
+    fields_valid &= request_value(buffer, "hostname", request->hostname, sizeof(request->hostname)) >= 0;
+    fields_valid &= request_value(buffer, "user", request->admin_user, sizeof(request->admin_user)) >= 0;
+    fields_valid &= request_value(buffer, "password", request->admin_password, sizeof(request->admin_password)) >= 0;
+    fields_valid &= request_value(buffer, "confirmed", request->destructive_confirm, sizeof(request->destructive_confirm)) >= 0;
+    fields_valid &= request_value(buffer, "locale", request->locale, sizeof(request->locale)) >= 0;
+    fields_valid &= request_value(buffer, "keymap", request->keymap, sizeof(request->keymap)) >= 0;
+    fields_valid &= request_value(buffer, "timezone", request->timezone, sizeof(request->timezone)) >= 0;
+    fields_valid &= request_value(buffer, "network", request->network_mode, sizeof(request->network_mode)) >= 0;
+    fields_valid &= request_value(buffer, "network_interface", request->network_interface, sizeof(request->network_interface)) >= 0;
+    fields_valid &= request_value(buffer, "address", request->address, sizeof(request->address)) >= 0;
+    fields_valid &= request_value(buffer, "gateway", request->gateway, sizeof(request->gateway)) >= 0;
+    fields_valid &= request_value(buffer, "dns", request->dns, sizeof(request->dns)) >= 0;
+    fields_valid &= request_value(buffer, "profile", request->profile, sizeof(request->profile)) >= 0;
+    fields_valid &= request_value(buffer, "runtime", request->runtime, sizeof(request->runtime)) >= 0;
+    fields_valid &= request_value(buffer, "ai", request->ai_mode, sizeof(request->ai_mode)) >= 0;
+    fields_valid &= request_value(buffer, "ai_endpoint", request->ai_endpoint, sizeof(request->ai_endpoint)) >= 0;
 
-    for (size_t i = 0; buffer[i] && request->package_count < MAX_SELECTED_PACKAGES;) {
+    for (size_t i = 0; buffer[i];) {
         size_t line = i;
         while (buffer[i] && buffer[i] != '\n' && buffer[i] != '\r') i++;
         size_t end = i;
         while (buffer[i] == '\n' || buffer[i] == '\r') i++;
         if (end <= line + 8 || !starts_with(buffer + line, "package=")) continue;
+        if (request->package_count >= MAX_SELECTED_PACKAGES || end - (line + 8) >= PACKAGE_NAME_LEN) {
+            fields_valid = 0;
+            break;
+        }
         size_t used = 0;
         size_t value = line + 8;
         while (value < end && used + 1 < PACKAGE_NAME_LEN) {
@@ -4072,14 +4337,18 @@ static int load_gui_install_request(struct gui_install_request *request) {
     size_t expected_out = 0;
     expected_out = append_string(expected, sizeof(expected), expected_out, "INSTALL ");
     append_string(expected, sizeof(expected), expected_out, request->target_disk);
-    for (size_t i = 0; i < sizeof(buffer); i++) buffer[i] = 0;
-    if (!is_whole_disk_path(request->target_disk) || !request->profile[0] ||
+    for (size_t i = 0; i < sizeof(buffer); i++) ((volatile char *)buffer)[i] = 0;
+    if (!fields_valid || !is_whole_disk_path(request->target_disk) || !request->profile[0] ||
         !is_valid_username(request->admin_user) || kstrlen(request->admin_password) < 8 ||
         kstrcmp(request->destructive_confirm, expected) != 0 || request->package_count == 0) {
         say("Graphical installer request is incomplete or invalid.\n");
-        return 0;
+        goto invalid_request;
     }
     return 1;
+invalid_request:
+    for (size_t i = 0; i < sizeof(buffer); i++) ((volatile char *)buffer)[i] = 0;
+    for (size_t i = 0; i < sizeof(*request); i++) ((volatile char *)request)[i] = 0;
+    return 0;
 }
 
 static void configure_gui_network(struct network_setup *network, const struct gui_install_request *request) {
@@ -4368,6 +4637,7 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
         char default_esp_part[160];
         char default_swap_part[160];
         char default_root_part[160];
+        if (!verify_install_media(media_root)) return;
         list_disks();
         say("\nManual mode keeps your partition table and only formats the partitions you enter.\n");
         say("Use a GPT disk with an EFI System Partition, an ext4 root partition, and optional swap.\n");
@@ -4431,9 +4701,13 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
         collect_network_setup(&network, quick_mode || unattended_mode);
         collect_account_setup(&account, quick_mode, unattended_mode);
     }
+    if (selected_index("kiki-gnome-desktop") >= 0)
+        copy_string(selected_ai_mode, sizeof(selected_ai_mode), "off");
     if (!ensure_selected_ai_packages(index_path) || !ensure_selected_profile_packages(index_path)) {
         return;
     }
+
+    if (!verify_install_media(media_root)) return;
 
     struct install_plan plan;
     build_install_plan(&plan, quick_mode, unattended_mode, auto_layout, has_swap, media_root, index_path, target, esp_part, swap_part, root_part, hostname, disk_mib, mem_mib, esp_mib, swap_mib, root_mib, &account, &network);
@@ -4479,11 +4753,13 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
     } else {
         say("\nDestructive confirmation required.\n");
         say(auto_layout ? "The selected disk will be repartitioned and formatted.\n" : "The entered partitions will be formatted.\n");
-        say("Type exactly: ");
-        say(expected);
-        say("\n> ");
-        if (read_line(confirm, sizeof(confirm)) != 0 || kstrcmp(confirm, expected) != 0) {
-            say("Confirmation did not match. Install cancelled.\n");
+        say("Target: ");
+        say(auto_layout ? target : root_part);
+        say("\nErase ALL data and start installation? [y/N]\n> ");
+        if (read_line(confirm, sizeof(confirm)) != 0 ||
+            (kstrcmp(confirm, "y") != 0 && kstrcmp(confirm, "Y") != 0 &&
+             kstrcmp(confirm, "yes") != 0 && kstrcmp(confirm, "YES") != 0)) {
+            say("Install cancelled.\n");
             return;
         }
     }
@@ -4491,8 +4767,8 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
     if (auto_layout) {
         if (gui_request)
             write_gui_install_progress("running", 20, "파티션 생성", "대상 디스크에 파티션 테이블을 기록하고 있습니다.");
-        say(has_swap ? "\nWriting MBR partition table: ESP + swap + ext4 root...\n" : "\nWriting MBR partition table: ESP + ext4 root (swap off)...\n");
-        if (!write_guided_mbr(target, !has_swap, &esp_start, &esp_sectors, &swap_start, &swap_sectors, &root_start, &root_sectors, &disk_mib, &mem_mib, &esp_mib, &swap_mib, &root_mib)) {
+        say(has_swap ? "\nWriting GPT partition table: ESP + swap + ext4 root...\n" : "\nWriting GPT partition table: ESP + ext4 root (swap off)...\n");
+        if (!write_guided_gpt(target, !has_swap, &esp_start, &esp_sectors, &swap_start, &swap_sectors, &root_start, &root_sectors, &disk_mib, &mem_mib, &esp_mib, &swap_mib, &root_mib)) {
             return;
         }
         has_swap = swap_sectors > 0;
@@ -4539,23 +4815,34 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
     }
     if (gui_request)
         write_gui_install_progress("running", 82, "시스템 구성", "패키지 설치가 완료되었습니다.");
-    persist_install_plan_to_target();
+    if (!persist_install_plan_to_target()) goto target_configuration_failed;
+    mkdir_p("/mnt/target/etc/ki2/trust", 0755);
+    if (!copy_file("/etc/ki2/trust/installer-repo.ed25519.pub",
+                   "/mnt/target/etc/ki2/trust/stage3-repo.ed25519.pub")) {
+        say("Failed to install the verified repository public key.\n");
+        goto target_configuration_failed;
+    }
     if (!write_target_fstab_and_identity("/mnt/target", esp_part, root_part, has_swap ? swap_part : "", hostname)) {
         say("Failed to write target identity files.\n");
+        goto target_configuration_failed;
     }
     if (!write_target_network_config("/mnt/target", &network)) {
         say("Failed to write target network configuration.\n");
+        goto target_configuration_failed;
     }
     if (!write_target_localization_and_ai()) {
         say("Failed to write target localization or AI configuration.\n");
+        goto target_configuration_failed;
     }
     if (!write_target_ld_so_config("/mnt/target")) {
         say("Failed to write target ld.so.conf.\n");
+        goto target_configuration_failed;
     }
     ensure_target_baseline_layout();
     if (!refresh_target_ld_cache("/mnt/target")) {
         say("Continuing without a refreshed ld.so.cache.\n");
     }
+    if (!refresh_target_gsettings_cache("/mnt/target")) goto target_configuration_failed;
     if (gui_request)
         write_gui_install_progress("running", 90, "계정 설정", "관리자 계정과 시스템 권한을 구성하고 있습니다.");
     if (!apply_target_account_setup("/mnt/target", &account)) {
@@ -4564,9 +4851,10 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
         ksys(SYS_umount2, (long)"/mnt/target", 0, 0, 0, 0, 0);
         return;
     }
-    enable_default_systemd_units();
+    if (!enable_default_systemd_units()) goto target_configuration_failed;
+    if (!prepare_gnome_target()) goto target_configuration_failed;
     if (selected_profile_is_kubernetes()) {
-        enable_kubernetes_systemd_units();
+        if (!enable_kubernetes_systemd_units()) goto target_configuration_failed;
     }
     if (gui_request)
         write_gui_install_progress("running", 95, "부트로더 설치", "UEFI 부팅 파일을 설치하고 있습니다.");
@@ -4577,10 +4865,8 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
 
     if (gui_request)
         write_gui_install_progress("running", 98, "설치 마무리", "디스크 변경 내용을 동기화하고 있습니다.");
-    ksys(SYS_sync, 0, 0, 0, 0, 0, 0);
-    ksys(SYS_umount2, (long)"/mnt/esp", 0, 0, 0, 0, 0);
-    ksys(SYS_umount2, (long)"/mnt/target", 0, 0, 0, 0, 0);
-    if (gui_request && !boot_files_ok) return;
+    if (!finalize_target_mounts()) return;
+    if (!boot_files_ok) return;
     say("\nGuided install finished. Remove the ISO and boot the VM in UEFI mode with Secure Boot disabled.\n");
     if (gui_request) {
         gui_install_succeeded = 1;
@@ -4589,6 +4875,13 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
     if (quick_mode) {
         say("Return to the TUI and choose Reboot when you are ready.\n");
     }
+    return;
+
+target_configuration_failed:
+    say("Required system configuration failed. Target disk is partially installed.\n");
+    ksys(SYS_sync, 0, 0, 0, 0, 0, 0);
+    ksys(SYS_umount2, (long)"/mnt/esp", 0, 0, 0, 0, 0);
+    ksys(SYS_umount2, (long)"/mnt/target", 0, 0, 0, 0, 0);
 }
 
 static void run_guided_package_installer(int quick_mode, int unattended_mode) {
@@ -4703,6 +4996,38 @@ static int maybe_run_cmdline_autoinstall(void) {
     return 0;
 }
 
+static int restore_install_console(int saved[2]) {
+    int ok = 1;
+    for (int i = 0; i < 2; i++) {
+        if (saved[i] < 0) continue;
+        if (ksys(SYS_dup2, saved[i], i + 1, 0, 0, 0, 0) < 0) ok = 0;
+        if (!kclose(saved[i])) ok = 0;
+        saved[i] = -1;
+    }
+    return ok;
+}
+
+static int start_install_log(const char *path, int saved[2]) {
+    saved[0] = saved[1] = -1;
+    saved[0] = (int)ksys(SYS_dup, STDOUT_FILENO, 0, 0, 0, 0, 0);
+    if (saved[0] < 0) return 0;
+    saved[1] = (int)ksys(SYS_dup, STDERR_FILENO, 0, 0, 0, 0, 0);
+    if (saved[1] < 0) {
+        restore_install_console(saved);
+        return 0;
+    }
+    int fd = kopen_mode(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) {
+        restore_install_console(saved);
+        return 0;
+    }
+    int ok = ksys(SYS_dup2, fd, STDOUT_FILENO, 0, 0, 0, 0) >= 0;
+    if (ok && ksys(SYS_dup2, fd, STDERR_FILENO, 0, 0, 0, 0) < 0) ok = 0;
+    if (!kclose(fd)) ok = 0;
+    if (!ok) restore_install_console(saved);
+    return ok;
+}
+
 static int try_graphical_installer(void) {
     char ui[16];
     if (!cmdline_value("kiki.ui", ui, sizeof(ui)) || kstrcmp(ui, "gui") != 0) {
@@ -4789,16 +5114,28 @@ static int try_graphical_installer(void) {
     gui_current_package[0] = 0;
     write_gui_install_progress("running", 1, "설치 요청 확인", "설치 요청을 안전하게 읽고 있습니다.");
     say("GTK requested installation; keeping the graphical progress screen active.\n");
-    if (!load_gui_install_request(&request)) {
+    int saved_console[2];
+    int logging = start_install_log("/run/kiki/gui-install-backend.log", saved_console);
+    if (!logging) {
+        remove_file(GUI_INSTALL_REQUEST_PATH);
+        write_gui_install_progress("failed", 1, "로그 준비 실패", "설치 로그를 열거나 연결할 수 없어 디스크 설치를 시작하지 않았습니다.");
+    } else if (!load_gui_install_request(&request)) {
         say("Cannot load the graphical install request.\n");
         write_gui_install_progress("failed", 1, "설치 요청 오류", "설치 요청을 읽거나 검증할 수 없습니다.");
     } else {
         run_guided_package_installer_with_request(0, 0, &request);
         if (!gui_install_succeeded) {
             write_gui_install_progress("failed", gui_install_last_percent, "설치 실패",
-                                       "설치 중 오류가 발생했습니다. 화면의 안내와 콘솔 로그를 확인하세요.");
+                                       "설치 중 오류가 발생했습니다. 복구 콘솔에서 /run/kiki/gui-install-backend.log를 확인하세요.");
         }
     }
+
+    if (logging && !restore_install_console(saved_console))
+        say("Warning: could not fully restore installer console output.\n");
+
+    /* Do not retain the plaintext request during the potentially unlimited
+       graphical completion/reboot wait. Also clear failed parse remnants. */
+    for (size_t i = 0; i < sizeof(request); i++) ((volatile char *)&request)[i] = 0;
 
     for (;;) {
         if (gui_install_succeeded && file_exists(GUI_REBOOT_REQUEST_PATH)) {
@@ -4840,7 +5177,50 @@ static int try_fullscreen_tui_installer(void) {
     };
     mkdir_p("/run/kiki", 0755);
     say("Starting the full-screen installer TUI. Press c or q to enter the CLI fallback.\n");
-    int status = run_program("/usr/bin/kiki-installer-tui", argv);
+    remove_file(GUI_INSTALL_REQUEST_PATH);
+    remove_file(GUI_INSTALL_PROGRESS_PATH);
+    remove_file(GUI_REBOOT_REQUEST_PATH);
+    if (!write_text_file_mode("/run/kiki/tui-backend.ready", "ready\n", 0600)) return 0;
+    long tui_pid = ksys(SYS_fork, 0, 0, 0, 0, 0, 0);
+    if (tui_pid < 0) {
+        remove_file("/run/kiki/tui-backend.ready");
+        return 0;
+    }
+    if (tui_pid == 0) {
+        int code = run_program("/usr/bin/kiki-installer-tui", argv);
+        ksys(SYS_exit, code, 0, 0, 0, 0, 0);
+        for (;;) sleep_msec(1000);
+    }
+    int status = 0;
+    int handled = 0;
+    for (;;) {
+        if (poll_graphical_program(tui_pid, &status) != 0) break;
+        if (!handled && file_exists(GUI_INSTALL_REQUEST_PATH)) {
+            handled = 1;
+            struct gui_install_request request;
+            gui_install_active = 1;
+            gui_install_succeeded = 0;
+            gui_install_last_percent = 1;
+            int saved_console[2];
+            if (!start_install_log("/run/kiki/tui-install.log", saved_console)) {
+                remove_file(GUI_INSTALL_REQUEST_PATH);
+                write_gui_install_progress("failed", 1, "Log error", "Cannot open installer log or terminal.");
+            } else {
+                if (load_gui_install_request(&request))
+                    run_guided_package_installer_with_request(0, 0, &request);
+                for (size_t i = 0; i < sizeof(request); i++) ((volatile char *)&request)[i] = 0;
+                if (!gui_install_succeeded)
+                    write_gui_install_progress("failed", gui_install_last_percent, "Install failed", "See /run/kiki/tui-install.log");
+                if (!restore_install_console(saved_console))
+                    say("Warning: could not fully restore installer console output.\n");
+            }
+        }
+        if (handled && gui_install_succeeded && file_exists(GUI_REBOOT_REQUEST_PATH)) reboot_now();
+        sleep_msec(100);
+    }
+    remove_file("/run/kiki/tui-backend.ready");
+    remove_file(GUI_INSTALL_REQUEST_PATH);
+    gui_install_active = 0;
     say("Full-screen TUI exited with status ");
     char status_line[32];
     size_t out = 0;
@@ -5022,8 +5402,8 @@ static int kmain(void) {
         if (graphical_status != 2) {
             try_fullscreen_tui_installer();
         }
-        installer_cli_menu();
     }
+    installer_cli_menu();
 #elif defined(KIKI_INSTALLED_STAGE1)
     handoff_to_installed_system();
     installed_prompt();
@@ -5043,6 +5423,10 @@ void _start(void) {
     }
 }
 """
+
+import ki2installcatalog
+INIT_C = INIT_C.replace("/* KIKI_SHARED_PACKAGE_CATALOG */", ki2installcatalog.backend_c())
+
 
 
 class BootIsoError(RuntimeError):
@@ -5171,16 +5555,27 @@ def copy_package_payloads(repo_dir: Path, packages_dir: Path | None, target: Pat
     seen: set[str] = set()
     for item in package_entries:
         if not isinstance(item, dict):
-            continue
+            raise BootIsoError("invalid package index entry")
         filename = item.get("file")
-        if not isinstance(filename, str) or not filename.endswith(".ki2") or filename in seen:
-            continue
+        if (not isinstance(filename, str) or not filename.endswith(".ki2")
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", filename)
+                or filename in seen):
+            raise BootIsoError(f"invalid or duplicate package filename: {filename!r}")
         seen.add(filename)
+        expected_hash = item.get("sha256")
+        expected_size = item.get("size")
+        if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+            raise BootIsoError(f"missing or invalid package sha256: {filename}")
+        if type(expected_size) is not int or expected_size <= 0:
+            raise BootIsoError(f"missing or invalid package size: {filename}")
         source = packages_dir / filename
-        if not source.exists():
-            missing.append(filename)
-            continue
+        if not source.is_file() or source.is_symlink():
+            raise BootIsoError(f"package payload missing or not a regular file: {filename}")
+        if source.stat().st_size != expected_size or sha256_file(source) != expected_hash:
+            raise BootIsoError(f"package payload integrity mismatch: {filename}")
         shutil.copy2(source, target / filename)
+        if (target / filename).stat().st_size != expected_size or sha256_file(target / filename) != expected_hash:
+            raise BootIsoError(f"copied package payload integrity mismatch: {filename}")
         copied += 1
         total_size += source.stat().st_size
 
@@ -5214,10 +5609,50 @@ def read_package_manifest(package: Path) -> dict[str, Any]:
 
 
 def latest_package(packages_dir: Path, name: str) -> Path:
-    matches = sorted(packages_dir.glob(f"{name}-*.ki2"))
+    # Require a numeric version immediately after the exact package name.
+    # A prefix glob for python otherwise selects python-setuptools.
+    pattern = re.compile(re.escape(name) + r"-([0-9][^-]*)-([0-9]+)\.[^.]+\.ki2$")
+    matches = [path for path in packages_dir.glob(f"{name}-*.ki2") if pattern.fullmatch(path.name)]
+    def version_key(path):
+        match = pattern.fullmatch(path.name)
+        parts = tuple((1, int(part)) if part.isdigit() else (0, part)
+                      for part in re.split(r"([0-9]+)", match.group(1)))
+        return parts, int(match.group(2))
+    matches.sort(key=version_key)
     if not matches:
         raise BootIsoError(f"installer runtime package not found: {name}")
     return matches[-1]
+
+
+def verify_installer_default_packages(repo_dir: Path, arch: str, profile: str = "server-core") -> dict:
+    """Validate the selected profile; record unavailable optional configurations."""
+    import ki2installcatalog
+    index = json.loads((repo_dir / f"index.{arch}.json").read_text(encoding="utf-8"))
+    catalog = ki2installcatalog.media_catalog(index)
+    selected = "server-core" if profile == "bootstrap-stage1" else profile
+    entry = next((p for p in catalog['profiles'] if p['id'] == selected), None)
+    if entry is None:
+        raise BootIsoError(f"Unknown installer profile: {profile}")
+    if not entry['available']:
+        raise BootIsoError(f"Installer profile {selected} is incomplete: {entry['missing']}")
+    catalog['default_profile'] = selected
+    return catalog
+
+
+def verify_installer_display_name(package: Path) -> None:
+    """Reject an old GUI payload even when current source has been renamed."""
+    with tarfile.open(package, "r:gz") as archive:
+        try:
+            handle = archive.extractfile("rootfs/usr/bin/kiki-installer-gtk")
+        except KeyError as exc:
+            raise BootIsoError(f"GUI package has no installer executable: {package}") from exc
+        if handle is None:
+            raise BootIsoError(f"GUI package has no installer executable: {package}")
+        binary = handle.read()
+    redesigned = b"KIKI_INSTALLER_UI_V2" in binary and b"KIKI OS Installer" in binary and b"Scratch Pad" not in binary
+    legacy = b"KIKI OS Scratch Pad" in binary and b"KIKI OS Installer" not in binary and b"Go/GTK4" not in binary
+    if not (redesigned or legacy):
+        raise BootIsoError(f"GUI package contains the old installer name; rebuild its KI2 before building an ISO: {package}")
 
 
 def extract_package_members(package: Path, target_root: Path, wanted: set[str], prefixes: tuple[str, ...] = ()) -> int:
@@ -5289,8 +5724,6 @@ def chmod_dynamic_loaders(root: Path) -> None:
 def link_installer_runtime_lib64(root: Path) -> None:
     lib = root / "lib"
     lib64 = root / "lib64"
-    if not lib.exists():
-        return
     lib64.mkdir(parents=True, exist_ok=True)
     for path in sorted(lib.glob("*.so*")):
         if not path.is_file() and not path.is_symlink():
@@ -5299,6 +5732,29 @@ def link_installer_runtime_lib64(root: Path) -> None:
         if dest.exists() or dest.is_symlink():
             continue
         dest.symlink_to(Path("../lib") / path.name)
+    # Source-built Python/OpenSSL install their ABI under /usr/lib.
+    # The bootstrap loader must find it even without an ld.so.cache.
+    for path in sorted((root / "usr/lib").glob("*.so*")):
+        if not path.is_file() and not path.is_symlink():
+            continue
+        dest = lib64 / path.name
+        if not dest.exists() and not dest.is_symlink():
+            dest.symlink_to(Path("../usr/lib") / path.name)
+
+
+def restore_installer_partition_runtime(root: Path, package: Path) -> None:
+    """Keep partition tools and their ABI together across lib and lib64 layouts."""
+    stems = ("libblkid", "libfdisk", "libsmartcols", "libuuid", "libmount")
+    lib64 = root / "lib64"
+    lib64.mkdir(parents=True, exist_ok=True)
+    # Remove GTK aliases before extracting regular files, which otherwise follow
+    # symlinks into the older bundled ABI.
+    for stem in stems:
+        for path in lib64.glob(stem + ".so*"):
+            path.unlink()
+    extract_package_members(package, root, {"sbin/sfdisk", "sbin/fdisk", "sbin/cfdisk"},
+                            prefixes=("lib/", "lib64/"))
+    link_installer_runtime_lib64(root)
 
 
 def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
@@ -5311,6 +5767,7 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
             "/usr/bin/kiki-installer-tui",
             "/sbin/mkfs.vfat",
             "/sbin/fdisk",
+            "/sbin/sfdisk",
             "/sbin/cfdisk",
             "/sbin/mkswap",
             "/sbin/swapon",
@@ -5338,6 +5795,7 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
         "kiki-installer-tui": installer_tui.name,
     }
     if installer_gtk is not None:
+        verify_installer_display_name(installer_gtk)
         runtime["packages"]["kiki-installer-gtk"] = installer_gtk.name
         runtime["tools"].extend(["/usr/bin/cage", "/usr/bin/kiki-installer-gtk"])
 
@@ -5351,25 +5809,6 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
     )
     chmod_dynamic_loaders(root)
     extract_package_members(busybox, root, {"bin/busybox"})
-    extract_package_members(
-        util_linux,
-        root,
-        {
-            "sbin/cfdisk",
-            "sbin/fdisk",
-            "sbin/sfdisk",
-            "lib/libblkid.so.1",
-            "lib/libblkid.so.1.1.0",
-            "lib/libfdisk.so.1",
-            "lib/libfdisk.so.1.1.0",
-            "lib/libmount.so.1",
-            "lib/libmount.so.1.1.0",
-            "lib/libsmartcols.so.1",
-            "lib/libsmartcols.so.1.1.0",
-            "lib/libuuid.so.1",
-            "lib/libuuid.so.1.3.0",
-        },
-    )
     extract_package_members(
         ncurses,
         root,
@@ -5401,7 +5840,7 @@ def add_installer_runtime(root: Path, packages_dir: Path) -> dict[str, Any]:
         }
     else:
         runtime["graphical"] = {"enabled": False, "fallback": "tui"}
-    link_installer_runtime_lib64(root)
+    restore_installer_partition_runtime(root, util_linux)
 
     for dirname in ("bin", "sbin", "usr/bin", "usr/sbin", "usr/etc", "install"):
         (root / dirname).mkdir(parents=True, exist_ok=True)
@@ -5462,11 +5901,21 @@ def extract_kernel_from_package(package: Path, target: Path) -> Path | None:
         return target
 
 
-def find_kernel(rootfs_dir: Path, packages_dir: Path, work_dir: Path, requested: Path | None = None) -> Path:
+def find_kernel(rootfs_dir: Path, packages_dir: Path, work_dir: Path, requested: Path | None = None,
+                pinned_filename: str | None = None) -> Path:
     if requested:
         if not requested.exists():
             raise BootIsoError(f"kernel image not found: {requested}")
         return requested
+
+    if pinned_filename:
+        package = packages_dir / pinned_filename
+        if not package.is_file():
+            raise BootIsoError(f"pinned kernel package missing: {package}; refusing an older cached kernel")
+        extracted = extract_kernel_from_package(package, work_dir / "vmlinuz-kiki")
+        if not extracted:
+            raise BootIsoError(f"pinned kernel package has no kernel image: {package}")
+        return extracted
 
     # The assembled rootfs may lag behind the signed package repository during
     # an installer-only rebuild.  Prefer the newest linux package so an ISO
@@ -5554,12 +6003,26 @@ def compile_static_init(
     output.chmod(0o755)
 
 
-def _pad4(buffer: bytearray) -> None:
+class _NewcStream:
+    def __init__(self, output: Any):
+        self.output = output
+        self.size = 0
+
+    def __len__(self) -> int:
+        return self.size
+
+    def extend(self, data: bytes) -> None:
+        self.output.write(data)
+        self.size += len(data)
+
+
+def _pad4(buffer: bytearray | _NewcStream) -> None:
     buffer.extend(b"\0" * ((4 - (len(buffer) % 4)) % 4))
 
 
-def _add_newc_entry(buffer: bytearray, ino: int, name: str, data: bytes, mode: int, mtime: int, nlink: int) -> None:
+def _add_newc_entry(buffer: bytearray | _NewcStream, ino: int, name: str, data: bytes | Path, mode: int, mtime: int, nlink: int) -> None:
     name_bytes = name.encode("utf-8") + b"\0"
+    size = data.stat().st_size if isinstance(data, Path) else len(data)
     fields = [
         "070701",
         f"{ino:08x}",
@@ -5568,7 +6031,7 @@ def _add_newc_entry(buffer: bytearray, ino: int, name: str, data: bytes, mode: i
         f"{0:08x}",
         f"{nlink:08x}",
         f"{mtime:08x}",
-        f"{len(data):08x}",
+        f"{size:08x}",
         f"{0:08x}",
         f"{0:08x}",
         f"{0:08x}",
@@ -5579,30 +6042,59 @@ def _add_newc_entry(buffer: bytearray, ino: int, name: str, data: bytes, mode: i
     buffer.extend("".join(fields).encode("ascii"))
     buffer.extend(name_bytes)
     _pad4(buffer)
-    buffer.extend(data)
+    if isinstance(data, Path):
+        copied = 0
+        with data.open("rb") as source:
+            for block in iter(lambda: source.read(1024 * 1024), b""):
+                buffer.extend(block)
+                copied += len(block)
+        if copied != size:
+            raise BootIsoError(f"initramfs input changed while archiving: {data}")
+    else:
+        buffer.extend(data)
     _pad4(buffer)
 
 
 def write_newc_gzip(source_dir: Path, output: Path) -> None:
-    archive = bytearray()
-    ino = 1
-    for path in sorted(source_dir.rglob("*")):
-        rel = path.relative_to(source_dir).as_posix()
-        st = os.lstat(path)
-        perm = stat.S_IMODE(st.st_mode)
-        mtime = int(st.st_mtime)
-        if path.is_dir():
-            _add_newc_entry(archive, ino, rel, b"", stat.S_IFDIR | perm, mtime, 2)
-        elif path.is_symlink():
-            _add_newc_entry(archive, ino, rel, os.readlink(path).encode("utf-8"), stat.S_IFLNK | 0o777, mtime, 1)
-        elif path.is_file():
-            _add_newc_entry(archive, ino, rel, path.read_bytes(), stat.S_IFREG | perm, mtime, 1)
-        ino += 1
-    _add_newc_entry(archive, ino, "TRAILER!!!", b"", 0, 0, 1)
-
     output.parent.mkdir(parents=True, exist_ok=True)
     with gzip.GzipFile(filename=str(output), mode="wb", compresslevel=9, mtime=0) as gz:
-        gz.write(archive)
+        archive = _NewcStream(gz)
+        ino = 1
+        for path in sorted(source_dir.rglob("*")):
+            rel = path.relative_to(source_dir).as_posix()
+            st = os.lstat(path)
+            perm = stat.S_IMODE(st.st_mode)
+            mtime = int(st.st_mtime)
+            if path.is_symlink():
+                _add_newc_entry(archive, ino, rel, os.readlink(path).encode("utf-8"), stat.S_IFLNK | 0o777, mtime, 1)
+            elif path.is_dir():
+                _add_newc_entry(archive, ino, rel, b"", stat.S_IFDIR | perm, mtime, 2)
+            elif path.is_file():
+                _add_newc_entry(archive, ino, rel, path, stat.S_IFREG | perm, mtime, 1)
+            ino += 1
+        _add_newc_entry(archive, ino, "TRAILER!!!", b"", 0, 0, 1)
+
+
+def add_media_verifier(root: Path, packages_dir: Path, public_key: Path) -> None:
+    import ki2repo
+    # Parse as a PUBLIC key; private signing keys must never enter the image.
+    public_der = ki2repo.run_openssl(["pkey", "-pubin", "-in", str(public_key), "-outform", "DER"])
+    if len(public_der) != 44 or public_der[:12] != bytes.fromhex("302a300506032b6570032100"):
+        raise BootIsoError("installer trust key must be Ed25519")
+    for name in ("python", "openssl", "expat", "libffi", "xz", "zlib"):
+        extract_package_members(latest_package(packages_dir, name), root, set(), prefixes=("",))
+    # GTK's bundled host ABI can shadow newer libfdisk dependencies.
+    # Restore a matching util-linux ABI after the graphical stack is extracted.
+    restore_installer_partition_runtime(root, latest_package(packages_dir, "util-linux"))
+    scripts = root / "usr/lib/kiki-installer"
+    scripts.mkdir(parents=True, exist_ok=True)
+    for name in ("ki2media.py", "ki2repo.py", "ki2build.py", "ki2disk.py"):
+        shutil.copy2(Path(__file__).resolve().parent / name, scripts / name)
+    trust = root / "etc/ki2/trust/installer-repo.ed25519.pub"
+    trust.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(public_key, trust)
+    trust.chmod(0o644)
+    link_installer_runtime_lib64(root)
 
 
 def build_initramfs(
@@ -5616,6 +6108,8 @@ def build_initramfs(
     installed: bool = False,
     install_image: Path | None = None,
     packages_dir: Path | None = None,
+    media_public_key: Path | None = None,
+    installer_catalog: dict | None = None,
 ) -> None:
     root = work_dir / "initramfs-root"
     if root.exists():
@@ -5630,6 +6124,13 @@ def build_initramfs(
         if packages_dir is None or not packages_dir.exists():
             raise BootIsoError("installer mode needs built glibc, busybox, and e2fsprogs packages for the runtime")
         installer_runtime = add_installer_runtime(root, packages_dir)
+        if installer_catalog is not None:
+            catalog_path = root / 'etc/kiki/installer-media.ini'
+            catalog_path.parent.mkdir(parents=True, exist_ok=True)
+            catalog_path.write_text(ki2installcatalog.media_ini(installer_catalog), encoding='utf-8')
+        if media_public_key is None or not media_public_key.is_file():
+            raise BootIsoError("installer requires --media-public-key pointing to a trusted Ed25519 public key")
+        add_media_verifier(root, packages_dir, media_public_key)
     if install_image:
         install_dir = root / "install"
         install_dir.mkdir(parents=True, exist_ok=True)
@@ -5694,7 +6195,7 @@ def grub_cfg(profile: str, arch: str, *, installer: bool = False, installed: boo
             "insmod gfxterm",
             "serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1",
             "if loadfont /boot/grub/fonts/unicode.pf2; then",
-            "    terminal_output gfxterm console serial",
+            "    terminal_output gfxterm",
             "else",
             "    terminal_output console serial",
             "fi",
@@ -5703,6 +6204,14 @@ def grub_cfg(profile: str, arch: str, *, installer: bool = False, installed: boo
             "set gfxpayload=keep",
             "set timeout=4",
             "set default=0",
+            "if [ -f /boot/grub/kiki/theme.txt ]; then",
+            "    if insmod gfxmenu; then",
+            "        if insmod png; then",
+            "            set theme=/boot/grub/kiki/theme.txt",
+            "            export theme",
+            "        fi",
+            "    fi",
+            "fi",
             "",
             f'menuentry "KIKI OS {"graphical installer (default)" if installer else title + " (" + arch + ", auto console)"}" {{',
             "    set gfxpayload=keep",
@@ -5767,6 +6276,36 @@ def grub_cfg(profile: str, arch: str, *, installer: bool = False, installed: boo
     )
 
 
+def install_boot_branding(brand_dir: Path, tree_dir: Path) -> dict[str, str]:
+    image = brand_dir / "kikios-kiki-wordmark-boot-v2.png"
+    background = brand_dir / "grub-background-v2.png"
+    theme = brand_dir / "grub-theme.txt"
+    for source in (image, background, theme):
+        if not source.is_file() or source.is_symlink():
+            raise BootIsoError(f"required boot branding file missing or not regular: {source}")
+    png_header = image.read_bytes()[:24]
+    if png_header[:8] != b"\x89PNG\r\n\x1a\n" or png_header[12:16] != b"IHDR":
+        raise BootIsoError(f"boot logo is not a PNG: {image}")
+    image_width = int.from_bytes(png_header[16:20], "big")
+    image_height = int.from_bytes(png_header[20:24], "big")
+    theme_text = theme.read_text(encoding="utf-8")
+    image_block = theme_text.split("+ image {", 1)[-1].split("}", 1)[0]
+    import re
+    width_match = re.search(r"(?m)^\s*width\s*=\s*(\d+)\s*$", image_block)
+    height_match = re.search(r"(?m)^\s*height\s*=\s*(\d+)\s*$", image_block)
+    if (not width_match or not height_match or image_width == 0 or image_height == 0
+            or image_width * int(height_match.group(1)) != image_height * int(width_match.group(1))):
+        raise BootIsoError("boot logo theme dimensions must preserve the PNG aspect ratio")
+    target = tree_dir / "boot/grub/kiki"
+    target.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(image, target / "logo.png")
+    shutil.copy2(background, target / "background.png")
+    shutil.copy2(theme, target / "theme.txt")
+    return {"theme": "boot/grub/kiki/theme.txt", "logo": "boot/grub/kiki/logo.png",
+            "background": "boot/grub/kiki/background.png", "logo_sha256": sha256_file(image),
+            "background_sha256": sha256_file(background), "theme_sha256": sha256_file(theme)}
+
+
 def prepare_boot_iso_tree(
     rootfs_dir: Path,
     repo_dir: Path,
@@ -5786,6 +6325,7 @@ def prepare_boot_iso_tree(
     efi_bootloader: Path | None = None,
     build_info: dict[str, Any] | None = None,
     release_name: str | None = None,
+    brand_dir: Path | None = None,
 ) -> dict[str, Any]:
     if not rootfs_dir.exists():
         raise BootIsoError(f"rootfs directory not found: {rootfs_dir}")
@@ -5800,6 +6340,7 @@ def prepare_boot_iso_tree(
         shutil.rmtree(tree_dir)
     (tree_dir / "boot" / "grub").mkdir(parents=True)
     (tree_dir / "kiki").mkdir(parents=True)
+    branding = install_boot_branding(brand_dir, tree_dir) if brand_dir is not None else None
 
     shutil.copy2(kernel, tree_dir / "boot" / "vmlinuz-kiki")
     shutil.copy2(initramfs, tree_dir / "boot" / "initramfs-kiki.img")
@@ -5840,6 +6381,10 @@ def prepare_boot_iso_tree(
     }
     if include_payload:
         copytree_contents(repo_dir, tree_dir / "kiki" / "repo")
+        if installer:
+            index = json.loads((repo_dir / f"index.{arch}.json").read_text(encoding='utf-8'))
+            catalog = ki2installcatalog.media_catalog(index)
+            (tree_dir / 'kiki/installer-catalog.json').write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         package_media = copy_package_payloads(repo_dir, packages_dir, tree_dir / "kiki" / "packages" / arch, arch)
         write_rootfs_tar(rootfs_dir, tree_dir / "kiki" / "rootfs.tar.gz")
         payload = {"rootfs": "kiki/rootfs.tar.gz", "repo": "kiki/repo"}
@@ -5870,6 +6415,7 @@ def prepare_boot_iso_tree(
         "build": build_info or {},
         "bootable": True,
         "bootloader": "grub-mkrescue",
+        "branding": branding,
         "firmware": {
             "bios": True,
             "uefi": True,
@@ -5884,7 +6430,7 @@ def prepare_boot_iso_tree(
             "interface": "gui-tui-cli" if installer else None,
             "interface_order": ["gtk4", "fullscreen-tui", "cli"] if installer else [],
             "strategy": "guided-disk-partition-format-extract-selected-packages-uefi-boot" if installer else None,
-            "confirmation": "INSTALL <target-disk>" if installer else None,
+            "confirmation": "erase-consent-checkbox-or-y/N" if installer else None,
             "install_image": install_image_meta,
             "package_selection": installer,
             "installed_initramfs": installed_initramfs_meta,
@@ -6016,7 +6562,7 @@ def build_uefi_fallback_bootloader(output: Path, work_dir: Path) -> bool:
                 "insmod gfxterm",
                 "serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1",
                 "if loadfont /boot/grub/fonts/unicode.pf2; then",
-                "    terminal_output gfxterm console serial",
+                "    terminal_output gfxterm",
                 "else",
                 "    terminal_output console serial",
                 "fi",
@@ -6041,7 +6587,7 @@ def build_uefi_fallback_bootloader(output: Path, work_dir: Path) -> bool:
         tool,
         "-O",
         "x86_64-efi",
-        "--modules=part_gpt part_msdos fat ext2 normal configfile search search_fs_file linux all_video efi_gop efi_uga gfxterm font serial terminal",
+        "--modules=part_gpt part_msdos fat ext2 normal configfile search search_fs_file linux all_video efi_gop efi_uga gfxterm gfxmenu png font serial terminal",
         "-o",
         str(output),
         f"boot/grub/grub.cfg={cfg}",
@@ -6104,6 +6650,9 @@ def command_build(args: argparse.Namespace) -> None:
     output = (args.output or default_iso_output(repo_root, release_name, suffix, args.arch, build_info)).resolve()
     label = args.label or f"KIKI_{args.profile}_{suffix}_{args.arch}".replace("-", "_").upper()
     installer = args.mode == "installer"
+    installer_catalog = None
+    if installer and not args.no_payload:
+        installer_catalog = verify_installer_default_packages(repo_dir, args.arch, args.profile)
     installed = args.mode == "installed"
     hyperv_vhdx = args.hyperv_vhdx.resolve() if args.hyperv_vhdx else default_hyperv_vhdx_output(repo_root, args.profile, args.arch).resolve()
     wrote_hyperv_vhdx = False
@@ -6112,7 +6661,10 @@ def command_build(args: argparse.Namespace) -> None:
 
     with tempfile.TemporaryDirectory(prefix="ki2bootiso-") as tmp:
         work_dir = Path(tmp)
-        kernel = find_kernel(rootfs_dir, packages_dir, work_dir / "kernel", requested=args.kernel)
+        import ki2build
+        kernel_recipe = ki2build.load_recipes(repo_root / "distro/recipes")["linux"]
+        kernel = find_kernel(rootfs_dir, packages_dir, work_dir / "kernel", requested=args.kernel,
+                             pinned_filename=ki2build.package_filename(kernel_recipe, args.arch))
         install_image = args.install_image.resolve() if args.install_image else None
         if installer:
             installed_initramfs = work_dir / "installed-initramfs-kiki.img"
@@ -6183,6 +6735,8 @@ def command_build(args: argparse.Namespace) -> None:
                 installed=installed,
                 install_image=embed_install_image,
                 packages_dir=packages_dir if installer else None,
+                media_public_key=args.media_public_key,
+                installer_catalog=installer_catalog,
             )
 
         tree_dir = args.keep_tree or work_dir / "iso-tree"
@@ -6204,6 +6758,7 @@ def command_build(args: argparse.Namespace) -> None:
             efi_bootloader=efi_bootloader,
             build_info=build_info,
             release_name=release_name,
+            brand_dir=repo_root / "assets/brand" if installer else None,
         )
         if args.dry_run:
             print(f"would build bootable ISO: {output}")
@@ -6234,6 +6789,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--label", default=None)
     parser.add_argument("--keep-tree", type=Path, default=None)
     parser.add_argument("--cc", default="gcc")
+    parser.add_argument("--media-public-key", type=Path, default=None,
+                        help="trusted Ed25519 repository PUBLIC key to embed in installer initramfs")
     parser.add_argument("--mode", choices=("smoke", "installer", "installed"), default="smoke")
     parser.add_argument("--no-payload", action="store_true")
     parser.add_argument("--no-install-image", action="store_true")

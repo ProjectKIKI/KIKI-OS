@@ -1,0 +1,18 @@
+[[recipe]]
+name = "kiki-x11-runtime"
+version = "0.1.0"
+release = 1
+summary = "Opt-in Xorg, Xvfb and minimal X11 terminal session (host ABI bootstrap)"
+license = "MIT AND X11 AND BSD-3-Clause AND LGPL-2.1-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "build/ki2/host-x11/rootfs"
+inputs = ["tools/ki2x11.py", "distro/sources/kiki-x11"]
+[recipe.dependencies]
+build = []
+runtime = ["glibc", "kiki-installer-gtk", "util-linux", "coreutils", "bash", "python"]
+[recipe.build]
+system = "copy"
+skip_sysroot = true

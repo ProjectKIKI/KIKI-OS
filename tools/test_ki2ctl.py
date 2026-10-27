@@ -4,6 +4,7 @@ import hmac
 import hashlib
 import http.server
 import json
+import os
 import subprocess
 import sys
 import tarfile
@@ -14,6 +15,7 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "distro/sources/ki2ctl/usr/bin/ki2ctl"
+SCRIPT = Path(os.environ.get("KIKI_TEST_KI2CTL_SCRIPT", str(SCRIPT))).resolve()
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
@@ -22,6 +24,46 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
 
 
 class Ki2CtlTests(unittest.TestCase):
+    def test_info_transactions_preserve_index_and_rollback_hooks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo, target = base / "repo", base / "target"
+            packages = repo / "packages"
+            packages.mkdir(parents=True)
+            artifacts = []
+            for name in ("first-doc", "second-doc", "third-doc"):
+                package = packages / (name + "-1-1.x86_64.ki2")
+                write_ki2_package(package, name=name, dependencies=[], files={
+                    "rootfs/usr/share/info/dir": b"package index",
+                    "rootfs/usr/share/info/" + name + ".info": b"fixture manual"})
+                artifacts.append(package)
+            broken = packages / "broken-1-1.x86_64.ki2"
+            write_broken_ki2_package(broken)
+            artifacts.append(broken)
+            write_index(repo / "repo/index.x86_64.json", artifacts)
+            index = target / "usr/share/info/dir"
+            index.parent.mkdir(parents=True)
+            index.write_bytes(b"shared index must survive")
+            self.run_ki2ctl(target, "repo", "set", str(repo))
+            self.run_ki2ctl(target, "update")
+            self.run_ki2ctl_failure(target, "install", "third-doc", "broken")
+            self.assertFalse((target / "var/lib/ki2/pending-hooks.json").exists())
+            self.assertFalse((index.parent / "third-doc.info").exists())
+            self.run_ki2ctl(target, "install", "first-doc", "second-doc")
+            self.assertEqual(index.read_bytes(), b"shared index must survive")
+            self.run_ki2ctl(target, "remove", "first-doc")
+            self.assertFalse((index.parent / "first-doc.info").exists())
+            self.assertTrue((index.parent / "second-doc.info").is_file())
+            self.assertEqual(index.read_bytes(), b"shared index must survive")
+            hooks = target / "var/lib/ki2/pending-hooks.json"
+            hooks_before = hooks.read_bytes()
+            db_before = json.loads((target / "var/lib/ki2/installed.json").read_text())
+            self.run_ki2ctl_failure(target, "install", "third-doc", "broken")
+            self.assertFalse((index.parent / "third-doc.info").exists())
+            self.assertEqual(index.read_bytes(), b"shared index must survive")
+            self.assertEqual(json.loads((target / "var/lib/ki2/installed.json").read_text()), db_before)
+            self.assertEqual(hooks.read_bytes(), hooks_before)
+
     def run_ki2ctl(self, root, *args):
         command = [sys.executable, str(SCRIPT), "--root", str(root), *args]
         result = subprocess.run(command, text=True, capture_output=True, check=False)
@@ -432,6 +474,7 @@ class Ki2CtlTests(unittest.TestCase):
                     "rootfs/usr/lib/libdemo.so.1": b"lib\n",
                     "rootfs/usr/lib/systemd/system/demo.service": b"[Service]\nExecStart=/bin/true\n",
                     "rootfs/usr/lib/tmpfiles.d/demo.conf": b"d /run/demo 0755 root root -\n",
+                    "rootfs/usr/share/glib-2.0/schemas/demo.gschema.xml": b"<schemalist/>\n",
                 },
             )
             write_index(repo_index / "index.x86_64.json", [package])
@@ -441,7 +484,7 @@ class Ki2CtlTests(unittest.TestCase):
             self.run_ki2ctl(target, "install", "servicepkg")
             hooks = json.loads((target / "var/lib/ki2/pending-hooks.json").read_text(encoding="utf-8"))
             actions = {item["action"] for item in hooks["hooks"]}
-            self.assertEqual(actions, {"ldconfig", "systemd-daemon-reload", "systemd-tmpfiles-create"})
+            self.assertEqual(actions, {"ldconfig", "systemd-daemon-reload", "systemd-tmpfiles-create", "glib-compile-schemas"})
             listing = self.run_ki2ctl(target, "hooks", "list").stdout
             self.assertIn("ldconfig", listing)
             dry_run = self.run_ki2ctl(target, "hooks", "apply", "--dry-run").stdout

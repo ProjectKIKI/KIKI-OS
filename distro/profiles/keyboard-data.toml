@@ -1,0 +1,5 @@
+[profile]
+name = "keyboard-data"
+description = "Keyboard configuration data build profile"
+arch = "x86_64"
+packages = ["xkeyboard-config"]

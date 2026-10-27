@@ -8,7 +8,7 @@
 [[recipe]]
 name = "base-files"
 version = "0.1.0"
-release = 19
+release = 22
 summary = "KIKI filesystem skeleton, os-release, and default system layout"
 license = "GPL-3.0-or-later"
 tier = "base"
@@ -66,7 +66,7 @@ install = [
 [[recipe]]
 name = "glibc"
 version = "2.39"
-release = 1
+release = 2
 summary = "GNU C library"
 license = "LGPL-2.1-or-later"
 tier = "base"
@@ -82,7 +82,8 @@ runtime = []
 system = "gnu"
 configure = [
   "mkdir -p ${KI2_BUILD_DIR}/glibc",
-  "cd ${KI2_BUILD_DIR}/glibc && ${KI2_SOURCE_DIR}/configure --prefix=/usr --host=${KI2_TARGET_TRIPLE} --build=${KI2_BUILD_TRIPLE} --enable-kernel=5.15 --with-headers=${KI2_SYSROOT}/usr/include"
+  # KIKI has no target libselinux; host autodetection must not add it to the build.
+  "cd ${KI2_BUILD_DIR}/glibc && ${KI2_SOURCE_DIR}/configure --prefix=/usr --host=${KI2_TARGET_TRIPLE} --build=${KI2_BUILD_TRIPLE} --enable-kernel=5.15 --with-headers=${KI2_SYSROOT}/usr/include --without-selinux"
 ]
 compile = ["make -C ${KI2_BUILD_DIR}/glibc -j${KI2_JOBS}"]
 install = ["make -C ${KI2_BUILD_DIR}/glibc DESTDIR=${KI2_DESTDIR} install"]
@@ -115,7 +116,7 @@ install = [
 [[recipe]]
 name = "libxcrypt"
 version = "4.4.36"
-release = 3
+release = 4
 summary = "Modern password hashing library providing libcrypt"
 license = "LGPL-2.1-or-later"
 tier = "base"
@@ -129,7 +130,7 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
-configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --enable-hashes=strong,glibc"]
+configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --libdir=/usr/lib --enable-hashes=strong,glibc"]
 compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
 install = [
   "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
@@ -139,7 +140,7 @@ install = [
 [[recipe]]
 name = "expat"
 version = "2.6.2"
-release = 3
+release = 4
 summary = "XML parser required by D-Bus"
 license = "MIT"
 tier = "base"
@@ -154,8 +155,8 @@ runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
 sysroot_exclude = ["glibc"]
-configure_options = ["--disable-static"]
-configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --disable-static"]
+configure_options = ["--libdir=/usr/lib", "--disable-static"]
+configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --libdir=/usr/lib --disable-static"]
 compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
 install = [
   "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
@@ -353,7 +354,7 @@ system = "gnu"
 [[recipe]]
 name = "dbus"
 version = "1.14.10"
-release = 7
+release = 9
 summary = "System message bus"
 license = "AFL-2.1 OR GPL-2.0-or-later"
 tier = "base"
@@ -364,14 +365,14 @@ url = "https://dbus.freedesktop.org/releases/dbus/dbus-1.14.10.tar.xz"
 sha256 = "ba1f21d2bd9d339da2d4aa8780c09df32fea87998b73da24f49ab9df1e36a50f"
 [recipe.dependencies]
 build = ["expat"]
-runtime = ["glibc", "expat"]
+runtime = ["glibc", "expat", "systemd"]
 [recipe.build]
 system = "gnu"
-sysroot_exclude = ["glibc"]
-configure_options = ["--sysconfdir=/etc", "--localstatedir=/var", "--runstatedir=/run", "--with-system-socket=/run/dbus/system_bus_socket", "--disable-static"]
+sysroot_exclude = ["glibc", "systemd"]
+configure_options = ["--libdir=/usr/lib", "--sysconfdir=/etc", "--localstatedir=/var", "--runstatedir=/run", "--with-system-socket=/run/dbus/system_bus_socket", "--disable-static", "--enable-systemd", "--with-systemdsystemunitdir=no", "--with-systemduserunitdir=no"]
 configure = [
   "find ${KI2_SYSROOT}/usr/lib -type f -name '*.la' -delete",
-  "cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --runstatedir=/run --with-system-socket=/run/dbus/system_bus_socket --disable-static",
+  "cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --libdir=/usr/lib --sysconfdir=/etc --localstatedir=/var --runstatedir=/run --with-system-socket=/run/dbus/system_bus_socket --disable-static --enable-systemd --with-systemdsystemunitdir=no --with-systemduserunitdir=no",
   "sed -i 's/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=\"\"/' ${KI2_SOURCE_DIR}/libtool"
 ]
 compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
@@ -384,11 +385,15 @@ env.CPPFLAGS = "${KI2_SYSROOT_CPPFLAGS}"
 env.CFLAGS = "${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=${KI2_WORK}=/usr/src/dbus -fdebug-prefix-map=${KI2_WORK}=/usr/src/dbus -ffile-prefix-map=${KI2_SYSROOT}=/usr -fdebug-prefix-map=${KI2_SYSROOT}=/usr"
 env.LDFLAGS = "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
 env.TMPDIR = "/tmp"
+# Phase-0 host SDK, matching this recipe's existing host-glibc bootstrap.
+# Runtime libsystemd is provided by the target systemd package.
+env.SYSTEMD_CFLAGS = "-I/usr/include"
+env.SYSTEMD_LIBS = "-lsystemd"
 
 [[recipe]]
 name = "systemd"
 version = "255.7"
-release = 3
+release = 5
 summary = "System and service manager for KIKI OS"
 license = "LGPL-2.1-or-later"
 tier = "base"
@@ -399,7 +404,9 @@ url = "https://github.com/systemd/systemd-stable/archive/refs/tags/v255.7.tar.gz
 sha256 = "da29f2490c192ca743511098b1d15e385b1b5e7744979661dc30514c1ac61f0e"
 [recipe.dependencies]
 build = []
-runtime = ["glibc", "acl", "dbus", "kmod", "libcap", "libseccomp", "libxcrypt", "openssl", "util-linux", "xz", "zlib", "zstd"]
+# PID 1 and libsystemd do not depend on dbus-daemon. Minimal/server groups
+# select both; dbus-daemon depends on libsystemd, avoiding a dependency cycle.
+runtime = ["glibc", "acl", "kmod", "libcap", "libseccomp", "libxcrypt", "openssl", "util-linux", "xz", "zlib", "zstd"]
 [recipe.build]
 system = "meson"
 patches = ["distro/patches/systemd/0001-include-linux-mount-before-fallback-macros.patch"]
@@ -412,7 +419,10 @@ configure_options = [
   "-Dman=false",
   "-Dtests=false",
   "-Ddbus-interfaces-dir=no",
-  "-Dc_args=-Wno-error=shift-overflow"
+  "-Ddbuspolicydir=/usr/share/dbus-1/system.d",
+  "-Ddbussystemservicedir=/usr/share/dbus-1/system-services",
+  "-Ddbussessionservicedir=/usr/share/dbus-1/services",
+  "-Dc_args='--sysroot=${KI2_SYSROOT} -Wno-error=shift-overflow'"
 ]
 
 [[recipe]]
@@ -436,7 +446,7 @@ system = "gnu"
 [[recipe]]
 name = "busybox"
 version = "1.36.1"
-release = 1
+release = 2
 summary = "Small recovery userland"
 license = "GPL-2.0-only"
 tier = "shell"
@@ -455,12 +465,17 @@ configure = [
   "sed -i 's/^CONFIG_TC=y/# CONFIG_TC is not set/' ${KI2_SOURCE_DIR}/.config"
 ]
 compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
-install = ["make -C ${KI2_SOURCE_DIR} CONFIG_PREFIX=${KI2_DESTDIR} install"]
+install = [
+  "make -C ${KI2_SOURCE_DIR} CONFIG_PREFIX=${KI2_DESTDIR} install",
+  # systemd requires util-linux swapon --fixpgsz, not the BusyBox applet.
+  # Keep applets callable through /bin/busybox for the recovery initramfs.
+  "rm -f ${KI2_DESTDIR}/sbin/swapon ${KI2_DESTDIR}/sbin/swapoff ${KI2_DESTDIR}/sbin/mkswap"
+]
 
 [[recipe]]
 name = "coreutils"
 version = "9.5"
-release = 1
+release = 2
 summary = "GNU core file, text, and shell utilities"
 license = "GPL-3.0-or-later"
 tier = "shell"
@@ -474,11 +489,13 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
+# This libc-only package must not inherit optional libraries from the build host.
+configure_options = ["--without-selinux", "--without-libgmp", "--disable-acl", "--disable-xattr", "--disable-libcap"]
 
 [[recipe]]
 name = "findutils"
 version = "4.10.0"
-release = 1
+release = 2
 summary = "GNU find, xargs, and locate utilities"
 license = "GPL-3.0-or-later"
 tier = "shell"
@@ -492,6 +509,7 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
+configure_options = ["--without-selinux"]
 
 [[recipe]]
 name = "grep"
@@ -514,7 +532,7 @@ system = "gnu"
 [[recipe]]
 name = "sed"
 version = "4.9"
-release = 1
+release = 2
 summary = "GNU stream editor"
 license = "GPL-3.0-or-later"
 tier = "shell"
@@ -528,11 +546,12 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
+configure_options = ["--without-selinux", "--disable-acl"]
 
 [[recipe]]
 name = "gawk"
 version = "5.3.0"
-release = 1
+release = 2
 summary = "GNU awk"
 license = "GPL-3.0-or-later"
 tier = "shell"
@@ -546,11 +565,13 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
+# Keep the declared libc-only runtime independent of host MPFR/readline.
+configure_options = ["--without-mpfr", "--without-readline"]
 
 [[recipe]]
 name = "tar"
 version = "1.35"
-release = 1
+release = 2
 summary = "GNU tar archive tool"
 license = "GPL-3.0-or-later"
 tier = "archive"
@@ -564,6 +585,7 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
+configure_options = ["--without-selinux", "--without-posix-acls", "--without-xattrs"]
 
 [[recipe]]
 name = "gzip"
@@ -586,7 +608,7 @@ system = "gnu"
 [[recipe]]
 name = "xz"
 version = "5.6.2"
-release = 3
+release = 4
 summary = "XZ compression utilities and liblzma"
 license = "0BSD AND LGPL-2.1-or-later"
 tier = "archive"
@@ -601,8 +623,8 @@ runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
 sysroot_exclude = ["glibc"]
-configure_options = ["--disable-static"]
-configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --disable-static"]
+configure_options = ["--libdir=/usr/lib", "--disable-static"]
+configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --libdir=/usr/lib --disable-static"]
 compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
 install = [
   "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
@@ -707,7 +729,7 @@ system = "cmake"
 [[recipe]]
 name = "python"
 version = "3.12.4"
-release = 5
+release = 6
 summary = "Python runtime for installer and agent tooling"
 license = "Python-2.0"
 tier = "runtime"
@@ -722,10 +744,10 @@ runtime = ["glibc", "expat", "libffi", "openssl", "xz", "zlib"]
 [recipe.build]
 system = "gnu"
 sysroot_exclude = ["glibc"]
-configure_options = ["--enable-shared", "--without-static-libpython", "--disable-test-modules", "--without-ensurepip", "--with-system-expat", "--with-openssl=/usr"]
+configure_options = ["--libdir=/usr/lib", "--with-platlibdir=lib", "--enable-shared", "--without-static-libpython", "--disable-test-modules", "--without-ensurepip", "--with-system-expat", "--with-openssl=/usr"]
 configure = [
   "mkdir -p ${KI2_BUILD_DIR}/python",
-  "cd ${KI2_BUILD_DIR}/python && ../../source/Python-3.12.4/configure --prefix=/usr --enable-shared --without-static-libpython --disable-test-modules --without-ensurepip --with-system-expat --with-openssl=/usr"
+  "cd ${KI2_BUILD_DIR}/python && ../../source/Python-3.12.4/configure --prefix=/usr --libdir=/usr/lib --with-platlibdir=lib --enable-shared --without-static-libpython --disable-test-modules --without-ensurepip --with-system-expat --with-openssl=/usr"
 ]
 compile = ["make -C ${KI2_BUILD_DIR}/python -j${KI2_JOBS}"]
 install = [
@@ -891,7 +913,7 @@ configure_options = ["--sysconfdir=/etc/ssh", "--with-privsep-path=/var/lib/sshd
 [[recipe]]
 name = "curl"
 version = "8.8.0"
-release = 1
+release = 5
 summary = "URL transfer utility"
 license = "curl"
 tier = "network"
@@ -902,15 +924,28 @@ url = "https://curl.se/download/curl-8.8.0.tar.xz"
 sha256 = "0f58bb95fc330c8a46eeb3df5701b0d90c9d9bfcc42bd1cd08791d12551d4400"
 [recipe.dependencies]
 build = []
-runtime = ["glibc", "openssl", "zlib", "ca-certificates"]
+runtime = ["glibc", "openssl", "zlib", "zstd", "ca-certificates"]
 [recipe.build]
 system = "gnu"
-configure_options = ["--with-openssl", "--disable-ldap", "--disable-ldaps"]
+configure = [
+  'sed -i "s/@LDFLAGS@ //g" "${KI2_SOURCE_DIR}/curl-config.in"',
+  'cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --with-openssl --with-zstd --with-ca-bundle=/etc/ssl/certs/ca-certificates.crt --without-ca-path --disable-ldap --disable-ldaps',
+]
+compile = ['make -C "${KI2_SOURCE_DIR}" -j "${KI2_JOBS}"']
+install = [
+  'make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install',
+  'rm -f "${KI2_DESTDIR}/usr/lib/libcurl.la"',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libcurl.so.4" "${KI2_DESTDIR}/usr/bin/curl" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CC = "cc"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
 
 [[recipe]]
 name = "ki2ctl"
 version = "0.1.0"
-release = 8
+release = 15
 summary = "KIKI HTTP package and package-group manager"
 license = "GPL-3.0-or-later"
 tier = "kiki"
@@ -920,7 +955,7 @@ type = "local"
 path = "distro/sources/ki2ctl"
 [recipe.dependencies]
 build = []
-runtime = ["python"]
+runtime = ["python", "install-info"]
 [recipe.build]
 system = "copy"
 skip_sysroot = true
@@ -970,7 +1005,7 @@ install = [
 [[recipe]]
 name = "kiki-netconfig"
 version = "0.1.0"
-release = 1
+release = 2
 summary = "KIKI systemd-networkd configuration helper"
 license = "GPL-3.0-or-later"
 tier = "kiki"
@@ -980,15 +1015,15 @@ type = "local"
 path = "distro/sources/kiki-netconfig"
 [recipe.dependencies]
 build = []
-runtime = ["python", "systemd"]
+runtime = ["python", "systemd", "iproute2"]
 [recipe.build]
 system = "copy"
 
 [[recipe]]
 name = "kiki-installer-tui"
 version = "0.1.0"
-release = 8
-summary = "Go-based KIKI full-screen install plan TUI"
+release = 16
+summary = "Go-based KIKI installer TUI with execution and progress reporting"
 license = "GPL-3.0-or-later"
 tier = "kiki"
 architectures = ["x86_64"]

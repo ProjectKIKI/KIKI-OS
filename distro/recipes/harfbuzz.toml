@@ -1,0 +1,43 @@
+[[recipe]]
+name = "harfbuzz"
+version = "14.4.0"
+release = 2
+summary = "OpenType text shaping with GLib and FreeType integration"
+license = "MIT"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://github.com/harfbuzz/harfbuzz/releases/download/14.4.0/harfbuzz-14.4.0.tar.xz"
+file = "harfbuzz-14.4.0.tar.xz"
+sha256 = "2357ed966c6ced7bfa720b0640c0231065af01158fbea215093ffa15aed44371"
+[recipe.dependencies]
+build = ["linux-headers", "gobject-introspection"]
+runtime = ["glib", "freetype", "libstdcxx", "libgcc", "gobject-introspection"]
+[recipe.build]
+system = "meson"
+inputs = ["distro/specs/harfbuzz-cross.ini", "distro/scripts/ki2-target-pkg-config", "distro/scripts/ki2-target-run", "distro/scripts/ki2-target-python3", "distro/scripts/ki2-target-g-ir-scanner", "distro/scripts/ki2-target-g-ir-compiler"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3" "${KI2_BUILD_DIR}/target-python3"',
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-scanner" "${KI2_BUILD_DIR}/tools/g-ir-scanner"',
+  'sed -i "1c #!/usr/bin/env ${KI2_BUILD_DIR}/target-python3" "${KI2_SYSROOT}/usr/bin/g-ir-scanner"',
+  'install -m755 "${KI2_SYSROOT}/usr/bin/g-ir-compiler" "${KI2_BUILD_DIR}/g-ir-compiler.real"',
+  'install -m755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-compiler" "${KI2_SYSROOT}/usr/bin/g-ir-compiler"',
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"',
+  'install -m644 "${KI2_REPO_ROOT}/distro/specs/harfbuzz-cross.ini" "${KI2_BUILD_DIR}/cross.ini"',
+  'sed -i -e "s|@BUILD@|${KI2_BUILD_DIR}|g" -e "s|@REPO@|${KI2_REPO_ROOT}|g" "${KI2_BUILD_DIR}/cross.ini"',
+  'PATH="${KI2_BUILD_DIR}/tools:$PATH" meson setup "${KI2_BUILD_DIR}/harfbuzz" "${KI2_SOURCE_DIR}" --cross-file "${KI2_BUILD_DIR}/cross.ini" --prefix=/usr --libdir=lib --buildtype=release --wrap-mode=nofallback -Ddefault_library=shared -Dglib=enabled -Dgobject=enabled -Dfreetype=enabled -Dpng=enabled -Dzlib=enabled -Dwith_libstdcxx=false -Dintrospection=enabled -Ddocs=disabled -Dcairo=disabled -Dchafa=disabled -Dicu=disabled -Dgpu_demo=disabled -Dtests=enabled',
+]
+compile = ['meson compile -C "${KI2_BUILD_DIR}/harfbuzz" -j "${KI2_JOBS}"']
+install = [
+  'DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/harfbuzz"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/COPYING" "${KI2_DESTDIR}/usr/share/licenses/harfbuzz/COPYING"',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libharfbuzz.so.0" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+KI2_USE_TARGET_LOADER = "1"
+GI_CROSS_LAUNCHER = "/bin/sh ${KI2_REPO_ROOT}/distro/scripts/ki2-target-run"
+KI2_SYSROOT_LIBRARY_PATH = "${KI2_BUILD_DIR}/harfbuzz/src:${KI2_SYSROOT_LIBRARY_PATH}"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+CXXFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"

@@ -8,23 +8,64 @@
       "requires": [],
       "packages": {
         "mandatory": [
-          "base-files", "linux", "glibc", "libxcrypt", "zlib", "expat", "openssl",
-          "libcap", "libseccomp", "acl", "attr", "ncurses", "util-linux", "cfdisk",
-          "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils",
-          "grep", "sed", "gawk", "tar", "gzip", "xz", "zstd", "python", "e2fsprogs",
-          "shadow", "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl",
-          "kiki-agent", "kiki-netconfig", "kiki-installer-tui"
+          "base-files",
+          "linux",
+          "glibc",
+          "tzdata",
+          "libxcrypt",
+          "zlib",
+          "expat",
+          "openssl",
+          "libcap",
+          "libseccomp",
+          "acl",
+          "attr",
+          "ncurses",
+          "util-linux",
+          "cfdisk",
+          "kmod",
+          "dbus",
+          "systemd",
+          "bash",
+          "busybox",
+          "coreutils",
+          "findutils",
+          "grep",
+          "sed",
+          "gawk",
+          "tar",
+          "gzip",
+          "xz",
+          "zstd",
+          "python",
+          "e2fsprogs",
+          "shadow",
+          "sudo",
+          "iproute2",
+          "ca-certificates",
+          "openssh",
+          "curl",
+          "ki2ctl",
+          "kiki-agent",
+          "kiki-netconfig",
+          "kiki-installer-tui"
         ],
         "default": [],
         "optional": []
       },
       "services": {
         "enable": [
-          "dbus.service", "kiki-boot-prepare.service", "getty@tty1.service",
-          "systemd-logind.service", "systemd-networkd.service", "systemd-resolved.service",
-          "sshd.service", "kiki-agent.service"
+          "dbus.service",
+          "kiki-boot-prepare.service",
+          "getty@tty1.service",
+          "systemd-logind.service",
+          "systemd-networkd.service",
+          "systemd-resolved.service",
+          "sshd.service",
+          "kiki-agent.service"
         ]
-      }
+      },
+      "name_en": "Minimal system"
     },
     {
       "id": "ai-console",
@@ -32,14 +73,55 @@
       "description_ko": "tty1 한국어 AI 콘솔과 CPU 기반 GGUF llama.cpp 런타임",
       "requires": [],
       "packages": {
-        "mandatory": ["kiki-ai-console"],
-        "default": ["llama-cpp"],
+        "mandatory": [
+          "kiki-ai-console",
+          "kiki-kmscon"
+        ],
+        "default": [
+          "llama-cpp"
+        ],
         "optional": []
       },
       "services": {
-        "enable": ["kiki-llama-server.service", "kiki-ai-console@tty1.service", "getty@tty2.service"],
-        "disable": ["getty@tty1.service"]
-      }
+        "enable": [
+          "kiki-llama-server.service",
+          "kiki-ai-console-kmscon@tty1.service",
+          "getty@tty2.service"
+        ],
+        "disable": [
+          "getty@tty1.service",
+          "kiki-ai-console@tty1.service"
+        ]
+      },
+      "name_en": "Local AI console"
+    },
+    {
+      "id": "desktop-gnome",
+      "name_ko": "GNOME 데스크톱",
+      "description_ko": "기존 검증 GNOME 50 · GDM · Wayland 환경 (네이티브 Mesa 후보 패키지 필요)",
+      "requires": [
+        "minimal"
+      ],
+      "packages": {
+        "mandatory": [
+          "kiki-gnome-desktop"
+        ],
+        "default": [],
+        "optional": []
+      },
+      "services": {
+        "enable": [
+          "gdm.service",
+          "getty@tty2.service"
+        ],
+        "disable": [
+          "getty@tty1.service",
+          "kiki-ai-console@tty1.service",
+          "kiki-ai-console-kmscon@tty1.service"
+        ],
+        "default_target": "graphical.target"
+      },
+      "name_en": "GNOME desktop"
     },
     {
       "id": "installer-gui",
@@ -47,30 +129,47 @@
       "description_ko": "GTK4 한국어 설치 화면과 Cage Wayland 키오스크 런타임",
       "requires": [],
       "packages": {
-        "mandatory": ["kiki-installer-gtk"],
+        "mandatory": [
+          "kiki-installer-gtk"
+        ],
         "default": [],
         "optional": []
       },
       "services": {
         "enable": []
-      }
+      },
+      "name_en": "Graphical installer",
+      "selectable": false
     },
     {
       "id": "server",
       "name_ko": "일반 서버",
       "description_ko": "방화벽, 시간 동기화와 서버 네트워크 진단 도구",
-      "requires": ["minimal"],
+      "requires": [
+        "minimal"
+      ],
       "packages": {
         "mandatory": [],
         "default": [
-          "nftables", "iptables", "conntrack-tools", "firewalld", "bridge-utils",
-          "socat", "ethtool", "chrony"
+          "nftables",
+          "iptables",
+          "conntrack-tools",
+          "firewalld",
+          "bridge-utils",
+          "socat",
+          "ethtool",
+          "chrony"
         ],
         "optional": []
       },
       "services": {
-        "enable": ["nftables.service", "firewalld.service", "chronyd.service"]
-      }
+        "enable": [
+          "nftables.service",
+          "firewalld.service",
+          "chronyd.service"
+        ]
+      },
+      "name_en": "General server"
     },
     {
       "id": "ai-console-remote",
@@ -78,14 +177,25 @@
       "description_ko": "원격 OpenAI 호환 API를 사용하는 tty1 한국어 AI 콘솔",
       "requires": [],
       "packages": {
-        "mandatory": ["kiki-ai-console"],
+        "mandatory": [
+          "kiki-ai-console",
+          "kiki-kmscon"
+        ],
         "default": [],
         "optional": []
       },
       "services": {
-        "enable": ["kiki-ai-console@tty1.service", "getty@tty2.service"],
-        "disable": ["getty@tty1.service", "kiki-llama-server.service"]
-      }
+        "enable": [
+          "kiki-ai-console-kmscon@tty1.service",
+          "getty@tty2.service"
+        ],
+        "disable": [
+          "getty@tty1.service",
+          "kiki-llama-server.service",
+          "kiki-ai-console@tty1.service"
+        ]
+      },
+      "name_en": "Remote AI console"
     },
     {
       "id": "container-containerd",
@@ -93,13 +203,22 @@
       "description_ko": "containerd와 runc 기반 OCI 컨테이너 실행 환경",
       "requires": [],
       "packages": {
-        "mandatory": ["containerd", "runc"],
-        "default": ["cni-plugins", "cri-tools"],
+        "mandatory": [
+          "containerd",
+          "runc"
+        ],
+        "default": [
+          "cni-plugins",
+          "cri-tools"
+        ],
         "optional": []
       },
       "services": {
-        "enable": ["containerd.service"]
-      }
+        "enable": [
+          "containerd.service"
+        ]
+      },
+      "name_en": "containerd runtime"
     },
     {
       "id": "container-crio",
@@ -107,44 +226,204 @@
       "description_ko": "Kubernetes용 CRI-O, conmon, crun 실행 환경",
       "requires": [],
       "packages": {
-        "mandatory": ["cri-o", "conmon", "crun", "kube-node-config"],
+        "mandatory": [
+          "cri-o",
+          "conmon",
+          "crun",
+          "kube-node-config"
+        ],
         "default": [],
         "optional": []
       },
       "services": {
-        "enable": ["crio.service"]
-      }
+        "enable": [
+          "crio.service"
+        ]
+      },
+      "name_en": "CRI-O runtime"
     },
     {
       "id": "kubernetes-node",
       "name_ko": "Kubernetes 노드",
       "description_ko": "컨트롤 플레인과 워커 노드가 공유하는 Kubernetes 도구",
-      "requires": ["minimal"],
+      "requires": [
+        "minimal"
+      ],
       "packages": {
-        "mandatory": ["kubelet", "kubectl", "kubeadm", "kiki-kubeadm"],
+        "mandatory": [
+          "kubelet",
+          "kubectl",
+          "kubeadm",
+          "kiki-kubeadm"
+        ],
         "default": [
-          "bridge-utils", "cni-plugins", "cri-tools", "conntrack-tools", "firewalld",
-          "nftables", "iptables", "socat", "ethtool", "chrony"
+          "bridge-utils",
+          "cni-plugins",
+          "cri-tools",
+          "conntrack-tools",
+          "firewalld",
+          "nftables",
+          "iptables",
+          "socat",
+          "ethtool",
+          "chrony"
         ],
         "optional": []
       },
       "services": {
-        "enable": ["kubelet.service", "chronyd.service"]
-      }
+        "enable": [
+          "kubelet.service",
+          "chronyd.service"
+        ]
+      },
+      "name_en": "Kubernetes tools"
     },
     {
-      "id": "development",
-      "name_ko": "개발 도구",
-      "description_ko": "KIKI 패키지 및 소프트웨어 빌드를 위한 기본 도구",
-      "requires": ["minimal"],
+      "id": "systemd-journal-extensions",
+      "name_ko": "systemd 저널 확장",
+      "description_ko": "선택형 저널 HTTP 게이트웨이와 원격 송수신 도구; 네트워크 서비스는 자동 활성화하지 않음",
+      "requires": [
+        "minimal"
+      ],
       "packages": {
-        "mandatory": ["make"],
+        "mandatory": [
+          "systemd-journal-gatewayd",
+          "systemd-journal-transport"
+        ],
         "default": [],
         "optional": []
       },
       "services": {
         "enable": []
-      }
+      },
+      "name_en": "Journal tools"
+    },
+    {
+      "id": "development",
+      "name_ko": "개발 도구",
+      "description_ko": "KIKI 패키지 및 소프트웨어 빌드를 위한 기본 도구",
+      "requires": [
+        "minimal"
+      ],
+      "packages": {
+        "mandatory": [
+          "make"
+        ],
+        "default": [],
+        "optional": []
+      },
+      "services": {
+        "enable": []
+      },
+      "name_en": "Development tools"
+    },
+    {
+      "id": "xorg-runtime",
+      "name_ko": "Xorg 런타임",
+      "description_ko": "선택형 Xorg 서버와 최소 X11 터미널 세션; LightDM과 데스크톱은 포함하지 않음",
+      "requires": [
+        "minimal"
+      ],
+      "packages": {
+        "mandatory": [
+          "kiki-x11-runtime"
+        ],
+        "default": [],
+        "optional": []
+      },
+      "services": {
+        "enable": []
+      },
+      "name_en": "Xorg session"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "server-core",
+      "name_ko": "일반 서버",
+      "name_en": "General server",
+      "groups": [
+        "server"
+      ],
+      "ai_default": "local"
+    },
+    {
+      "id": "minimal-systemd",
+      "name_ko": "최소 시스템",
+      "name_en": "Minimal system",
+      "groups": [
+        "minimal"
+      ],
+      "ai_default": "local"
+    },
+    {
+      "id": "kiki-kube-bootstrap",
+      "name_ko": "첫 컨트롤 플레인 · CRI-O",
+      "name_en": "First control plane · CRI-O",
+      "groups": [
+        "kubernetes-node",
+        "container-crio"
+      ],
+      "ai_default": "local"
+    },
+    {
+      "id": "kiki-kube-bootstrap-containerd",
+      "name_ko": "첫 컨트롤 플레인 · containerd",
+      "name_en": "First control plane · containerd",
+      "groups": [
+        "kubernetes-node",
+        "container-containerd"
+      ],
+      "ai_default": "local"
+    },
+    {
+      "id": "kiki-kube-control",
+      "name_ko": "추가 컨트롤 플레인 · CRI-O",
+      "name_en": "Additional control plane · CRI-O",
+      "groups": [
+        "kubernetes-node",
+        "container-crio"
+      ],
+      "ai_default": "local"
+    },
+    {
+      "id": "kiki-kube-control-containerd",
+      "name_ko": "추가 컨트롤 플레인 · containerd",
+      "name_en": "Additional control plane · containerd",
+      "groups": [
+        "kubernetes-node",
+        "container-containerd"
+      ],
+      "ai_default": "local"
+    },
+    {
+      "id": "kiki-kube-compute",
+      "name_ko": "워커 노드 · CRI-O",
+      "name_en": "Worker node · CRI-O",
+      "groups": [
+        "kubernetes-node",
+        "container-crio"
+      ],
+      "ai_default": "local"
+    },
+    {
+      "id": "kiki-kube-compute-containerd",
+      "name_ko": "워커 노드 · containerd",
+      "name_en": "Worker node · containerd",
+      "groups": [
+        "kubernetes-node",
+        "container-containerd"
+      ],
+      "ai_default": "local"
+    },
+    {
+      "id": "desktop-gnome",
+      "name_ko": "GNOME 데스크톱",
+      "name_en": "GNOME desktop",
+      "groups": [
+        "desktop-gnome"
+      ],
+      "ai_default": "off"
     }
   ]
 }

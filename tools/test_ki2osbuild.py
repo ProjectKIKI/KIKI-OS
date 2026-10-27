@@ -2,11 +2,67 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+import sys
+from unittest import mock
 
 import ki2osbuild
 
 
 class Ki2OsBuildTests(unittest.TestCase):
+    def test_rootfs_override_reaches_assembly_and_iso(self):
+        args = ki2osbuild.build_parser().parse_args(["plan", "--iso", "--rootfs-dir", "/tmp/kiki-rootfs"])
+        ctx = ki2osbuild.make_context(args)
+        commands = [step.command for step in ki2osbuild.build_steps(ctx) if "--rootfs-dir" in step.command]
+        self.assertEqual(len(commands), 2)
+        for command in commands:
+            self.assertEqual(command[command.index("--rootfs-dir") + 1], str(ctx.rootfs_dir))
+
+    def test_build_dir_applies_only_to_commands_supporting_build_paths(self):
+        args = ki2osbuild.build_parser().parse_args(["plan", "--build-dir", "/tmp/kiki-build-work"])
+        ctx = ki2osbuild.make_context(args)
+        commands = [step.command for step in ki2osbuild.build_steps(ctx) if "tools/ki2build.py" in step.command]
+        for command in commands:
+            is_build_path_command = any(name in command for name in ("build", "repo-index", "rootfs"))
+            self.assertEqual("--build-dir" in command, is_build_path_command)
+            if is_build_path_command:
+                index = command.index("--build-dir")
+                self.assertEqual(command[index + 1], str(ctx.build_dir))
+            ki2osbuild.ki2build.build_parser().parse_args(command[2:])
+
+    def test_failure_manifest_includes_failed_step_code_log_and_skipped_tail(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            args = ki2osbuild.build_parser().parse_args(["run", "--run-dir", tmp])
+            steps = [ki2osbuild.Step("fail fixture", [sys.executable, "-c", "print('failure details'); raise SystemExit(7)"]),
+                     ki2osbuild.Step("unreachable", ["must-not-run"])]
+            with mock.patch.object(ki2osbuild, "build_steps", return_value=steps):
+                with self.assertRaises(ki2osbuild.OsBuildError):
+                    ki2osbuild.command_run(args)
+            manifest = json.loads((Path(tmp) / "manifest.json").read_text())
+            self.assertEqual(manifest["status"], "failed")
+            self.assertEqual([step["status"] for step in manifest["steps"]], ["failed", "skipped"])
+            self.assertEqual(manifest["steps"][0]["returncode"], 7)
+            self.assertIn("failure details", Path(manifest["steps"][0]["log"]).read_text())
+
+    def test_live_manifest_is_visible_to_step_and_existing_run_is_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            args = ki2osbuild.build_parser().parse_args(["run", "--run-dir", tmp])
+            manifest_path = Path(tmp) / "manifest.json"
+
+            def inspect_manifest(*positional, **keywords):
+                manifest = json.loads(manifest_path.read_text())
+                self.assertEqual(manifest["status"], "running")
+                self.assertEqual(manifest["steps"][0]["status"], "running")
+                return mock.Mock(returncode=0)
+
+            with mock.patch.object(ki2osbuild, "build_steps", return_value=[ki2osbuild.Step("fixture", ["fixture"])]), \
+                 mock.patch.object(ki2osbuild.subprocess, "run", side_effect=inspect_manifest):
+                ki2osbuild.command_run(args)
+                original = manifest_path.read_bytes()
+                with self.assertRaisesRegex(ki2osbuild.OsBuildError, "already has a manifest"):
+                    ki2osbuild.command_run(args)
+                self.assertEqual(manifest_path.read_bytes(), original)
+
     def test_default_stage2_plan_generates_expected_steps_without_iso(self):
         repo_root = Path(__file__).resolve().parents[1]
         args = ki2osbuild.build_parser().parse_args(
@@ -70,6 +126,7 @@ class Ki2OsBuildTests(unittest.TestCase):
         self.assertTrue(any("verify --key" in command and ".ed25519.pub" in command for command in commands))
         self.assertTrue(any("tools/ki2stage3.py verify" in command for command in commands))
         self.assertTrue(any("tools/ki2graphics.py prepare" in command for command in commands))
+        self.assertTrue(any("--installer-ui c" in command for command in commands))
         self.assertFalse(any("verify-kubernetes" in command for command in commands))
 
     def test_dry_run_writes_manifest_without_executing_steps(self):

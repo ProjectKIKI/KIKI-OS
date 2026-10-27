@@ -1,0 +1,18 @@
+[Unit]
+Description=LightDM Display Manager
+After=systemd-user-sessions.service dbus.service
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+Requires=dbus.service
+StartLimitBurst=3
+StartLimitIntervalSec=60s
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.DisplayManager
+ExecStart=/usr/sbin/lightdm
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+Alias=display-manager.service

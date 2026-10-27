@@ -29,12 +29,24 @@ type Client struct {
 	HTTP     *http.Client
 }
 
+// Keep v1 field names for compatibility with existing plans and audit readers.
+const SystemPromptEN = `You are the KIKI OS system administration planning agent.
+Turn the user's request into a plan; never execute commands yourself.
+Use English ASCII text for summaries, descriptions, impact and confirmation,
+even though the legacy JSON field names end in _ko. Preserve exact paths and argv.
+Show every command as an exact argv array and require the user's explicit approval.
+If shell syntax is needed, show it explicitly as ["/bin/sh","-c","command"].
+Do not guess devices, interfaces or UUIDs; use the supplied system inventory.
+Include connection checks and recovery commands for network changes, and target
+checks and mount verification for storage changes. Output one JSON object only:
+{"schema":"kiki-ai-command-plan-v1","summary_ko":"...","risk":"low|normal|network|storage|system|critical","impact_ko":"...","commands":[{"description_ko":"...","argv":["program","arg"],"directory":"/","environment":{},"timeout_seconds":60}],"verification":[],"rollback":[],"confirmation_ko":"..."}`
+
 type chatRequest struct {
-	Model          string            `json:"model"`
-	Messages       []chatMessage     `json:"messages"`
-	Temperature    float64           `json:"temperature"`
-	MaxTokens      int               `json:"max_tokens"`
-	ResponseFormat map[string]string `json:"response_format"`
+	Model          string         `json:"model"`
+	Messages       []chatMessage  `json:"messages"`
+	Temperature    float64        `json:"temperature"`
+	MaxTokens      int            `json:"max_tokens"`
+	ResponseFormat map[string]any `json:"response_format"`
 }
 
 type chatMessage struct {
@@ -44,7 +56,8 @@ type chatMessage struct {
 
 type chatResponse struct {
 	Choices []struct {
-		Message chatMessage `json:"message"`
+		Message      chatMessage `json:"message"`
+		FinishReason string      `json:"finish_reason"`
 	} `json:"choices"`
 	Error *struct {
 		Message string `json:"message"`
@@ -52,22 +65,40 @@ type chatResponse struct {
 }
 
 func (client Client) Plan(ctx context.Context, request, inventory string) (Plan, error) {
+	for attempt := 0; attempt < 2; attempt++ {
+		plan, err := client.planAttempt(ctx, request, inventory, attempt > 0)
+		var invalid *invalidReply
+		if !errors.As(err, &invalid) {
+			return plan, err
+		}
+	}
+	return Plan{}, errors.New("The AI returned an invalid response after one retry. No commands were executed. Rephrase your request or use /status for local diagnostics")
+}
+
+type invalidReply struct{ err error }
+
+func (e *invalidReply) Error() string { return e.err.Error() }
+
+func (client Client) planAttempt(ctx context.Context, request, inventory string, retry bool) (Plan, error) {
 	endpoint, err := url.Parse(client.Endpoint)
 	if err != nil || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.Host == "" {
-		return Plan{}, errors.New("AI 엔드포인트는 유효한 HTTP(S) URL이어야 합니다")
+		return Plan{}, errors.New("AI endpoint must be a valid HTTP(S) URL")
 	}
 	if strings.TrimSpace(client.Model) == "" {
-		return Plan{}, errors.New("AI 모델 이름이 비어 있습니다")
+		return Plan{}, errors.New("AI model name is empty")
 	}
 	payload := chatRequest{
 		Model: client.Model,
 		Messages: []chatMessage{
-			{Role: "system", Content: SystemPromptKO},
-			{Role: "user", Content: "현재 시스템 상태:\n" + inventory + "\n\n사용자 요청:\n" + request},
+			{Role: "system", Content: responseInstructions},
+			{Role: "user", Content: "Current system state:\n" + inventory + "\n\nUser request:\n" + request},
 		},
 		Temperature:    0.1,
 		MaxTokens:      2048,
-		ResponseFormat: map[string]string{"type": "json_object"},
+		ResponseFormat: map[string]any{"type": "json_object", "schema": responseSchema()},
+	}
+	if retry {
+		payload.Messages[0].Content += "\nThe previous response failed validation. Return exactly one complete object matching the supplied schema. Never invent commands for greetings or questions."
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -87,7 +118,7 @@ func (client Client) Plan(ctx context.Context, request, inventory string) (Plan,
 	}
 	response, err := httpClient.Do(req)
 	if err != nil {
-		return Plan{}, fmt.Errorf("AI 런타임 연결: %w", err)
+		return Plan{}, fmt.Errorf("AI runtime connection: %w", err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
@@ -95,17 +126,24 @@ func (client Client) Plan(ctx context.Context, request, inventory string) (Plan,
 		return Plan{}, err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return Plan{}, fmt.Errorf("AI 런타임 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+		return Plan{}, fmt.Errorf("AI runtime HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var decoded chatResponse
 	if err := json.Unmarshal(body, &decoded); err != nil {
-		return Plan{}, fmt.Errorf("AI 응답 해석: %w", err)
+		return Plan{}, fmt.Errorf("Parse AI response: %w", err)
 	}
 	if decoded.Error != nil {
 		return Plan{}, errors.New(decoded.Error.Message)
 	}
 	if len(decoded.Choices) != 1 || strings.TrimSpace(decoded.Choices[0].Message.Content) == "" {
-		return Plan{}, errors.New("AI 응답에 단일 계획이 없습니다")
+		return Plan{}, &invalidReply{errors.New("AI response must contain exactly one response")}
 	}
-	return DecodePlan([]byte(decoded.Choices[0].Message.Content))
+	if reason := decoded.Choices[0].FinishReason; reason != "" && reason != "stop" {
+		return Plan{}, &invalidReply{fmt.Errorf("Incomplete AI response: %s", reason)}
+	}
+	plan, err := DecodePlan([]byte(decoded.Choices[0].Message.Content))
+	if err != nil {
+		return Plan{}, &invalidReply{err}
+	}
+	return plan, nil
 }

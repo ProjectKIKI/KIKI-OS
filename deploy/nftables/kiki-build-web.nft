@@ -1,0 +1,6 @@
+table ip kiki_build_web {
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+        iifname "ens3" ip daddr 10.250.254.229 tcp dport 80 counter redirect to :8092 comment "KIKI authenticated build web"
+    }
+}

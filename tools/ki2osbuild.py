@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,8 @@ class BuildContext:
     skip_build: bool
     skip_verify: bool
     force_key: bool
+    build_dir: Path | None = None
+    rootfs_dir: Path | None = None
 
 
 def default_repo_root() -> Path:
@@ -104,7 +107,7 @@ def python_cmd(*args: str) -> list[str]:
 
 
 def ki2build_cmd(ctx: BuildContext, *args: str) -> list[str]:
-    return python_cmd(
+    command = python_cmd(
         "tools/ki2build.py",
         "--repo-root",
         str(ctx.repo_root),
@@ -116,6 +119,9 @@ def ki2build_cmd(ctx: BuildContext, *args: str) -> list[str]:
         ctx.toolchain_id,
         *args,
     )
+    if ctx.build_dir is not None and args and args[0] in {"build", "repo-index", "rootfs"}:
+        command.extend(["--build-dir", str(ctx.build_dir)])
+    return command
 
 
 def ki2repo_cmd(ctx: BuildContext, *args: str) -> list[str]:
@@ -162,6 +168,8 @@ def rootfs_output(ctx: BuildContext) -> Path:
     rootfs = ctx.plan.get("rootfs", {})
     if not isinstance(rootfs, dict):
         raise OsBuildError("rootfs section must be a mapping")
+    if ctx.rootfs_dir is not None:
+        return ctx.rootfs_dir
     return resolve_path(ctx.repo_root, rootfs.get("output"), default=ctx.repo_root / "dist" / "rootfs" / plan_name(ctx.plan))
 
 
@@ -219,6 +227,9 @@ def build_steps(ctx: BuildContext) -> list[Step]:
     if graphics and not isinstance(graphics, dict):
         raise OsBuildError("graphics section must be a mapping")
     if isinstance(graphics, dict) and bool_value(graphics, "enabled", False) and not ctx.skip_build:
+        installer_ui = str(graphics.get("installer_ui") or "gotk")
+        if installer_ui not in {"c", "gotk"}:
+            raise OsBuildError(f"unsupported installer UI: {installer_ui}")
         graphics_output = ctx.repo_root / str(graphics.get("output") or "build/ki2/host-graphics/rootfs")
         steps.append(Step(
             "Prepare GTK/Wayland installer runtime",
@@ -231,6 +242,8 @@ def build_steps(ctx: BuildContext) -> list[Step]:
                 str(graphics_output),
                 "--jobs",
                 str(ctx.jobs),
+                "--installer-ui",
+                installer_ui,
             ),
         ))
 
@@ -335,6 +348,8 @@ def build_steps(ctx: BuildContext) -> list[Step]:
         )
         if bool_value(rootfs, "enabled", True):
             command.extend(["--rootfs-dir", str(rootfs_output(ctx))])
+        if iso_mode == "installer" and signing_algorithm(ctx) == "ed25519":
+            command.extend(["--media-public-key", str(verification_key(ctx))])
         if bool_value(iso, "no_hyperv_vhdx", True):
             command.append("--no-hyperv-vhdx")
         steps.append(Step("Build bootable ISO", command))
@@ -369,6 +384,8 @@ def make_context(args: argparse.Namespace) -> BuildContext:
         skip_build=args.skip_build,
         skip_verify=args.skip_verify,
         force_key=args.force_key,
+        build_dir=resolve_path(repo_root, args.build_dir) if args.build_dir else None,
+        rootfs_dir=resolve_path(repo_root, args.rootfs_dir) if args.rootfs_dir else None,
     )
 
 
@@ -398,15 +415,18 @@ def command_plan(args: argparse.Namespace) -> None:
         print(f"    {command_text(step.command)}")
 
 
-def run_step(ctx: BuildContext, step: Step, index: int, dry_run: bool) -> dict[str, Any]:
-    record: dict[str, Any] = {
+def run_step(ctx: BuildContext, step: Step, index: int, dry_run: bool,
+             record: dict[str, Any] | None = None) -> dict[str, Any]:
+    if record is None:
+        record = {}
+    record.update({
         "name": step.name,
         "command": step.command,
-        "status": "pending",
+        "status": "running",
         "started_at": now(),
         "finished_at": None,
         "returncode": None,
-    }
+    })
     if step.skip_if_exists is not None:
         targets = step.skip_if_exists if isinstance(step.skip_if_exists, tuple) else (step.skip_if_exists,)
         present = [path.exists() for path in targets]
@@ -432,7 +452,9 @@ def run_step(ctx: BuildContext, step: Step, index: int, dry_run: bool) -> dict[s
     log_path = ctx.run_dir / f"{index:02d}-{slug(step.name)}.log"
     record["log"] = str(log_path)
     with log_path.open("w", encoding="utf-8") as log:
-        proc = subprocess.run(step.command, cwd=ctx.repo_root, text=True, stdout=log, stderr=subprocess.STDOUT, check=False)
+        env = os.environ.copy()
+        env["PYTHONUNBUFFERED"] = "1"
+        proc = subprocess.run(step.command, cwd=ctx.repo_root, env=env, text=True, stdout=log, stderr=subprocess.STDOUT, check=False)
     record["returncode"] = proc.returncode
     record["finished_at"] = now()
     record["status"] = "succeeded" if proc.returncode == 0 else "failed"
@@ -445,6 +467,9 @@ def command_run(args: argparse.Namespace) -> None:
     ctx = make_context(args)
     steps = build_steps(ctx)
     ctx.run_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = ctx.run_dir / "manifest.json"
+    if manifest_path.exists():
+        raise OsBuildError(f"run directory already has a manifest: {ctx.run_dir}; choose a new --run-dir or --release-id")
     manifest: dict[str, Any] = {
         "schema": "kiki-os-build-run-v1",
         "plan": plan_name(ctx.plan),
@@ -452,23 +477,48 @@ def command_run(args: argparse.Namespace) -> None:
         "channel": release_channel(ctx),
         "arch": ctx.arch,
         "run_dir": str(ctx.run_dir),
+        "build_dir": str(ctx.build_dir or ctx.repo_root / "build/ki2"),
+        "rootfs_dir_override": str(ctx.rootfs_dir) if ctx.rootfs_dir else None,
         "started_at": now(),
         "finished_at": None,
         "status": "running",
         "dry_run": args.dry_run,
-        "steps": [],
+        "steps": [{"name": step.name, "command": step.command, "status": "pending",
+                   "started_at": None, "finished_at": None, "returncode": None}
+                  for step in steps],
     }
+
+    def persist() -> None:
+        temporary = manifest_path.with_suffix(f".{uuid.uuid4().hex}.tmp")
+        try:
+            temporary.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            temporary.replace(manifest_path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    persist()
+    record = None
     try:
-        for index, step in enumerate(steps, start=1):
-            manifest["steps"].append(run_step(ctx, step, index, args.dry_run))
+        for index, (step, record) in enumerate(zip(steps, manifest["steps"]), start=1):
+            record.update(status="running", started_at=now())
+            if not args.dry_run:
+                record["log"] = str(ctx.run_dir / f"{index:02d}-{slug(step.name)}.log")
+            persist()
+            run_step(ctx, step, index, args.dry_run, record)
+            persist()
         manifest["status"] = "succeeded"
-    except Exception:
-        manifest["status"] = "failed"
+    except (Exception, KeyboardInterrupt) as exc:
+        manifest["status"] = "interrupted" if isinstance(exc, KeyboardInterrupt) else "failed"
+        manifest["error"] = str(exc) or "Interrupted by operator"
+        if record is not None:
+            record.update(status=manifest["status"], finished_at=now(), error=manifest["error"])
         raise
     finally:
+        for remaining in manifest["steps"]:
+            if remaining["status"] == "pending":
+                remaining["status"] = "skipped"
         manifest["finished_at"] = now()
-        manifest_path = ctx.run_dir / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        persist()
         print(f"[manifest] {manifest_path}")
 
 
@@ -479,6 +529,8 @@ def add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--jobs", type=int, default=max(os.cpu_count() or 2, 2))
     parser.add_argument("--toolchain-id", default=ki2build.DEFAULT_TOOLCHAIN_ID)
     parser.add_argument("--run-dir", type=Path, default=None)
+    parser.add_argument("--build-dir", type=Path, default=None, help="package work/state directory; use a Linux filesystem on WSL")
+    parser.add_argument("--rootfs-dir", type=Path, default=None, help="override rootfs output; Linux builds require POSIX file permissions")
     parser.add_argument("--release-id", default="")
     parser.add_argument("--iso", action="store_true", help="also build the ISO declared by the build plan")
     parser.add_argument("--skip-build", action="store_true", help="skip package build and use existing packages")

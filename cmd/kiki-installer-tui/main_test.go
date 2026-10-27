@@ -8,6 +8,57 @@ import (
 	"testing"
 )
 
+func TestGnomeDesktopProfileAndGroup(t *testing.T) {
+	for _, profile := range []string{"desktop-gnome", "server-core"} {
+		plan := NewDefaultPlan(profile)
+		if err := applyPackageGroup(&plan, "desktop-gnome", true); err != nil {
+			t.Fatal(err)
+		}
+		if !contains(plan.Packages.Selected, "kiki-gnome-desktop") || !contains(plan.Services.Enable, "gdm.service") || plan.Services.DefaultTarget != "graphical.target" {
+			t.Fatalf("desktop selection was not applied: %+v", plan.Services)
+		}
+		if plan.AI.Mode != "off" || contains(plan.Packages.Selected, "kiki-kmscon") || contains(plan.Services.Enable, "getty@tty1.service") {
+			t.Fatal("desktop keeps a conflicting tty1 console")
+		}
+		if err := applyAI(&plan, "local", ""); err == nil {
+			t.Fatal("conflicting AI console accepted")
+		}
+		var text bytes.Buffer
+		if err := WritePlanYAML(&text, plan); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(text.String(), `default_target: "graphical.target"`) {
+			t.Fatal(text.String())
+		}
+		if err := applyPackageGroup(&plan, "desktop-gnome", false); err != nil {
+			t.Fatal(err)
+		}
+		if plan.Services.DefaultTarget != "multi-user.target" || contains(plan.Services.Enable, "gdm.service") {
+			t.Fatal("desktop removal did not restore console boot")
+		}
+	}
+}
+
+func TestAIConsoleRuntimeMatchesStageOne(t *testing.T) {
+	plan := NewDefaultPlan("server-core")
+	for _, mode := range []string{"local", "remote", "off", "local"} {
+		endpoint := ""
+		if mode == "remote" {
+			endpoint = "https://example.invalid/v1/chat/completions"
+		}
+		if err := applyAI(&plan, mode, endpoint); err != nil {
+			t.Fatal(err)
+		}
+		want := mode != "off"
+		if contains(plan.Packages.Selected, "kiki-kmscon") != want || contains(plan.Services.Enable, "kiki-ai-console-kmscon@tty1.service") != want {
+			t.Fatalf("%s: console runtime and service differ from stage one", mode)
+		}
+		if contains(plan.Services.Enable, "kiki-ai-console@tty1.service") {
+			t.Fatal("legacy console conflicts with kmscon")
+		}
+	}
+}
+
 func TestDefaultPlanUsesStageOneDefaults(t *testing.T) {
 	plan := NewDefaultPlan("minimal-systemd")
 
@@ -26,7 +77,7 @@ func TestDefaultPlanUsesStageOneDefaults(t *testing.T) {
 	if !contains(plan.Packages.Selected, "kiki-installer-tui") {
 		t.Fatal("minimal-systemd should include kiki-installer-tui preview package")
 	}
-	if !contains(plan.Packages.Selected, "llama-cpp") || !contains(plan.Packages.Selected, "kiki-ai-console") || !contains(plan.Services.Enable, "kiki-ai-console@tty1.service") || !contains(plan.Services.Enable, "getty@tty2.service") {
+	if !contains(plan.Packages.Selected, "llama-cpp") || !contains(plan.Packages.Selected, "kiki-ai-console") || !contains(plan.Packages.Selected, "kiki-kmscon") || !contains(plan.Services.Enable, "kiki-ai-console-kmscon@tty1.service") || !contains(plan.Services.Enable, "getty@tty2.service") {
 		t.Fatal("installer plan should reserve tty1 for AI and tty2 for recovery")
 	}
 	if contains(plan.Services.Enable, "getty@tty1.service") {
@@ -82,7 +133,7 @@ func TestFullscreenTUIASCIIHasNoKoreanGlyphDependency(t *testing.T) {
 	tui.RenderFullscreen(0, "GUI fallback active")
 	rendered := output.String()
 	for _, expected := range []string{
-		"KIKI OS Installer - TUI fallback",
+		"KIKI OS Scratch Pad - TUI fallback",
 		"Language / keymap / timezone",
 		"Up/Down or j/k",
 		"Status: GUI fallback active",
@@ -424,7 +475,7 @@ func TestRemoteSourceAndAIMustBeConfigured(t *testing.T) {
 	if err := applyAI(&plan, "off", ""); err != nil {
 		t.Fatal(err)
 	}
-	if contains(plan.Packages.Selected, "kiki-ai-console") || contains(plan.Services.Enable, "kiki-ai-console@tty1.service") {
+	if contains(plan.Packages.Selected, "kiki-ai-console") || contains(plan.Packages.Selected, "kiki-kmscon") || contains(plan.Services.Enable, "kiki-ai-console@tty1.service") || contains(plan.Services.Enable, "kiki-ai-console-kmscon@tty1.service") {
 		t.Fatal("AI off retained console package or service")
 	}
 	if !contains(plan.Services.Enable, "getty@tty1.service") {
@@ -680,6 +731,26 @@ func TestPackageGroupsAreRecordedAndSelectable(t *testing.T) {
 	}
 	if contains(tui.Plan.Packages.Groups, "development") || contains(tui.Plan.Packages.Selected, "make") {
 		t.Fatalf("development group not removed: groups=%#v packages=%#v", tui.Plan.Packages.Groups, tui.Plan.Packages.Selected)
+	}
+}
+
+func TestXorgRuntimeGroupIsOptional(t *testing.T) {
+	tui := TUI{Plan: NewDefaultPlan("server-core")}
+	if _, err := tui.ApplyCommand("group add xorg-runtime"); err != nil {
+		t.Fatal(err)
+	}
+	if !contains(tui.Plan.Packages.Groups, "xorg-runtime") ||
+		!contains(tui.Plan.Packages.Selected, "kiki-x11-runtime") {
+		t.Fatalf("Xorg group not selected: %+v", tui.Plan.Packages)
+	}
+	if contains(tui.Plan.Packages.Selected, "kiki-lightdm") {
+		t.Fatal("Xorg runtime must not silently add LightDM")
+	}
+	if _, err := tui.ApplyCommand("group remove xorg-runtime"); err != nil {
+		t.Fatal(err)
+	}
+	if contains(tui.Plan.Packages.Selected, "kiki-x11-runtime") {
+		t.Fatal("Xorg runtime was not removed")
 	}
 }
 

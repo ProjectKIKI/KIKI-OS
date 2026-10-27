@@ -1,0 +1,5 @@
+[profile]
+name = "graphics-foundation"
+description = "Native graphics prerequisites for development, not a complete desktop"
+arch = "x86_64"
+packages = ["libpng", "freetype", "harfbuzz", "fontconfig", "pixman", "cairo", "fribidi", "libthai", "pango", "graphene", "wayland", "wayland-protocols", "libxkbcommon"]

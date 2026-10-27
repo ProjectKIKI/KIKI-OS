@@ -1,0 +1,5 @@
+[profile]
+name = "pixman-foundation"
+description = "CPU compositor development and validation profile"
+arch = "x86_64"
+packages = ["pixman"]

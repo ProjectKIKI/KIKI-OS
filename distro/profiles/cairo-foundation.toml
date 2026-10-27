@@ -1,0 +1,5 @@
+[profile]
+name = "cairo-foundation"
+description = "Native Cairo integration development profile"
+arch = "x86_64"
+packages = ["cairo"]

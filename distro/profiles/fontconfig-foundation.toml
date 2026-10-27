@@ -1,0 +1,5 @@
+[profile]
+name = "fontconfig-foundation"
+description = "Isolated font matching development profile"
+arch = "x86_64"
+packages = ["fontconfig"]

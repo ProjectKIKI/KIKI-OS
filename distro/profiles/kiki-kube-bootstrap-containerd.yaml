@@ -41,6 +41,7 @@ profile:
     - kiki-agent
     - llama-cpp
     - kiki-ai-console
+    - kiki-kmscon
     - kiki-netconfig
     - runc
     - containerd
@@ -69,7 +70,7 @@ profile:
     enable:
       - dbus.service
       - kiki-llama-server.service
-      - kiki-ai-console@tty1.service
+      - kiki-ai-console-kmscon@tty1.service
       - getty@tty2.service
       - systemd-logind.service
       - systemd-networkd.service

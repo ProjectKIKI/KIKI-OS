@@ -1,0 +1,71 @@
+# Native desktop graphics prerequisites; separate from the host installer bundle.
+[[recipe]]
+name = "freetype"
+version = "2.14.3"
+release = 1
+summary = "Native font rasterizer (desktop bootstrap; compression extensions pending)"
+license = "FTL OR GPL-2.0-or-later"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz"
+file = "freetype-2.14.3.tar.xz"
+sha256 = "36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f"
+[recipe.dependencies]
+build = ["linux-headers"]
+runtime = ["glibc", "zlib", "libpng"]
+[recipe.build]
+system = "meson"
+inputs = ["distro/specs/graphics-cross.ini", "distro/scripts/ki2-target-pkg-config", "distro/scripts/ki2-target-run"]
+configure = [
+  'install -Dm755 "${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config" "${KI2_BUILD_DIR}/target-pkg-config"',
+  'install -m644 "${KI2_REPO_ROOT}/distro/specs/graphics-cross.ini" "${KI2_BUILD_DIR}/cross.ini"',
+  'sed -i -e "s|@BUILD@|${KI2_BUILD_DIR}|g" -e "s|@REPO@|${KI2_REPO_ROOT}|g" "${KI2_BUILD_DIR}/cross.ini"',
+  'meson setup "${KI2_BUILD_DIR}/freetype" "${KI2_SOURCE_DIR}" --cross-file "${KI2_BUILD_DIR}/cross.ini" --prefix=/usr --libdir=lib --buildtype=release --wrap-mode=nofallback -Ddefault_library=shared -Dpng=enabled -Dzlib=system -Dharfbuzz=dynamic -Dbrotli=disabled -Dbzip2=disabled -Derror_strings=true',
+]
+compile = ['meson compile -C "${KI2_BUILD_DIR}/freetype" -j "${KI2_JOBS}"']
+install = [
+  'DESTDIR="${KI2_DESTDIR}" meson install -C "${KI2_BUILD_DIR}/freetype"',
+  'install -d "${KI2_DESTDIR}/usr/share/licenses/freetype"',
+  'install -m644 "${KI2_SOURCE_DIR}/LICENSE.TXT" "${KI2_SOURCE_DIR}/docs/FTL.TXT" "${KI2_SOURCE_DIR}/docs/GPLv2.TXT" "${KI2_DESTDIR}/usr/share/licenses/freetype/"',
+  'cp -a "${KI2_SOURCE_DIR}/src" "${KI2_DESTDIR}/usr/share/licenses/freetype/source-notices"',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libfreetype.so.6" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+
+[[recipe]]
+name = "libpng"
+version = "1.6.58"
+release = 1
+summary = "PNG reference image decoding and encoding library"
+license = "libpng-2.0"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://download.sourceforge.net/libpng/libpng-1.6.58.tar.xz"
+file = "libpng-1.6.58.tar.xz"
+sha256 = "28eb403f51f0f7405249132cecfe82ea5c0ef97f1b32c5a65828814ae0d34775"
+[recipe.dependencies]
+build = ["linux-headers"]
+runtime = ["glibc", "zlib"]
+[recipe.build]
+system = "gnu"
+configure = [
+  'cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --enable-shared --disable-static',
+  'sed -i -e "s/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=/" -e "s/^runpath_var=.*/runpath_var=/" "${KI2_SOURCE_DIR}/libtool"',
+]
+compile = ['make -C "${KI2_SOURCE_DIR}" -j "${KI2_JOBS}"']
+install = [
+  'make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install',
+  'rm -f "${KI2_DESTDIR}/usr/lib/libpng16.la" "${KI2_DESTDIR}/usr/lib/libpng.la"',
+  'install -Dm644 "${KI2_SOURCE_DIR}/LICENSE" "${KI2_DESTDIR}/usr/share/licenses/libpng/LICENSE"',
+  'readelf -d "${KI2_DESTDIR}/usr/lib/libpng16.so.16" > "${KI2_BUILD_DIR}/elf-dynamic.txt" && ! grep -E "RPATH|RUNPATH" "${KI2_BUILD_DIR}/elf-dynamic.txt"',
+]
+[recipe.build.env]
+CC = "cc --sysroot=${KI2_SYSROOT}"
+CFLAGS = "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"

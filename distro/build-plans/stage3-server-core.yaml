@@ -13,6 +13,7 @@ build:
 
 graphics:
   enabled: true
+  installer_ui: c
   output: build/ki2/host-graphics/rootfs
 
 repository:

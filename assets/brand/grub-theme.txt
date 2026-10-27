@@ -1,0 +1,46 @@
+# KIKI OS: use boot-sized bitmaps so older GRUB builds need not scale the logo.
+title-text: ""
+desktop-color: "#f7f9fc"
+desktop-image: "/boot/grub/kiki/background.png"
+desktop-image-scale-method: "stretch"
+terminal-font: "Unifont Regular 16"
+
++ image {
+  left = 6%
+  top = 5%
+  width = 300
+  height = 100
+  file = "/boot/grub/kiki/logo.png"
+}
+
++ boot_menu {
+  left = 6%
+  top = 30%
+  width = 88%
+  height = 54%
+  item_font = "Unifont Regular 16"
+  item_color = "#58677c"
+  selected_item_color = "#173d70"
+  item_height = 28
+  item_spacing = 4
+  icon_width = 0
+  icon_height = 0
+}
+
++ label {
+  left = 6%
+  top = 88%
+  width = 88%
+  height = 24
+  text = "Enter: boot    e: edit    c: console"
+  color = "#10233f"
+}
+
++ label {
+  id = "__timeout__"
+  left = 6%
+  top = 94%
+  width = 88%
+  height = 24
+  color = "#173d70"
+}

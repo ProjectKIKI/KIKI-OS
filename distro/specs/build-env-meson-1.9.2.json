@@ -1,0 +1,50 @@
+{
+  "schema": "kiki-build-env-v1",
+  "id": "meson-1.9.2-py3.9-v2",
+  "root": "/home/tang/kiki-build/meson-1.9.2-v2",
+  "python": "/usr/bin/python3.9",
+  "python_version": "3.9.25",
+  "python_sha256": "330dac3ce66a47096592fa663b9cad1631d753afeaaceff851d2164f9616a5f9",
+  "lock": "build-env-meson-1.9.2.lock",
+  "candidate": "/mnt/e/dev/KIKI-OS/dist/ki2/stage3-6.1.187-candidate-20261016",
+  "package_profile": "distro/profiles/x11-foundation.toml",
+  "seed_packages": [
+    "glibc",
+    "linux-headers",
+    "xorgproto",
+    "libxau"
+  ],
+  "build_packages": [
+    "xorgproto",
+    "libxau"
+  ],
+  "tools": [
+    "/usr/bin/ninja",
+    "/usr/bin/pkg-config",
+    "/usr/bin/pkgconf",
+    "/usr/bin/gcc",
+    "/usr/bin/g++",
+    "/usr/bin/as",
+    "/usr/bin/ld",
+    "/usr/bin/ar",
+    "/usr/bin/nm",
+    "/usr/bin/ranlib",
+    "/usr/bin/strip",
+    "/bin/sh"
+  ],
+  "policy": {
+    "system_site_packages": false,
+    "user_site_packages": false,
+    "automatic_install": false,
+    "wheel_only": true,
+    "extras": [],
+    "locale": "C",
+    "timezone": "UTC"
+  },
+  "recipe_dir": "/mnt/e/dev/KIKI-OS/dist/ki2/stage3-6.1.187-candidate-20261016/recipes",
+  "recipe_catalog_sha256": "c85c3443ef4726e2e50b7d0b8dbac1679df7439479f160ae83c3b0776b625a08",
+  "builder": "/mnt/e/dev/KIKI-OS/dist/ki2/stage3-6.1.187-candidate-20261016/build-tools/ki2build.py",
+  "builder_sha256": "f667244a72a185d6e97c48e020137fd5389c57226362dbc96e2dc12dc1481177",
+  "result_dir": "meson-first-build-v2",
+  "recipe_toml_sha256": "f0d9eb8342d76697097078226677247c44af4e1c10a21c1f9900a74b62a7d965"
+}

@@ -1,0 +1,18 @@
+[Unit]
+Description=KIKI build console authenticated front door (rootless)
+After=kiki-candidate-buildd.service kiki-release-worker.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=TMPDIR=/build-kikios/kiki-containers/tmp
+ExecStartPre=/build-kikios/kiki-build/host-prep-20261023/bin/host-run /usr/bin/true
+ExecStart=/usr/bin/podman run --replace --rm --name kiki-build-auth --user 0:0 --network slirp4netns:cidr=10.0.2.0/24,allow_host_loopback=true,port_handler=slirp4netns -p 127.0.0.1:8092:8092 -p 10.250.254.229:8092:8092 --read-only --cap-drop ALL --security-opt no-new-privileges --memory 256m --memory-swap 256m --pids-limit 128 --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m -v /build-kikios/kiki-build/candidates/mesa-native-20261023/auth/state:/auth-state:Z --entrypoint /usr/bin/python3 localhost/kiki-build-auth:http-r2-20261025 -I -B /app/ki2ci_auth.py serve --state-dir /auth-state --slirp-network --bind 10.0.2.100 --port 8092 --upstream http://10.0.2.2:8091 --release-upstream http://10.0.2.2:8094 --origin http://127.0.0.1:18090 --origin http://localhost:18090 --origin https://kios-build.lab.terminal-lab.kr
+ExecStop=/usr/bin/podman stop --time 10 kiki-build-auth
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+
+[Install]
+WantedBy=default.target
