@@ -1645,7 +1645,7 @@ def make_handler(server: BuildServer):
                 if not recipe or recipe.build.get("system") != "kernel":
                     raise CiError("선택한 커밋에 지원하는 Linux 커널 명세가 없습니다.")
                 kernel_info = ("<h2>Linux " + html_escape(recipe.version) + "-" + html_escape(recipe.release) + "</h2>"
-                               + "<p>공식 소스: " + html_escape(recipe.source.get("url", "")) + "</p>"
+                               + "<p>공식 소스: <code>" + html_escape(recipe.source.get("url", "")) + "</code></p>"
                                + "<p>소스 SHA-256: <code>" + html_escape(recipe.source.get("sha256", "미지정")) + "</code></p>"
                                + "<p>Git의 커널 설정: <code>" + html_escape(", ".join(recipe.build.get("config_fragments", []))) + "</code></p>")
             body = (
