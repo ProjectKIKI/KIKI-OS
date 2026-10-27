@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Name[ko]=터미널
+Comment=Native GTK4 VTE terminal
+Comment[ko]=GTK4 VTE 터미널
+Exec=/usr/bin/vte-2.91-gtk4 -- /bin/bash --login
+Icon=utilities-terminal
+Categories=System;TerminalEmulator;
+StartupNotify=true

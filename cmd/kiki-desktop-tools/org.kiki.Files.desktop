@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+Name[ko]=파일
+Comment=Browse folders and preview text files
+Comment[ko]=폴더 탐색 및 텍스트 파일 미리보기
+Exec=/usr/bin/kiki-desktop-tools --files
+Icon=system-file-manager
+Categories=System;FileManager;
+StartupNotify=true
+StartupWMClass=org.kiki.Files

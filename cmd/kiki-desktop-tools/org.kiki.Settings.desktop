@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=KIKI Settings
+Name[ko]=KIKI 설정
+Comment=Appearance, text size, keyboard and network settings
+Comment[ko]=테마, 글자 크기, 입력 언어 및 네트워크 설정
+Exec=/usr/bin/kiki-desktop-tools --settings
+Icon=preferences-system
+Categories=Settings;DesktopSettings;
+StartupNotify=true
+StartupWMClass=org.kiki.Settings
