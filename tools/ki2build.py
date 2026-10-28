@@ -700,6 +700,7 @@ def expand_profile_groups(path: Path, profile: dict[str, Any]) -> dict[str, Any]
     packages: list[str] = []
     enable_services: list[str] = []
     disable_services: list[str] = []
+    group_default_target: str | None = None
     resolved: list[str] = []
     visiting: set[str] = set()
 
@@ -708,6 +709,7 @@ def expand_profile_groups(path: Path, profile: dict[str, Any]) -> dict[str, Any]
             items.append(value)
 
     def visit(group_id: str) -> None:
+        nonlocal group_default_target
         if group_id in resolved:
             return
         if group_id in visiting:
@@ -727,6 +729,8 @@ def expand_profile_groups(path: Path, profile: dict[str, Any]) -> dict[str, Any]
         services = group.get("services", {})
         if not isinstance(package_sections, dict) or not isinstance(services, dict):
             raise Ki2Error(f"{catalog_path}: group {group_id} packages and services must be mappings")
+        if services.get('default_target'):
+            group_default_target = services['default_target']
         for section in ("mandatory", "default"):
             values = package_sections.get(section, [])
             if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
@@ -762,6 +766,8 @@ def expand_profile_groups(path: Path, profile: dict[str, Any]) -> dict[str, Any]
             enable_services.remove(unit)
         add_unique(disable_services, unit)
     profile["groups"] = list(selected)
+    if group_default_target:
+        profile.setdefault('boot', {}).setdefault('default_target', group_default_target)
     profile["resolved_groups"] = resolved
     profile["packages"] = packages
     profile["services"] = {"enable": enable_services, "disable": disable_services}

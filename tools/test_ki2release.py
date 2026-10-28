@@ -44,6 +44,21 @@ class KoreanTests(unittest.TestCase):
 
 
 class LibraryTests(unittest.TestCase):
+    def test_native_desktop_uses_current_catalog_and_backend(self):
+        import ki2installcatalog
+        self.lib.legacy_backend=self.root/'legacy'
+        backend,profile,roots=self.lib.iso_inputs('gnome50',{'kiki-desktop-defaults':{}})
+        self.assertEqual((backend,profile),(self.backend,'desktop-gnome'))
+        self.assertEqual(roots,ki2installcatalog.expand(ki2installcatalog.load(),['desktop-gnome'])['packages'])
+        for app in ['gnome-control-center','nautilus','gnome-console']:
+            self.assertIn(app,roots)
+
+    def test_preserved_desktop_keeps_original_catalog_and_backend(self):
+        self.lib.legacy_backend=self.root/'legacy'
+        release.save(self.base/'validation/desktop-root-plan.json',{'order':['old-desktop']})
+        backend,profile,roots=self.lib.iso_inputs('gnome50',{})
+        self.assertEqual((backend,profile,roots),(self.root/'legacy','gnome50',['old-desktop']))
+
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.base=self.root/'baseline';(self.base/'recipes').mkdir(parents=True)

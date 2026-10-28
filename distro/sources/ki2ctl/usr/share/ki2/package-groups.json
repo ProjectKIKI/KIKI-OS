@@ -98,7 +98,7 @@
     {
       "id": "desktop-gnome",
       "name_ko": "GNOME 데스크톱",
-      "description_ko": "기존 검증 GNOME 50 · GDM · Wayland 환경 (네이티브 Mesa 후보 패키지 필요)",
+      "description_ko": "GNOME 50 · GDM · GNOME 설정 · Nautilus · Console · 한글 입력",
       "requires": [
         "minimal"
       ],
@@ -106,18 +106,26 @@
         "mandatory": [
           "kiki-gnome-desktop"
         ],
-        "default": [],
+        "default": [
+          "gnome-control-center",
+          "nautilus",
+          "gnome-console"
+        ],
         "optional": []
       },
       "services": {
         "enable": [
           "gdm.service",
-          "getty@tty2.service"
+          "getty@tty2.service",
+          "NetworkManager.service"
         ],
         "disable": [
           "getty@tty1.service",
           "kiki-ai-console@tty1.service",
-          "kiki-ai-console-kmscon@tty1.service"
+          "kiki-ai-console-kmscon@tty1.service",
+          "systemd-networkd.service",
+          "systemd-networkd.socket",
+          "systemd-networkd-wait-online.service"
         ],
         "default_target": "graphical.target"
       },

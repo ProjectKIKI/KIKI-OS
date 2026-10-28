@@ -1,0 +1,5 @@
+[Default Applications]
+inode/directory=org.gnome.Nautilus.desktop;
+
+[Added Associations]
+inode/directory=org.gnome.Nautilus.desktop;

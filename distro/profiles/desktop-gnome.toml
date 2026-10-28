@@ -1,17 +1,16 @@
 [profile]
 name = "desktop-gnome"
-description = "Existing validated GNOME 50/GDM/Wayland candidate with native Mesa"
+description = "GNOME 50 with native Settings, Files, Console, Mesa and Korean input"
 arch = "x86_64"
 groups = ["desktop-gnome"]
 
 [profile.boot]
 init = "/usr/lib/systemd/systemd"
 kernel = "/boot/vmlinuz-kiki"
-default_target = "graphical.target"
 
-# Reuse the separately validated packages; do not substitute server bootstrap ABIs.
+# Separate signed candidate; original GNOME and server snapshots are preserved.
 [profile.prebuilt]
-repository = "dist/ki2/stage3-6.1.187-mesa-native-candidate-20261017/validated-candidate"
-public_key = "mesa-native.ed25519.pub"
-public_key_sha256 = "fad9b2d23c9ecabb2e86407f244de677dcd4c2b7cc63587c585f2a4a32eaf99c"
-index_sha256 = "6992169904af0a02cf9103808798b60377d83a29903b3c8708223442cabb863e"
+repository = "dist/ki2/gnome-native-apps-20261028-r3"
+public_key = "desktop-installer.ed25519.pub"
+public_key_sha256 = "b6aaadb5491676d154efc62c0bf20a2f6b1026a741d92698d99c75f18390f4f4"
+index_sha256 = "eb14c3907902b6a3f85ce044849b58237b7f0e0ae80acaf256be976e624d5aa6"

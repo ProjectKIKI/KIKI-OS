@@ -128,8 +128,9 @@ class HTTPSRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class Library:
-    def __init__(self,root,backend,baseline,sources,native_packages):
+    def __init__(self,root,backend,baseline,sources,native_packages,legacy_backend=None):
         self.root,self.backend,self.base,self.sources,self.native_packages=map(Path,[root,backend,baseline,sources,native_packages])
+        self.legacy_backend=Path(legacy_backend) if legacy_backend else self.backend
         self.lock=threading.RLock();self.pending=queue.Queue();self.stop=threading.Event()
         for folder in ['objects','manifests','snapshots','jobs','private','tmp','release-versions','release-management']:(self.root/folder).mkdir(parents=True,exist_ok=True)
         self.catalog=load_catalog(self.root)
@@ -355,6 +356,17 @@ class Library:
             temp.unlink()
         return {'sha256':expected,'validation':'소스 SHA 통과 · 서명 검증은 별도 상태'}
 
+    def iso_inputs(self,profile,binaries):
+        native='kiki-desktop-defaults' in binaries
+        backend=self.backend if native else self.legacy_backend
+        if profile=='gnome50':
+            if native:
+                import ki2installcatalog
+                return backend,'desktop-gnome',ki2installcatalog.expand(ki2installcatalog.load(),['desktop-gnome'])['packages']
+            return backend,profile,read(self.base/'validation/desktop-root-plan.json')['order']
+        if profile!='minimal-systemd':raise ValueError('지원되지 않는 ISO 구성')
+        return backend,profile,['base-files','linux','systemd','dbus','bash','coreutils','util-linux','busybox','shadow','openssh','kiki-netconfig']
+
     def iso_job(self,j):
         values=j['values'];snap=self.root/'snapshots'/values['snapshot'];manifest=read(snap/'manifest.json')
         self.releases.iso_allowed(values.get('release_version',values['snapshot']),values.get('cpu_profile','x86_64'),values['snapshot'])
@@ -371,7 +383,7 @@ class Library:
             if sha(snap/'packages'/r['file'])!=r['sha256']:raise ValueError('ISO 입력 패키지 SHA 불일치')
         if sha(snap/'repo/index.x86_64.json')!=manifest['index_sha256'] or sha(snap/'repo/metadata.x86_64.json')!=manifest['metadata_sha256']:raise ValueError('고정된 저장소 메타데이터 변경')
         if not self.repo.verify_metadata_file(snap/'repo/metadata.x86_64.json',snap/'candidate.pub'):raise ValueError('저장소 서명 검사 실패')
-        roots=read(self.base/'validation/desktop-root-plan.json')['order'] if values['profile']=='gnome50' else ['base-files','linux','systemd','dbus','bash','coreutils','util-linux','busybox','shadow','openssh','kiki-netconfig']
+        backend,installer_profile,roots=self.iso_inputs(values['profile'],binaries)
         order=closure(binaries,roots);dest=self.root/'jobs'/j['id'];root=dest/'rootfs';root.mkdir(exist_ok=False)
         self.update(j,phase='패키지 SHA·의존성 확인 후 시스템 파일 트리 구성')
         installed=[]
@@ -392,7 +404,7 @@ class Library:
         self.update(j,phase='설치 ISO 생성 · 설치기 프런트엔드는 기존 KI2 그대로 사용')
         output=dest/('kiki-'+release_version+'-'+values['profile']+'-'+cpu['id']+'-'+j['id'][:8]+'.iso')
         installer=binaries['kiki-installer-gtk']
-        self.run([sys.executable,Path(__file__).with_name('ki2iso_preserved.py'),'--expected-installer-file',installer['file'],'--expected-installer-sha256',installer['sha256'],'--repo-root',self.backend,'--profile',values['profile'],'--release-name',release_version,'--rootfs-dir',root,'--repo-dir',snap/'repo','--packages-dir',snap/'packages','--mode','installer','--media-public-key',snap/'candidate.pub','--no-install-image','--no-hyperv-vhdx','--output',output],j)
+        self.run([sys.executable,Path(__file__).with_name('ki2iso_preserved.py'),'--expected-installer-file',installer['file'],'--expected-installer-sha256',installer['sha256'],'--repo-root',backend,'--profile',installer_profile,'--release-name',release_version,'--rootfs-dir',root,'--repo-dir',snap/'repo','--packages-dir',snap/'packages','--mode','installer','--media-public-key',snap/'candidate.pub','--no-install-image','--no-hyperv-vhdx','--output',output],j)
         self.update(j,phase='ISO SHA·부팅 카탈로그·내장 패키지 목록 확인')
         check=subprocess.run(['xorriso','-indev',str(output),'-report_el_torito','plain'],capture_output=True,text=True,check=True)
         save(dest/'boot-catalog.json',{'stdout':check.stdout,'stderr':check.stderr})
@@ -547,11 +559,12 @@ def make_handler(lib):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--store',type=Path,required=True);p.add_argument('--backend',type=Path,default=Path('/backend'))
+    p.add_argument('--legacy-backend',type=Path)
     p.add_argument('--baseline',type=Path,default=Path('/inputs/baseline'));p.add_argument('--sources',type=Path,default=Path('/sources'))
     p.add_argument('--native-packages',type=Path,default=Path('/native-packages'));p.add_argument('--port',type=int,default=8094)
     p.add_argument('action',choices=['serve','sync','iso']);p.add_argument('--snapshot',default='baseline-6.1.187');p.add_argument('--profile',default='gnome50')
     p.add_argument('--release-version',default='');p.add_argument('--cpu-profile',default='x86_64')
-    args=p.parse_args();os.umask(0o077);lib=Library(args.store,args.backend,args.baseline,args.sources,args.native_packages)
+    args=p.parse_args();os.umask(0o077);lib=Library(args.store,args.backend,args.baseline,args.sources,args.native_packages,args.legacy_backend)
     os.environ['TMPDIR']=str(lib.root/'tmp');tempfile.tempdir=str(lib.root/'tmp')
     import fcntl
     lease=(lib.root/'worker.lock').open('a+b')

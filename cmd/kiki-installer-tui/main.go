@@ -202,7 +202,7 @@ type TUI struct {
 
 func main() {
 	planPath := flag.String("plan", defaultPlanPath, "install plan path")
-	profile := flag.String("profile", "minimal-systemd", "initial profile")
+	profile := flag.String("profile", initialMediaProfile(), "initial profile")
 	packageGroups := flag.String("groups", "", "comma-separated additional package groups")
 	mode := flag.String("mode", "guided", "install mode: guided or unattended")
 	disk := flag.String("disk", "/dev/sda", "target whole disk")
@@ -433,7 +433,7 @@ func NewDefaultPlan(profile string) InstallPlan {
 			SwapPolicy:       "system",
 		},
 		AI: AIPlan{
-			Mode:            "local",
+			Mode:            profileAIDefault(profile),
 			Endpoint:        "http://127.0.0.1:8080/v1/chat/completions",
 			Model:           "kiki-ops",
 			ConsoleTTY:      "tty1",
@@ -834,6 +834,10 @@ func applyAI(plan *InstallPlan, mode, endpoint string) error {
 	if endpoint != "" && mode == "local" {
 		plan.AI.Endpoint = endpoint
 	}
+	rebuildCatalogGroups(plan)
+	if mode == "off" && !contains(plan.Packages.Groups, "desktop-gnome") {
+		plan.Services.Enable = appendUnique(plan.Services.Enable, "getty@tty2.service")
+	}
 	return nil
 }
 
@@ -911,6 +915,10 @@ func rebuildCatalogGroups(plan *InstallPlan) {
 	plan.Services.Enable = removeItems(enable, disable...)
 	plan.Services.Disable = disable
 	plan.Services.DefaultTarget = target
+	plan.Network.Manager = "systemd-networkd"
+	if contains(plan.Services.Enable, "NetworkManager.service") {
+		plan.Network.Manager = "NetworkManager"
+	}
 }
 
 var fullscreenMenuLabels = []string{
@@ -2109,6 +2117,15 @@ func checkAccount(plan InstallPlan) Check {
 func checkProfile(plan InstallPlan) Check {
 	if plan.Packages.Profile == "" || len(plan.Packages.Selected) == 0 {
 		return Check{Name: "Profile", State: "BLOCK", Summary: "no package profile selected"}
+	}
+	if plan.Source.Type == "local-installer-media" {
+		count, size, err := previewLocalPackages(plan)
+		if err != nil {
+			return Check{Name: "Profile", State: "BLOCK", Summary: err.Error()}
+		}
+		if count > 0 {
+			return Check{Name: "Profile", State: "OK", Summary: fmt.Sprintf("%s: %d runtime packages, %.1f MiB on media", plan.Packages.Profile, count, float64(size)/(1024*1024))}
+		}
 	}
 	return Check{Name: "Profile", State: "OK", Summary: fmt.Sprintf("%s (%d packages)", plan.Packages.Profile, len(plan.Packages.Selected))}
 }

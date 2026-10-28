@@ -30,11 +30,17 @@ func TestGnomeDesktopProfileAndGroup(t *testing.T) {
 		if !strings.Contains(text.String(), `default_target: "graphical.target"`) {
 			t.Fatal(text.String())
 		}
+		if !strings.Contains(text.String(), `manager: "NetworkManager"`) || !contains(plan.Services.Enable, "NetworkManager.service") || contains(plan.Services.Enable, "systemd-networkd.service") {
+			t.Fatal("desktop plan does not describe its actual network manager")
+		}
 		if err := applyPackageGroup(&plan, "desktop-gnome", false); err != nil {
 			t.Fatal(err)
 		}
 		if plan.Services.DefaultTarget != "multi-user.target" || contains(plan.Services.Enable, "gdm.service") {
 			t.Fatal("desktop removal did not restore console boot")
+		}
+		if plan.Network.Manager != "systemd-networkd" {
+			t.Fatal("desktop removal did not restore the server network manager")
 		}
 	}
 }

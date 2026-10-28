@@ -1,0 +1,10 @@
+#!/bin/sh
+# systemd's mount helper lives in /usr/bin; preserve existing /bin payloads.
+set -eu
+for tool in mount umount; do
+    if [ ! -e "$KI2_DESTDIR/usr/bin/$tool" ]; then
+        test -x "$KI2_DESTDIR/bin/$tool"
+        mkdir -p "$KI2_DESTDIR/usr/bin"
+        ln -s "../../bin/$tool" "$KI2_DESTDIR/usr/bin/$tool"
+    fi
+done

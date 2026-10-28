@@ -17,6 +17,57 @@ import ki2bootiso
 
 
 class Ki2BootIsoTests(unittest.TestCase):
+    def test_installed_handoff_moves_root_before_exec_and_stops_on_failure(self):
+        gcc=shutil.which('gcc')
+        if not gcc:self.skipTest('gcc required')
+        source=ki2bootiso.INIT_C
+        start=source.index('static int handoff_to_installed_system(void)')
+        end=source.index('static void installer_cli_menu(',start)
+        harness=r'''
+#include <assert.h>
+#include <string.h>
+#define SYS_chdir 80
+#define SYS_chroot 161
+#define SYS_mount 165
+#define SYS_execve 59
+#define MS_MOVE 8192
+#define MS_REC 16384
+#define MS_PRIVATE (1UL << 18)
+static int phase, execs, chroots, fail_move, fail_api;
+static int cmdline_value(const char *k,char *v,unsigned long n) { (void)k;(void)n;strcpy(v,"/dev/sda3");return 1; }
+static void say(const char *s) { (void)s; }
+static void mkdir_p(const char *s,long mode) { (void)s;(void)mode; }
+static int file_exists(const char *s) { (void)s;return 1; }
+static int mount_one(const char *a,const char *b,const char *c,long d,const char *e) {
+ (void)a;(void)b;(void)c;(void)d;(void)e;return !fail_api;
+}
+static long ksys(long n,long a,long b,long c,long d,long e,long f) {
+ (void)c;(void)e;(void)f;
+ if(n==SYS_chdir && !strcmp((char*)a,"/sysroot")) { assert(phase==0);phase=1; }
+ if(n==SYS_mount && d==(MS_REC|MS_PRIVATE)) { assert(phase==1);phase=2; }
+ if(n==SYS_mount && d==MS_MOVE) { assert(phase==2);assert(!strcmp((char*)a,"."));assert(!strcmp((char*)b,"/"));if(fail_move)return -1;phase=3; }
+ if(n==SYS_chroot) { assert(phase==3);assert(!strcmp((char*)a,"."));chroots++;phase=4; }
+ if(n==SYS_chdir && !strcmp((char*)a,"/")) { assert(phase==4);phase=5; }
+ if(n==SYS_execve) { assert(phase==5);execs++;return -1; }
+ return 0;
+}
+'''
+        main=r'''
+int main(void) {
+ handoff_to_installed_system();assert(phase==5 && execs==2 && chroots==1);
+ phase=execs=chroots=0;fail_move=1;
+ handoff_to_installed_system();assert(phase==2 && !execs && !chroots);
+ phase=execs=chroots=0;fail_move=0;fail_api=1;
+ handoff_to_installed_system();assert(!phase && !execs && !chroots);
+ return 0;
+}
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            code,binary=Path(tmp)/'handoff.c',Path(tmp)/'handoff'
+            code.write_text(harness+source[start:end]+main)
+            subprocess.run([gcc,'-Wall','-Wextra','-Werror',str(code),'-o',str(binary)],check=True)
+            subprocess.run([str(binary)],check=True)
+
     def test_gnome_preparation_mount_cleanup_and_service_activation(self):
         gcc = shutil.which("gcc")
         if not gcc:
@@ -73,29 +124,26 @@ int main(void) {
     def test_profile_media_validation_and_dependency_closure(self):
         import ki2installcatalog
         data = ki2installcatalog.load()
-        roots = ki2installcatalog.expand(data, ['server', 'ai-console'])['packages']
+        roots = ki2installcatalog.expand(data, ['server'])['packages']
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            entries = [{"name": n, "size": 1, "dependencies": {"runtime": []}}
-                       for n in roots if n != 'kiki-kmscon']
+            entries = [{'name': n, 'size': 1, 'dependencies': {'runtime': []}} for n in roots]
             index = root / 'index.x86_64.json'
             index.write_text(json.dumps({'packages': entries}))
-            with self.assertRaisesRegex(ki2bootiso.BootIsoError, 'kiki-kmscon'):
-                ki2bootiso.verify_installer_default_packages(root, 'x86_64')
-            entries.append({'name': 'kiki-kmscon', 'size': 1, 'dependencies': {'runtime': ['missing-console-lib']}})
+            result = ki2bootiso.verify_installer_default_packages(root, 'x86_64', 'server-core')
+            server = next(p for p in result['profiles'] if p['id'] == 'server-core')
+            self.assertTrue(server['available'])
+            self.assertEqual(server['ai_default'], 'off')
+            # A broken required runtime dependency must still block ISO creation.
+            entries[0]['dependencies']['runtime'] = ['missing-required-library']
             index.write_text(json.dumps({'packages': entries}))
-            with self.assertRaisesRegex(ki2bootiso.BootIsoError, 'missing-console-lib'):
+            with self.assertRaisesRegex(ki2bootiso.BootIsoError, 'missing-required-library'):
                 ki2bootiso.verify_installer_default_packages(root, 'x86_64')
-            entries.append({'name': 'missing-console-lib', 'size': 1, 'dependencies': {'runtime': []}})
-            index.write_text(json.dumps({'packages': entries}))
-            ki2bootiso.verify_installer_default_packages(root, 'x86_64')
-            # A desktop-only medium must not require any AI packages.
             roots = ki2installcatalog.expand(data, ['desktop-gnome'])['packages']
             entries = [{'name': n, 'size': 1, 'dependencies': {'runtime': []}} for n in roots]
             index.write_text(json.dumps({'packages': entries}))
             result = ki2bootiso.verify_installer_default_packages(root, 'x86_64', 'desktop-gnome')
             self.assertEqual(result['default_profile'], 'desktop-gnome')
-            self.assertFalse(next(p for p in result['profiles'] if p['id'] == 'server-core')['available'])
 
     def test_rejects_stale_gui_title_in_package(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -388,7 +436,7 @@ int main(void) {
             self.skipTest("gcc is required")
         source = ki2bootiso.INIT_C
         start = source.index("static int enable_default_systemd_units(void)")
-        end = source.index("static int install_target_boot_branding(", start)
+        end = source.index("static int enable_catalog_group_units(", start)
         harness = r'''
 #include <string.h>
 static const char *selected_ai_mode;

@@ -54,6 +54,9 @@ typedef unsigned long long u64;
 #define O_DIRECTORY 0200000
 
 #define MS_RDONLY 1
+#define MS_MOVE 8192
+#define MS_REC 16384
+#define MS_PRIVATE (1UL << 18)
 #define EBUSY 16
 #define EINTR 4
 
@@ -2064,7 +2067,7 @@ static int select_named_package_profile(const char *index_path, const char *prof
             say("GNOME desktop packages are not included on this installation media.\n");
             return 0;
         }
-        selected_add("kiki-gnome-desktop");
+        select_package_set(index_path, "desktop-gnome", "GNOME desktop", catalog_desktop_gnome);
         copy_string(selected_ai_mode, sizeof(selected_ai_mode), "off");
         return 1;
     }
@@ -2638,6 +2641,17 @@ static int install_selected_packages_to_target(const char *media_root, const cha
     path3(repo_copy, sizeof(repo_copy), target_root, "/var/lib/ki2/repo-index.x86_64.json", "");
     copy_file(index_path, repo_copy);
 
+    /* Keep installed.json in sync with the exact signed archives, so ki2ctl
+       can upgrade/remove packages and retain file ownership after installation. */
+    char *record_argv[] = {"/usr/bin/python3", "/usr/lib/kiki-installer/ki2media.py",
+        "--media-root", (char *)media_root,
+        "--public-key", "/etc/ki2/trust/installer-repo.ed25519.pub",
+        "--selection-file", list_path, "--record-installed-root", (char *)target_root, NULL};
+    if (run_program("/usr/bin/python3", record_argv) != 0) {
+        say("Failed to record installed package versions and ownership.\n");
+        return 0;
+    }
+
     size_t out = 0;
     out = append_string(line, sizeof(line), out, "Installed package count: ");
     out = append_u64(line, sizeof(line), out, (u64)installed);
@@ -2933,6 +2947,7 @@ static int enable_default_systemd_units(void) {
     return ok;
 }
 
+
 static int enable_kubernetes_systemd_units(void) {
     int ok = 1;
     mkdir_p("/mnt/target/etc/systemd/system/multi-user.target.wants", 0755);
@@ -2945,6 +2960,32 @@ static int enable_kubernetes_systemd_units(void) {
     ok &= required_unit_symlink("/usr/lib/systemd/system/kubelet.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/kubelet.service");
     ok &= required_unit_symlink("/usr/lib/systemd/system/chronyd.service", "/mnt/target/etc/systemd/system/multi-user.target.wants/chronyd.service");
     return ok;
+}
+
+static int enable_catalog_group_units(void) {
+    for (int i = 0; catalog_group_policies[i].id; i++) {
+        const CatalogGroup *g = &catalog_group_policies[i];
+        /* Core aliases are established above; AI modes have explicit policy. */
+        if (kstrcmp(g->id, "minimal") == 0 || starts_with(g->id, "ai-console")) continue;
+        int present = g->packages[0] != NULL;
+        for (int p = 0; g->packages[p]; p++) {
+            if (selected_index(g->packages[p]) < 0) present = 0;
+        }
+        if (!present) continue;
+        for (int n = 0; g->enable[n]; n++) {
+            char *argv[] = {"/usr/bin/systemctl", "--no-reload", "enable", (char *)g->enable[n], NULL};
+            if (run_chroot_program("/mnt/target", "/usr/bin/systemctl", argv) != 0) {
+                say("Cannot enable catalogue service: "); say(g->enable[n]); say("\n");
+                return 0;
+            }
+        }
+        for (int n = 0; g->disable[n]; n++) {
+            char *argv[] = {"/usr/bin/systemctl", "--no-reload", "disable", (char *)g->disable[n], NULL};
+            /* Obsolete units may be absent on a fresh installation. */
+            run_chroot_program("/mnt/target", "/usr/bin/systemctl", argv);
+        }
+    }
+    return 1;
 }
 
 static int install_target_boot_branding(const char *media_root, const char *esp_root) {
@@ -3474,6 +3515,22 @@ static int selected_network_mac(const char *sysfs, const char *name, char *mac, 
     return 1;
 }
 
+static int write_target_networkmanager_config(const char *target_root, const struct network_setup *network) {
+    char daemon[256];
+    path3(daemon, sizeof(daemon), target_root, "/usr/sbin/NetworkManager", "");
+    if (!file_exists(daemon)) return 1;
+    char mac[18];
+    mac[0] = 0;
+    selected_network_mac("/sys/class/net", network->match_name, mac, sizeof(mac));
+    char *argv[] = {"/usr/bin/python3", "/usr/lib/kiki-installer/ki2network.py",
+        "--target-root", (char *)target_root, "--interface", (char *)network->match_name,
+        "--mode", !network->enabled ? "disabled" : (network->dhcp4 ? "dhcp" : "static"),
+        "--mac", mac, "--address", (char *)network->address, "--gateway", (char *)network->gateway,
+        "--dns", (char *)network->dns, "--ntp", (char *)network->ntp,
+        "--ipv6", network->ipv6_ra ? "auto" : "disabled", NULL};
+    return run_program("/usr/bin/python3", argv) == 0;
+}
+
 static int write_target_network_config(const char *target_root, const struct network_setup *network) {
     char path[256];
     char text[1536];
@@ -3484,7 +3541,7 @@ static int write_target_network_config(const char *target_root, const struct net
     out = append_string(text, sizeof(text), out, "# KIKI installer generated systemd-networkd profile\n");
     if (!network->enabled) {
         out = append_string(text, sizeof(text), out, "# Network autoconfiguration disabled by installer plan.\n");
-        return write_text_file(path, text);
+        return write_text_file(path, text) && write_target_networkmanager_config(target_root, network);
     }
     char mac[18];
     out = append_string(text, sizeof(text), out, "\n[Match]\n");
@@ -3564,7 +3621,7 @@ static int write_target_network_config(const char *target_root, const struct net
         "# Managed by KIKI base-files and systemd-resolved.\n"
         "nameserver 127.0.0.53\n"
         "options edns0 trust-ad\n";
-    return write_text_file(path, resolv);
+    return write_text_file(path, resolv) && write_target_networkmanager_config(target_root, network);
 }
 
 #define KIKI_LAB_PASSWORD_HASH "$6$kikios$KUKwYGxYpK8DOS7AuW2xnrcIqxFBDlgxcpg0h4RTgaE/cYUCvO1cYJNm3j2VHBOCpdvJ1Dvlt0BYdN8.SOew00"
@@ -3967,7 +4024,7 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "keymap", selected_keymap);
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "timezone", selected_timezone);
     out = append_string(yaml, sizeof(yaml), out, "  network:\n");
-    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "manager", "systemd-networkd");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "manager", selected_index("NetworkManager") >= 0 ? "NetworkManager" : "systemd-networkd");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "resolver", "systemd-resolved");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "mode", !plan->network.enabled ? "off" : plan->network.dhcp4 ? "dhcp" : "static");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "interface_match", plan->network.match_name);
@@ -4023,7 +4080,7 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     }
     out = append_string(yaml, sizeof(yaml), out, "      - getty@tty2.service\n");
     out = append_string(yaml, sizeof(yaml), out, "      - systemd-logind.service\n");
-    out = append_string(yaml, sizeof(yaml), out, "      - systemd-networkd.service\n");
+    out = append_string(yaml, sizeof(yaml), out, selected_index("NetworkManager") >= 0 ? "      - NetworkManager.service\n" : "      - systemd-networkd.service\n");
     out = append_string(yaml, sizeof(yaml), out, "      - systemd-resolved.service\n");
     out = append_string(yaml, sizeof(yaml), out, "      - sshd.service\n");
     out = append_string(yaml, sizeof(yaml), out, "      - kiki-agent.service\n");
@@ -4852,6 +4909,7 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
         return;
     }
     if (!enable_default_systemd_units()) goto target_configuration_failed;
+    if (!enable_catalog_group_units()) goto target_configuration_failed;
     if (!prepare_gnome_target()) goto target_configuration_failed;
     if (selected_profile_is_kubernetes()) {
         if (!enable_kubernetes_systemd_units()) goto target_configuration_failed;
@@ -5249,14 +5307,27 @@ static int handoff_to_installed_system(void) {
     mkdir_p("/sysroot/sys", 0755);
     mkdir_p("/sysroot/run", 0755);
     mkdir_p("/sysroot/tmp", 01777);
-    mount_one("devtmpfs", "/sysroot/dev", "devtmpfs", 0, "mode=0755");
-    mount_one("proc", "/sysroot/proc", "proc", 0, "");
-    mount_one("sysfs", "/sysroot/sys", "sysfs", 0, "");
-    mount_one("tmpfs", "/sysroot/run", "tmpfs", 0, "mode=0755");
+    if (!mount_one("devtmpfs", "/sysroot/dev", "devtmpfs", 0, "mode=0755") ||
+        !mount_one("proc", "/sysroot/proc", "proc", 0, "") ||
+        !mount_one("sysfs", "/sysroot/sys", "sysfs", 0, "") ||
+        !mount_one("tmpfs", "/sysroot/run", "tmpfs", 0, "mode=0755")) {
+        say("Cannot prepare installed system API filesystems.\n");
+        return 0;
+    }
 
     say("Switching to installed systemd PID 1...\n");
-    ksys(SYS_chroot, (long)"/sysroot", 0, 0, 0, 0, 0);
-    ksys(SYS_chdir, (long)"/", 0, 0, 0, 0, 0);
+    /* A chroot alone leaves PID 1 below the mount namespace's real root.
+       Linux then rejects CLONE_NEWUSER, breaking PrivateUsers sandboxes.
+       Move the mounted root over / before changing the process root, as in
+       switch_root. No service sandbox options need to be relaxed. */
+    if (ksys(SYS_chdir, (long)"/sysroot", 0, 0, 0, 0, 0) < 0 ||
+        ksys(SYS_mount, 0, (long)"/", 0, MS_REC | MS_PRIVATE, 0, 0) < 0 ||
+        ksys(SYS_mount, (long)".", (long)"/", 0, MS_MOVE, 0, 0) < 0 ||
+        ksys(SYS_chroot, (long)".", 0, 0, 0, 0, 0) < 0 ||
+        ksys(SYS_chdir, (long)"/", 0, 0, 0, 0, 0) < 0) {
+        say("Cannot switch to the installed root mount.\n");
+        return 0;
+    }
     char *argv_systemd[] = {"/usr/lib/systemd/systemd", NULL};
     char *argv_init[] = {"/usr/sbin/init", NULL};
     static char *envp[] = {
@@ -6088,7 +6159,7 @@ def add_media_verifier(root: Path, packages_dir: Path, public_key: Path) -> None
     restore_installer_partition_runtime(root, latest_package(packages_dir, "util-linux"))
     scripts = root / "usr/lib/kiki-installer"
     scripts.mkdir(parents=True, exist_ok=True)
-    for name in ("ki2media.py", "ki2repo.py", "ki2build.py", "ki2disk.py"):
+    for name in ("ki2media.py", "ki2repo.py", "ki2build.py", "ki2disk.py", "ki2network.py"):
         shutil.copy2(Path(__file__).resolve().parent / name, scripts / name)
     trust = root / "etc/ki2/trust/installer-repo.ed25519.pub"
     trust.parent.mkdir(parents=True, exist_ok=True)

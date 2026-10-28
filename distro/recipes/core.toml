@@ -25,7 +25,7 @@ system = "copy"
 [[recipe]]
 name = "linux"
 version = "6.1.187"
-release = 2
+release = 3
 summary = "Linux kernel for KIKI OS"
 license = "GPL-2.0-only"
 tier = "kernel"
@@ -116,7 +116,7 @@ install = [
 [[recipe]]
 name = "libxcrypt"
 version = "4.4.36"
-release = 4
+release = 5
 summary = "Modern password hashing library providing libcrypt"
 license = "LGPL-2.1-or-later"
 tier = "base"
@@ -130,11 +130,12 @@ build = []
 runtime = ["glibc"]
 [recipe.build]
 system = "gnu"
+inputs = ["distro/scripts/ki2-libxcrypt-abi2"]
 configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --libdir=/usr/lib --enable-hashes=strong,glibc"]
 compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
 install = [
   "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
-  "ln -sf libcrypt.so.1.1.0 ${KI2_DESTDIR}/usr/lib/libcrypt.so.2"
+  'sh "${KI2_REPO_ROOT}/distro/scripts/ki2-libxcrypt-abi2"'
 ]
 
 [[recipe]]
@@ -300,7 +301,7 @@ configure_options = [
 [[recipe]]
 name = "util-linux"
 version = "2.40.2"
-release = 2
+release = 3
 summary = "Essential Linux system utilities and libmount"
 license = "GPL-2.0-or-later AND LGPL-2.1-or-later"
 tier = "base"
@@ -315,6 +316,10 @@ runtime = ["glibc", "zlib", "libxcrypt", "ncurses"]
 [recipe.build]
 system = "gnu"
 configure_options = ["--disable-makeinstall-chown", "--disable-liblastlog2", "--disable-pam-lastlog2", "--without-python"]
+inputs = ["distro/scripts/ki2-util-linux-paths"]
+configure = ["cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --disable-makeinstall-chown --disable-liblastlog2 --disable-pam-lastlog2 --without-python"]
+compile = ["make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"]
+install = ["make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install", 'sh "${KI2_REPO_ROOT}/distro/scripts/ki2-util-linux-paths"']
 
 [[recipe]]
 name = "cfdisk"
@@ -945,7 +950,7 @@ LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}
 [[recipe]]
 name = "ki2ctl"
 version = "0.1.0"
-release = 15
+release = 18
 summary = "KIKI HTTP package and package-group manager"
 license = "GPL-3.0-or-later"
 tier = "kiki"
@@ -1022,7 +1027,7 @@ system = "copy"
 [[recipe]]
 name = "kiki-installer-tui"
 version = "0.1.0"
-release = 16
+release = 21
 summary = "Go-based KIKI installer TUI with execution and progress reporting"
 license = "GPL-3.0-or-later"
 tier = "kiki"

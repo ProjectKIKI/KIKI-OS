@@ -24,12 +24,13 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--expected-installer-file',required=True)
     parser.add_argument('--expected-installer-sha256',required=True)
+    parser.add_argument('--repo-root',type=Path,required=True)
     args,remaining=parser.parse_known_args()
-    sys.path.insert(0,'/backend/tools')
+    sys.path.insert(0,str(args.repo_root/'tools'))
     import ki2bootiso
     from ki2integrity import audit_payload,sha256_file
     ki2bootiso.verify_installer_display_name=preserved_guard(ki2bootiso.verify_installer_display_name,args.expected_installer_file,args.expected_installer_sha256,sha256_file,audit_payload)
-    return ki2bootiso.main(remaining)
+    return ki2bootiso.main(['--repo-root',str(args.repo_root),*remaining])
 
 
 if __name__=='__main__':raise SystemExit(main())

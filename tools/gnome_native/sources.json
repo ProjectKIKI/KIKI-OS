@@ -1,0 +1,312 @@
+[
+  {
+    "name": "nautilus",
+    "url": "https://download.gnome.org/sources/nautilus/50/nautilus-50.2.2.tar.xz",
+    "sha256": "e1e285efddf42ed30dda5b29f7f8d242dab4bc1409a9054863b367bad4b34d5a",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/nautilus-50.2.2.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "gnome-control-center",
+    "url": "https://download.gnome.org/sources/gnome-control-center/50/gnome-control-center-50.4.tar.xz",
+    "sha256": "5856c73999bedf45e74f73bac3d61e2b5ec1689f8bcf1943737baeee8204fb11",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/gnome-control-center-50.4.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "tinysparql",
+    "url": "https://download.gnome.org/sources/tinysparql/3.11/tinysparql-3.11.1.tar.xz",
+    "sha256": "cfd46021ee1514ad435e714f7aa1ec7a787c7f516a94f4c7438897ee3d6eca1e",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/tinysparql-3.11.1.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "libportal",
+    "url": "https://github.com/flatpak/libportal/releases/download/0.9.1/libportal-0.9.1.tar.xz",
+    "sha256": "de801ee349ed3c255a9af3c01b1a401fab5b3fc1c35eb2fd7dfb35d4b8194d7f",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/libportal-0.9.1.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "libnma",
+    "url": "https://download.gnome.org/sources/libnma/1.10/libnma-1.10.6.tar.xz",
+    "sha256": "53a6fb2b190ad37c5986caed3e98bede7c3c602399ee4f93c8fc054303d76dab",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/libnma-1.10.6.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "gnome-online-accounts",
+    "url": "https://download.gnome.org/sources/gnome-online-accounts/3.58/gnome-online-accounts-3.58.1.tar.xz",
+    "sha256": "9ec1900cc51409c2067c07c828c10be06fe3bf68d2999bb72d7d5ed325ed9bbc",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/gnome-online-accounts-3.58.1.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "libgtop",
+    "url": "https://download.gnome.org/sources/libgtop/2.41/libgtop-2.41.3.tar.xz",
+    "sha256": "775676df958e2ea2452f7568f28b2ea581063d312773dd5c0b7624c1b9b2da8c",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/libgtop-2.41.3.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "NetworkManager",
+    "url": "https://codeload.github.com/NetworkManager/NetworkManager/tar.gz/61302aac7f2e7411f3b42159544926484eacd37e",
+    "sha256": "6b3d460abf6aab1d018510ae0a22d15f468785aadeba127a85fa7a31acc41603",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/NetworkManager-61302aac7f2e7411f3b42159544926484eacd37e",
+    "upstream": {
+      "gnome_metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e",
+      "commit": "61302aac7f2e7411f3b42159544926484eacd37e"
+    },
+    "verification": "Pinned upstream commit/archive; HTTPS SHA-256 recorded"
+  },
+  {
+    "name": "ModemManager",
+    "url": "https://codeload.github.com/linux-mobile-broadband/ModemManager/tar.gz/f2b9ab1ad78d322f32134a444b5b54c6e8160e19",
+    "sha256": "e452846f4ff5173f4cd086b1ed5882d2c201f25b4e5f1c3f1b3b17f77085e190",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/ModemManager-f2b9ab1ad78d322f32134a444b5b54c6e8160e19",
+    "upstream": {
+      "gnome_metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e",
+      "commit": "f2b9ab1ad78d322f32134a444b5b54c6e8160e19"
+    },
+    "verification": "Pinned upstream commit/archive; HTTPS SHA-256 recorded"
+  },
+  {
+    "name": "freedesktop-sdk-metadata",
+    "url": "https://gitlab.com/freedesktop-sdk/freedesktop-sdk/-/archive/da39a00d43df80bcf17898c2ebf7035df59a6a39/freedesktop-sdk-da39a00d43df80bcf17898c2ebf7035df59a6a39.tar.gz",
+    "sha256": "55de9b9d2d1684155124ac64a4b154097d646a71ba1ed6b58e329ec7132a863b",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/freedesktop-sdk-metadata-freedesktop-sdk-da39a00d43df80bcf17898c2ebf7035df59a6a39.tar.gz",
+    "upstream": {
+      "commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39"
+    },
+    "verification": "Pinned upstream commit/archive; HTTPS SHA-256 recorded"
+  },
+  {
+    "name": "cups-base",
+    "url": "https://codeload.github.com/OpenPrinting/cups/tar.gz/0b0425d34739c30ea1979472b023501bc8357fa8",
+    "sha256": "2468fd0d0c71a09591b57d46f9ae50445d0f50f60aef2dcf76fb3ae557cf9d2f",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/cups-base-0b0425d34739c30ea1979472b023501bc8357fa8",
+    "upstream": {
+      "freedesktop_sdk_commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39",
+      "source_commit": "0b0425d34739c30ea1979472b023501bc8357fa8"
+    },
+    "verification": "Pinned upstream commit/archive; HTTPS SHA-256 recorded"
+  },
+  {
+    "name": "cracklib",
+    "url": "https://codeload.github.com/cracklib/cracklib/tar.gz/e73d5db1789d198b5f9ec44b68b9c775c3e6c042",
+    "sha256": "af6b5916ec3bb9155af9c43331fef298e93e02f9d5daa5f4071c4cf9206732ba",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/cracklib-e73d5db1789d198b5f9ec44b68b9c775c3e6c042",
+    "upstream": {
+      "freedesktop_sdk_commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39",
+      "source_commit": "e73d5db1789d198b5f9ec44b68b9c775c3e6c042"
+    },
+    "verification": "Pinned upstream commit/archive; HTTPS SHA-256 recorded"
+  },
+  {
+    "name": "libwacom",
+    "url": "https://codeload.github.com/linuxwacom/libwacom/tar.gz/8d904ebbbf879adacb8d59f7dde06eee2ed6ee80",
+    "sha256": "ccb2b462ce910c9c71e09a687ab01bb744376856cd98cc1f08167078deb10578",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/libwacom-8d904ebbbf879adacb8d59f7dde06eee2ed6ee80",
+    "upstream": {
+      "freedesktop_sdk_commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39",
+      "source_commit": "8d904ebbbf879adacb8d59f7dde06eee2ed6ee80"
+    },
+    "verification": "Pinned upstream commit/archive; HTTPS SHA-256 recorded"
+  },
+  {
+    "name": "pwquality",
+    "url": "https://codeload.github.com/libpwquality/libpwquality/tar.gz/5490e96a3dd6ed7371435ca5b3ccef98bdb48b5a",
+    "sha256": "9ad652a8602ad58eb8f529c050e214bd2ba9e969fbed4537b0ff5eb945f16f27",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/pwquality-5490e96a3dd6ed7371435ca5b3ccef98bdb48b5a",
+    "upstream": {
+      "freedesktop_sdk_commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39",
+      "source_commit": "5490e96a3dd6ed7371435ca5b3ccef98bdb48b5a"
+    },
+    "verification": "Pinned upstream commit/archive; HTTPS SHA-256 recorded"
+  },
+  {
+    "name": "libndp",
+    "url": "https://codeload.github.com/jpirko/libndp/tar.gz/2730638bf88984b09531813974f9bd14e1a50165",
+    "sha256": "7ae3819067cf63ea2a524509699897a4397671c4b113e9a133a5e1ff0d0954a0",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/libndp-2730638bf88984b09531813974f9bd14e1a50165",
+    "upstream": {
+      "freedesktop_sdk_commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39",
+      "source_commit": "2730638bf88984b09531813974f9bd14e1a50165"
+    },
+    "verification": "Pinned upstream commit/archive; HTTPS SHA-256 recorded"
+  },
+  {
+    "name": "librest",
+    "url": "https://download.gnome.org/sources/librest/0.10/librest-0.10.2.tar.xz",
+    "sha256": "7b6cb912bb3a22cfa7dcf005925dcb62883024db0c09099486e7d6851185c9b8",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/librest-0.10.2.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "tecla",
+    "url": "https://download.gnome.org/sources/tecla/50/tecla-50.0.tar.xz",
+    "sha256": "2542acb24850082e0ccf6aa17af9651db71d22f0e233fdbf5ed0cffe2e45bc06",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/tecla-50.0.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "blueprint-compiler",
+    "url": "https://download.gnome.org/sources/blueprint-compiler/0.20/blueprint-compiler-0.20.4.tar.xz",
+    "sha256": "1f1ecc84bcd698902d422f7de83d39229a209dd3016f6d2c3b0ed0ab123f6891",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/blueprint-compiler-0.20.4.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "colord-gtk",
+    "url": "https://codeload.github.com/hughsie/colord-gtk/tar.gz/b5a0ca3c512277842011757d9ce2efbfd6a8d888",
+    "sha256": "a3b82f78ded427739b84624b719bae3620b4bf8cc6871e83c3171638dfa3ff95",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/b5a0ca3c512277842011757d9ce2efbfd6a8d888",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "udisks2",
+    "url": "https://codeload.github.com/storaged-project/udisks/tar.gz/6375ff14d3fed5f20c66ff50cfc02844473294a1",
+    "sha256": "c8a1c2eea38ba3481fbf7904cdb6dca0a4abdb249ec5975ee8aeb84faff55802",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/6375ff14d3fed5f20c66ff50cfc02844473294a1",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "samba",
+    "url": "https://codeload.github.com/samba-team/samba/tar.gz/2ac52091905428fcaa48c10cc4e4fe439f9c679d",
+    "sha256": "72c4b66770f5954d60d43bffab669be22df12db7c5e758ce8209a05ba0f291c1",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/2ac52091905428fcaa48c10cc4e4fe439f9c679d",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "readline",
+    "url": "https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/readline-8.3.tar.gz",
+    "sha256": "fe5383204467828cd495ee8d1d3c037a7eba1389c22bc6a041f627976f9061cc",
+    "verification": "Official GNU HTTPS release; locally pinned SHA-256"
+  },
+  {
+    "name": "gnome-console",
+    "url": "https://download.gnome.org/sources/gnome-console/50/gnome-console-50.0.tar.xz",
+    "sha256": "e4950207f0547e6a6c0f18eebfcf6e1a10461eab0f2fae0aae512b1044c7ac6e",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/gnome-console-50.0.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "gtk+-3",
+    "url": "https://download.gnome.org/sources/gtk/3.24/gtk-3.24.52.tar.xz",
+    "sha256": "80931fa472a77b9a164f6740e3c0b444fac6770054632d35a7ff9d679e5e7b9f",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/gtk-3.24.52.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "gnome-backgrounds",
+    "url": "https://download.gnome.org/sources/gnome-backgrounds/50/gnome-backgrounds-50.0.tar.xz",
+    "sha256": "1acdba7acb4f34c7321febc6273444344fd55fd593611d446de70860183b52b8",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/gnome-backgrounds-50.0.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "krb5",
+    "url": "https://kerberos.org/dist/krb5/1.22/krb5-1.22.2.tar.gz",
+    "sha256": "3243ffbc8ea4d4ac22ddc7dd2a1dc54c57874c40648b60ff97009763554eaf13",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/krb5-1.22.2.tar.gz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "type": "url",
+    "url": "https://github.com/besser82/libxcrypt/releases/download/v4.4.36/libxcrypt-4.4.36.tar.xz",
+    "sha256": "e5e1f4caee0a01de2aee26e3138807d6d3ca2b8e67287966d1fefd65e1fd8943",
+    "name": "libxcrypt",
+    "file": "/mnt/e/dev/KIKI-OS/dist/sources/libxcrypt-4.4.36.tar.xz"
+  },
+  {
+    "type": "url",
+    "url": "https://mirrors.edge.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v1.47.1/e2fsprogs-1.47.1.tar.xz",
+    "sha256": "5a33dc047fd47284bca4bb10c13cfe7896377ae3d01cb81a05d406025d99e0d1",
+    "name": "e2fsprogs",
+    "file": "/mnt/e/dev/KIKI-OS/dist/sources/e2fsprogs-1.47.1.tar.xz"
+  },
+  {
+    "name": "localsearch",
+    "url": "https://download.gnome.org/sources/localsearch/3.11/localsearch-3.11.1.tar.xz",
+    "sha256": "7b39a6c28a8acf2b172f15b2fb5ee7c7a3764c447c2f4a14caa239b7ebe61942",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/localsearch-3.11.1.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "xdg-desktop-portal",
+    "url": "https://codeload.github.com/flatpak/xdg-desktop-portal/tar.gz/1d20fadc304f6601452b5db65ed91197dba77041",
+    "sha256": "d849fbf765ee3e84ed7907c21f24023305b6f1cafd6ab43444f28ddaa33e079e",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/1d20fadc304f6601452b5db65ed91197dba77041",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "xdg-desktop-portal-gnome",
+    "url": "https://download.gnome.org/sources/xdg-desktop-portal-gnome/50/xdg-desktop-portal-gnome-50.0.tar.xz",
+    "sha256": "ceeef2fb68b34b3f66a3def0a332a22a70af272641fb6c50065b7a2fde3d5759",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/xdg-desktop-portal-gnome-50.0.tar.xz",
+    "metadata_sha256": "4a934d828a075e8cc394a68e6a55e59d53979bd8a9394490dd0f23419b5c904e"
+  },
+  {
+    "name": "fuse3",
+    "url": "https://codeload.github.com/libfuse/libfuse/tar.gz/033844748010a3b8265bf1c90b9ae8ffe4cd9ca7",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/fuse3-033844748010a3b8265bf1c90b9ae8ffe4cd9ca7.tar.gz",
+    "sha256": "5aeef2f7c616bb0fa03322d034d415b793a2c95a0ba5a9f83125d6dec7259c9f",
+    "commit": "033844748010a3b8265bf1c90b9ae8ffe4cd9ca7",
+    "metadata_commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39"
+  },
+  {
+    "name": "pipewire",
+    "url": "https://codeload.github.com/PipeWire/pipewire/tar.gz/fd60e04525f3a04d90bf50085222e0cc9139b4a4",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/pipewire-fd60e04525f3a04d90bf50085222e0cc9139b4a4.tar.gz",
+    "sha256": "b8bf4d425ed53f6b36ee91f8aa14aa146de85f92d256faf008fe176df154fd81",
+    "commit": "fd60e04525f3a04d90bf50085222e0cc9139b4a4",
+    "metadata_commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39"
+  },
+  {
+    "name": "gstreamer",
+    "url": "https://codeload.github.com/GStreamer/gstreamer/tar.gz/e6ee9e63e033b9c8e343ba0bdfa7590ef81449ee",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/gstreamer-e6ee9e63e033b9c8e343ba0bdfa7590ef81449ee.tar.gz",
+    "sha256": "d7825e0aff730294f87c426b7f1b485579f56d7ec5a3ed98c1248d5388757ef8",
+    "commit": "e6ee9e63e033b9c8e343ba0bdfa7590ef81449ee",
+    "metadata_commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39"
+  },
+  {
+    "name": "xdg-user-dirs",
+    "url": "https://gitlab.freedesktop.org/xdg/xdg-user-dirs/-/archive/cd05b6d29da1abdb3cd253ef496ae7fd1593e4bb/xdg-user-dirs-cd05b6d29da1abdb3cd253ef496ae7fd1593e4bb.tar.gz",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/xdg-user-dirs-cd05b6d29da1abdb3cd253ef496ae7fd1593e4bb.tar.gz",
+    "sha256": "a4fa2d993aab904f4da56fd4df3d5fc8ec5131a4a3848a08ad34fbe75e0271f1",
+    "commit": "cd05b6d29da1abdb3cd253ef496ae7fd1593e4bb",
+    "metadata_commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39"
+  },
+  {
+    "name": "portal-libglnx",
+    "url": "https://codeload.github.com/GNOME/libglnx/tar.gz/ff64d52116ae74f0d25e24f089db28921ea171ff",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/portal-libglnx-ff64d52116ae74f0d25e24f089db28921ea171ff.tar.gz",
+    "sha256": "fcf7670f61f003ae290ed8486814dc89bbe50eebb0bd5f56a77ebccc6ddefc94",
+    "commit": "ff64d52116ae74f0d25e24f089db28921ea171ff",
+    "metadata_commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39"
+  },
+  {
+    "name": "portal-gvdb",
+    "url": "https://codeload.github.com/GNOME/gvdb/tar.gz/c6f2359cc1d00f16e0a0e2527fa0bc1882b8b5ab",
+    "file": "/tmp/kiki-gnome-native-apps-20261028/sources/portal-gvdb-c6f2359cc1d00f16e0a0e2527fa0bc1882b8b5ab.tar.gz",
+    "sha256": "14f082f122eb4e495e2ac96f235efb01525ae5d4a1f0fd98148b4f7c7f95ccd2",
+    "commit": "c6f2359cc1d00f16e0a0e2527fa0bc1882b8b5ab",
+    "metadata_commit": "da39a00d43df80bcf17898c2ebf7035df59a6a39"
+  },
+  {
+    "type": "url",
+    "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.1.187.tar.xz",
+    "sha256": "1b6e798aeaa708ca670a426ad5a6c86dc2237b8e59e8822876976c383873642b",
+    "name": "linux",
+    "file": "/mnt/e/dev/KIKI-OS/dist/sources/linux-6.1.187.tar.xz"
+  },
+  {
+    "type": "url",
+    "url": "https://ftp.gnu.org/gnu/gcc/gcc-11.5.0/gcc-11.5.0.tar.xz",
+    "file": "/mnt/e/dev/KIKI-OS/dist/sources/gcc-11.5.0.tar.xz",
+    "sha256": "a6e21868ead545cf87f0c01f84276e4b5281d672098591c1c896241f09363478",
+    "name": "libatomic"
+  }
+]

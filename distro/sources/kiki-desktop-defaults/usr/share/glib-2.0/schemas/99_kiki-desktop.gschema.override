@@ -1,0 +1,22 @@
+[org.gnome.shell]
+favorite-apps=['org.gnome.Console.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
+
+[org.gnome.Console]
+shell=['/bin/bash', '--login']
+
+[org.gnome.desktop.background]
+picture-uri='file:///usr/share/backgrounds/gnome/blobs-l.svg'
+picture-uri-dark='file:///usr/share/backgrounds/gnome/blobs-d.svg'
+picture-options='zoom'
+
+[org.gnome.desktop.input-sources]
+sources=[('xkb', 'us'), ('ibus', 'hangul')]
+xkb-options=[]
+
+[org.gnome.desktop.wm.keybindings]
+switch-input-source=['<Super>space']
+switch-input-source-backward=['<Shift><Super>space']
+
+[org.freedesktop.ibus.engine.hangul]
+hangul-keyboard='2'
+switch-keys='Hangul,Shift+space'

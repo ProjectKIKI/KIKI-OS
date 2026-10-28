@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import re
+import tarfile
 from pathlib import Path
 
 import ki2repo
@@ -128,15 +129,49 @@ def runtime_closure(index, selected):
     return result
 
 
+def record_installed_state(media_root, target_root, selected, public_key):
+    """Write package ownership/version state from verified installation archives."""
+    import ki2build
+    verify_media(media_root, public_key)
+    target = Path(target_root).resolve(strict=True)
+    if target == Path('/'):
+        raise MediaError('refusing to reconstruct the running host package database')
+    index = read_json_bytes((Path(media_root) / 'kiki/repo/index.x86_64.json').read_bytes())
+    ordered = runtime_closure(index, selected)
+    entries = {p['name']: p for p in index['packages']}
+    installed = []
+    for name in ordered:
+        record = entries[name]
+        package = Path(media_root) / 'kiki/packages/x86_64' / record['file']
+        with tarfile.open(package, 'r|gz') as archive:
+            first = next(iter(archive), None)
+            if first is None or first.name != 'manifest.json':
+                raise MediaError('package manifest must be the first archive member')
+            manifest = read_json_bytes(archive.extractfile(first).read())
+        if manifest['name'] != name or str(manifest['version']) != str(record['version']) or str(manifest['release']) != str(record['release']):
+            raise MediaError('installed package identity mismatch: ' + name)
+        installed.append((package, manifest))
+    ki2build.write_rootfs_installed_state(target, installed)
+    return len(installed)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--media-root", type=Path, required=True)
     parser.add_argument("--public-key", type=Path, required=True)
     parser.add_argument('--selection-file', type=Path)
     parser.add_argument('--resolved-file', type=Path)
+    parser.add_argument('--record-installed-root', type=Path)
     args = parser.parse_args()
     try:
         count = verify_media(args.media_root, args.public_key)
+        if args.record_installed_root:
+            if not args.selection_file or args.resolved_file:
+                raise MediaError('record-installed-root requires selection-file only')
+            count = record_installed_state(args.media_root, args.record_installed_root,
+                                           args.selection_file.read_text().splitlines(), args.public_key)
+            print(f'Recorded {count} installed packages with versions and ownership.')
+            return
         if bool(args.selection_file) != bool(args.resolved_file):
             raise MediaError('selection and resolved files must be supplied together')
         if args.selection_file:

@@ -1,7 +1,7 @@
 [[recipe]]
 name = "kiki-installer-gtk"
 version = "0.1.0"
-release = 20
+release = 23
 summary = "KIKI OS graphical installer and Cage runtime"
 license = "GPL-3.0-or-later AND LGPL-2.1-or-later AND MIT AND OFL-1.1 AND BSD-3-Clause AND Apache-2.0"
 tier = "desktop"
@@ -11,6 +11,9 @@ type = "local"
 path = "build/ki2/host-graphics/rootfs"
 inputs = [
   "cmd/kiki-installer-gtk/main.c",
+  "cmd/kiki-installer-gtk/catalog.generated.h",
+  "tools/ki2installcatalog.py",
+  "distro/sources/ki2ctl/usr/share/ki2/package-groups.json",
   "cmd/kiki-installer-gtk/network.h",
   "cmd/kiki-installer-gtk/disk.h",
   "cmd/kiki-installer-gtk/style.css",

@@ -135,5 +135,14 @@ python3 tools/ki2build.py rootfs --profile distro/profiles/desktop-gnome.toml \
 기존 r4 서버 ISO에는 GNOME 패키지가 없으므로 해당 ISO만으로는 설치할 수 없다.
 새 설치 미디어에는 업데이트한 설치기와 GNOME 후보 패키지·서명 인덱스가 필요하며,
 필수 패키지가 없는 미디어에서는 디스크 쓰기 전에 중단한다.
-이 연결 작업은 이전 후보의 최소 로그인 환경 범위를 확장하거나 새 ISO의 GNOME
-로그인 검증을 완료했다는 뜻은 아니다.
+새 설치 미디어는 설정·파일 앱, GTK4 VTE 터미널, IBus 한글 엔진과 실제 GNOME
+키보드·접근성·전원·시간·화면보호·정리·rfkill 설정 데몬을 추가한다.
+KIKI 설정과 파일 앱의 제공 범위는
+`distro/sources/kiki-desktop-defaults/usr/share/doc/kiki-desktop-defaults/README.ko.md`에
+기록한다. GNOME Control Center·Nautilus 전체 기능이나 오디오·화면 공유를 포함한
+모든 데스크톱 기능의 지원을 의미하지 않는다.
+
+프로파일·추가 구성은 공통 카탈로그에서 생성한다. 표시 이름은 사용자 언어로
+제공하며, 현재 ISO에 없는 구성은 선택할 수 없다. 프로파일마다 기본 AI 정책을
+적용하고 검토 화면에는 GDM·그래픽 부팅·tty2 복구 콘솔을 명시한다.
+최신 빌드·설치 실측 근거는 `artifacts/desktop-installer-20261027`에 기록한다.

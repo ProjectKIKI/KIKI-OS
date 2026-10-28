@@ -1,0 +1,15 @@
+#!/bin/sh
+# Keep the legacy ABI 1 and supply a genuine modern ABI 2, with its own SONAME.
+set -eu
+modern="$KI2_BUILD_DIR/libxcrypt-modern"
+if [ -e "$modern" ]; then
+    echo "Refusing to overwrite libxcrypt modern build: $modern" >&2
+    exit 1
+fi
+cp -a "$KI2_SOURCE_DIR" "$modern"
+if [ -f "$modern/Makefile" ]; then make -C "$modern" distclean; fi
+(cd "$modern" && ./configure --prefix=/usr --libdir=/usr/lib --disable-static --disable-obsolete-api --enable-hashes=strong,glibc)
+make -C "$modern" -j"${KI2_JOBS:-2}"
+readelf -d "$modern/.libs/libcrypt.so.2.0.0" | grep -F 'Library soname: [libcrypt.so.2]'
+install -Dm755 "$modern/.libs/libcrypt.so.2.0.0" "$KI2_DESTDIR/usr/lib/libcrypt.so.2.0.0"
+ln -sf libcrypt.so.2.0.0 "$KI2_DESTDIR/usr/lib/libcrypt.so.2"

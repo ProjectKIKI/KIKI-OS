@@ -60,6 +60,7 @@ typedef struct {
     GtkEntry *package_groups;
     GtkCheckButton *extra_groups[16];
     GtkLabel *profile_status;
+    GtkGrid *profile_grid;
     GKeyFile *media_catalog;
     GtkDropDown *install_mode;
     GtkDropDown *swap_mode;
@@ -125,6 +126,7 @@ static const char *selected_profile(InstallerUI *ui) {
 }
 
 static gboolean media_available(InstallerUI *ui, const char *kind, const char *id) {
+    if (ui->source_type && !g_str_equal(dropdown_text(ui->source_type), "local")) return TRUE;
     if (!ui->media_catalog) return TRUE; /* Standalone plan editing has no medium. */
     g_autofree char *section = g_strdup_printf("%s %s", kind, id);
     return g_key_file_get_boolean(ui->media_catalog, section, "available", NULL);
@@ -392,9 +394,24 @@ static void desktop_profile_selected(GObject *object, GParamSpec *spec, gpointer
     (void)object;
     (void)spec;
     InstallerUI *ui = data;
-    if (g_str_equal(selected_profile(ui), "desktop-gnome")) {
+    gboolean desktop = g_str_equal(selected_profile(ui), "desktop-gnome");
+    guint profile_index = gtk_drop_down_get_selected(ui->profile);
+    if (profile_index < G_N_ELEMENTS(profiles) - 1) {
+        const char *mode = profile_ai_defaults[profile_index];
+        g_autofree char *section = g_strdup_printf("profile %s", selected_profile(ui));
+        g_autofree char *media_mode = ui->media_catalog ? g_key_file_get_string(ui->media_catalog, section, "ai_default", NULL) : NULL;
+        if (media_mode) mode = media_mode;
+        gtk_drop_down_set_selected(ui->ai_mode, g_str_equal(mode, "off") ? 2 : 0);
+    }
+    if (desktop) {
         gtk_drop_down_set_selected(ui->ai_mode, 2);
         gtk_drop_down_set_selected(ui->runtime, 1);
+    }
+    for (gint row = 1; row <= 3; row++) {
+        for (gint column = 0; column < 2; column++) {
+            GtkWidget *child = gtk_grid_get_child_at(ui->profile_grid, column, row);
+            if (child) gtk_widget_set_visible(child, !desktop);
+        }
     }
     update_profile_status(ui);
 }
@@ -1134,8 +1151,9 @@ static void build_installer_ui(GtkApplication *application) {
     gtk_box_append(GTK_BOX(page), grid);
     stack_page(GTK_STACK(stack), page, "source", L("패키지 소스", "Package source"));
 
-    page = page_new(L("프로필 및 AI", "Profile and AI"), L("desktop-gnome은 기존 GNOME 50 · GDM · Wayland 환경을 설치합니다. GNOME 패키지가 포함된 미디어가 필요합니다.", "desktop-gnome installs the existing GNOME 50, GDM and Wayland environment. Media must include its desktop packages."));
+    page = page_new(L("프로필 및 AI", "Profile and AI"), L("사용할 환경과 추가 구성을 선택하세요. 현재 미디어에 포함된 구성만 설치할 수 있습니다.", "Choose your environment and optional packages. Availability depends on this installation media."));
     grid = form_new();
+    ui->profile_grid = GTK_GRID(grid);
     ui->profile = form_dropdown(GTK_GRID(grid), 0, L("설치 환경", "Installation environment"), ui_korean ? profile_labels_ko : profile_labels_en);
     const char *catalog_path = g_getenv("KIKI_INSTALLER_MEDIA_CATALOG");
     if (!catalog_path) catalog_path = "/etc/kiki/installer-media.ini";
@@ -1174,9 +1192,14 @@ static void build_installer_ui(GtkApplication *application) {
     gtk_grid_attach(GTK_GRID(grid), extras, 0, 6, 2, 1);
     g_signal_connect(ui->profile, "notify::selected", G_CALLBACK(desktop_profile_selected), ui);
     if (ui->media_catalog) {
+        g_autofree char *default_profile = g_key_file_get_string(ui->media_catalog, "media", "default_profile", NULL);
+        guint selected_index = GTK_INVALID_LIST_POSITION;
         for (guint i = 0; profiles[i]; i++) {
-            if (media_available(ui, "profile", profiles[i])) { gtk_drop_down_set_selected(ui->profile, i); break; }
+            if (!media_available(ui, "profile", profiles[i])) continue;
+            if (selected_index == GTK_INVALID_LIST_POSITION) selected_index = i;
+            if (g_strcmp0(default_profile, profiles[i]) == 0) { selected_index = i; break; }
         }
+        gtk_drop_down_set_selected(ui->profile, selected_index);
     }
     desktop_profile_selected(NULL, NULL, ui);
     gtk_box_append(GTK_BOX(page), grid);
