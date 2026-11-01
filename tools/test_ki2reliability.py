@@ -79,5 +79,17 @@ class ReliabilityTests(unittest.TestCase):
                     self.assertTrue(not stat.exists() or stat.read_text().split()[2]=='Z')
             finally:server.close()
 
+    def test_executed_scap_is_not_automatically_a_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);manifest=root/'snapshots/candidate/manifest.json';manifest.parent.mkdir(parents=True);manifest.write_text('{}')
+            row=dict(id='a'*32,package='demo',snapshot='candidate',validation={'sha256':'report'},candidate_manifest_sha256=ops.sha(manifest),security_policy={'sha256':'policy'})
+            report={'checks':dict(rebooted=True,gnome_session=True,security_scan_executed=True),'security':{'after':{'rules':[{'result':'fail'}]}}}
+            updates=SimpleNamespace(list=lambda:[row],validate_report=lambda key:(row,report,'report'))
+            lib=SimpleNamespace(root=root,updates=updates,jobs=lambda:[])
+            self.assertEqual(validation.inventory(lib)['rows'][0]['gates']['scap'],'설정 불일치')
+            self.assertFalse(validation.inventory(lib)['rows'][0]['all_checks_verified'])
+            report['security']['after']['rules'][0]['result']='pass'
+            self.assertTrue(validation.inventory(lib)['rows'][0]['all_checks_verified'])
+
 
 if __name__=='__main__':unittest.main()

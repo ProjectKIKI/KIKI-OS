@@ -20,7 +20,12 @@ def inventory(lib):
                 checks=report['checks']
                 gates.update(signature='통과',vm='통과',reboot='통과' if checks.get('rebooted') is True else '미검증',
                              gui='통과' if checks.get('gnome_session') is True else '미검증')
-                gates['scap']='통과' if checks.get('security_scan_executed') is True and proposal.get('security_policy') else '정책·검사 미확인'
+                rules=report.get('security',{}).get('after',{}).get('rules',[])
+                if not proposal.get('security_policy') or checks.get('security_scan_executed') is not True or not rules:
+                    gates['scap']='정책·검사 미확인'
+                elif any(rule.get('result')=='fail' for rule in rules):gates['scap']='설정 불일치'
+                elif any(rule.get('result') not in {'pass','notapplicable'} for rule in rules) or not any(rule.get('result')=='pass' for rule in rules):gates['scap']='관측 오류·미검사'
+                else:gates['scap']='통과'
             except (ValueError,OSError,KeyError) as exc:error=str(exc)
         rows.append(dict(kind='업데이트',id=proposal['id'],package=proposal['package'],
                          snapshot=proposal.get('snapshot',''),plan_sha256=proposal.get('plan_sha256','미기록'),
