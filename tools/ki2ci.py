@@ -39,6 +39,8 @@ import ki2catalog_views
 import ki2assistant
 import ki2planning
 import ki2catalog
+import ki2process
+import ki2autobackup
 import ki2sources
 import ki2buildops
 
@@ -658,7 +660,9 @@ def package_build_steps(config: CiConfig, package: str, job_id: str) -> list[Ste
     ))]
 
 
-def run_step(config: CiConfig, step: Step, log_path: Path) -> int:
+def run_step(config: CiConfig, step: Step, log_path: Path, cancel_event=None) -> int:
+    if cancel_event is not None and cancel_event.is_set():
+        raise ki2process.BuildCancelled('운영자가 빌드를 취소했습니다.')
     append_log(log_path, f"\n==> {step.name}\n")
     append_log(log_path, "+ " + shlex.join(step.command) + "\n")
     env = os.environ.copy()
@@ -674,7 +678,9 @@ def run_step(config: CiConfig, step: Step, log_path: Path) -> int:
         stderr=subprocess.STDOUT,
         text=True,
         errors="replace",
+        start_new_session=(os.name == 'posix'),
     )
+    watched = ki2process.watcher(proc, cancel_event) if cancel_event is not None else None
     assert proc.stdout is not None
     try:
         for line in proc.stdout:
@@ -691,12 +697,16 @@ def run_step(config: CiConfig, step: Step, log_path: Path) -> int:
         raise
     finally:
         proc.stdout.close()
+        if watched:
+            watched[0].set(); watched[1].join(timeout=5)
+    if cancel_event is not None and cancel_event.is_set():
+        raise ki2process.BuildCancelled('운영자가 빌드를 취소했습니다. 로그와 빌드 입력은 보존했습니다.')
     append_log(log_path, f"<== {step.name} exit={proc.returncode}\n")
     return proc.returncode
 
 
 def run_job(config: CiConfig, store: JobStore, job_id: str, build_lock: threading.Lock | None = None,
-            *, git_sources: GitSources | None = None) -> None:
+            *, git_sources: GitSources | None = None, cancel_event=None) -> None:
     log_path = store.log_path(job_id)
     lock = build_lock or threading.Lock()
     with lock:
@@ -774,7 +784,7 @@ def run_job(config: CiConfig, store: JobStore, job_id: str, build_lock: threadin
             for step, step_meta in zip(steps, job["steps"]):
                 step_meta.update(status="running", started_at=now())
                 store.write(job)
-                code = run_step(config, step, log_path)
+                code = run_step(config, step, log_path, cancel_event) if cancel_event is not None else run_step(config, step, log_path)
                 step_meta.update(finished_at=now(), exit_code=code, status="succeeded" if code == 0 else "failed")
                 store.write(job)
                 if code != 0 and not step.allow_failure:
@@ -795,7 +805,12 @@ def run_job(config: CiConfig, store: JobStore, job_id: str, build_lock: threadin
                     remaining["status"] = "skipped"
             job["exit_code"] = exit_code
             job["finished_at"] = now()
-            job["status"] = "interrupted" if interrupted else ("succeeded" if exit_code == 0 else "failed")
+            cancelled = cancel_event is not None and cancel_event.is_set()
+            if cancelled:
+                job.update(cancel_requested=True, exit_code=130)
+            job["status"] = "cancelled" if cancelled else ("interrupted" if interrupted else ("succeeded" if exit_code == 0 else "failed"))
+            if cancelled and step_meta is not None and step_meta['status'] in {'running','failed'}:
+                step_meta.update(status='cancelled', finished_at=now())
             store.write(job)
 
 
@@ -1213,6 +1228,7 @@ class BuildServer:
         self.queue: queue.Queue[str | None] = queue.Queue()
         self.worker: threading.Thread | None = None
         self.closed = False
+        self.cancel_events = {}
         # Pending jobs survive a restart; an interrupted build needs explicit retry.
         for job in sorted(self.store.list(), key=lambda item: (item["created_at"], item["id"])):
             if job["status"] == "running":
@@ -1241,7 +1257,12 @@ class BuildServer:
                 try:
                     if job_id is None or self.closed:
                         return
-                    run_job(self.config, self.store, job_id, git_sources=self.git)
+                    with self.store.lock:
+                        event = self.cancel_events.setdefault(job_id, threading.Event())
+                    try:
+                        run_job(self.config, self.store, job_id, git_sources=self.git, cancel_event=event)
+                    finally:
+                        with self.store.lock:self.cancel_events.pop(job_id, None)
                 finally:
                     self.queue.task_done()
         finally:
@@ -1313,8 +1334,13 @@ class BuildServer:
     def cancel(self, job_id: str) -> dict[str, Any]:
         with self.store.lock:
             job = self.store.read(job_id)
+            if job['status'] == 'running':
+                self.cancel_events.setdefault(job_id, threading.Event()).set()
+                job.update(cancel_requested=True, cancel_requested_at=now())
+                self.store.write(job)
+                return job
             if job["status"] != "pending":
-                raise CiError("only queued jobs can be cancelled")
+                raise CiError("대기·실행 중인 빌드만 취소할 수 있습니다.")
             job.update(status="cancelled", finished_at=now(), exit_code=None)
             self.store.write(job)
             return job
@@ -1527,6 +1553,10 @@ def make_handler(server: BuildServer):
                 health=ki2buildops.health(server.config.artifact_root);plan=ki2buildops.retention_plan(server.store.jobs_dir)
                 body="<div class='panel'><h2>KIKI Build "+ki2buildops.VERSION+"</h2><p>x86_64 단일 Linux 빌더 정식 지원 · 복구·OpenStack·Hyper-V 검증 기록을 릴리즈와 함께 보관합니다.</p><p><a href='/api/build-contract'>지원 범위·호환성 명세 JSON</a> · <a href='/source-manifest'>전체 소스 명세</a></p><h3>저장 공간</h3><p>여유 "+f"{health['free_bytes']/1024**3:.1f} GiB / 전체 {health['total_bytes']/1024**3:.1f} GiB</p><p>"+html_escape(health['warning'])+"</p><h3>보존·정리 미리보기</h3><p>최근 10개 완료 작업과 모든 산출물·입력·이력은 보존합니다. 오래된 완료 작업의 임시 work 디렉터리만 정리 후보로 계산합니다. 자동 삭제하지 않습니다.</p><p>후보 "+str(len(plan))+"개 · "+f"{sum(p['bytes'] for p in plan)/1024**3:.2f} GiB</p></div>"
                 body+="<div class='panel'><h2>백업·새 서버 복원</h2><p>작업이 없는 유지보수 시간에 상태와 서명 키를 접근 제한된 저장장치에 백업하세요. 복원 대상은 새 빈 경로여야 합니다. 계정은 유지하고 복원된 로그인 세션은 종료합니다.</p><pre>python3 tools/ki2buildops.py doctor --root STATE_ROOT\npython3 tools/ki2buildops.py backup --component catalog=CATALOG_DIR --component jobs=JOBS_DIR --component release=RELEASE_STORE --component auth=AUTH_STATE --output BACKUP_VOLUME/kiki-state.tar.gz\npython3 tools/ki2buildops.py restore --archive BACKUP_VOLUME/kiki-state.tar.gz --destination NEW_STATE_ROOT</pre><p>백업에는 비공개 키와 계정 정보가 포함될 수 있습니다. 외부 공개 저장소에 게시하지 마세요. 임시 빌드 작업 디렉터리는 제외하며 소스·런타임은 고정 버전으로 다시 준비합니다.</p></div>"
+                body+=ki2autobackup.page(server.config.artifact_root/'backup-status.json')
+                if any(not item.get('size_complete',True) for item in plan):
+                    body+="<p>응답 시간을 제한하기 위해 임시 파일 용량을 일부만 집계했습니다. 표시 용량은 전체 크기가 아닙니다.</p>"
+                body+="<p><a href='/releases/validation'>릴리즈 검증 결과 통합</a></p>"
                 self.send_html(render_page('운영·복구',body,active='/operations'));return
             if parsed.path in {'/package-groups', '/package-groups/edit', '/package-groups/history', '/packages/edit', '/packages/new', '/package-groups/export', '/api/package-groups'}:
                 query = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
@@ -2000,7 +2030,7 @@ def make_handler(server: BuildServer):
                 + "<p id='job-summary' role='status'></p><progress id='job-progress' value='0' max='1' aria-label='Completed build steps'></progress>"
                 + f"<p id='job-error' class='bad'>{html_escape(job.get('error', ''))}</p>"
                 + "<div class='bar'>"
-                + f"<form id='cancel-job' method='post' action='/jobs/{job_id}/cancel'{' hidden' if status != 'pending' else ''}><input type='hidden' name='action' value='cancel'><button class='secondary'>Cancel queued build</button></form>"
+                + f"<form id='cancel-job' method='post' action='/jobs/{job_id}/cancel'{' hidden' if status not in {'pending','running'} else ''}><input type='hidden' name='action' value='cancel'><button class='secondary'>빌드 취소 요청</button></form>"
                 + f"<form id='retry-job' method='post' action='/jobs/{job_id}/retry'{' hidden' if status not in TERMINAL_STATUSES else ''}><input type='hidden' name='action' value='retry'><button>Retry entire build</button></form>"
                 + "</div><table><thead><tr><th>Step</th><th>Status</th><th>Exit</th></tr></thead><tbody id='job-steps'>"
                 + steps + "</tbody>"

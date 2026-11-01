@@ -598,6 +598,12 @@ def make_handler(lib):
             if not self.allowed():return
             p=urllib.parse.urlsplit(self.path);query=urllib.parse.parse_qs(p.query)
             try:
+                if p.path in {'/releases/validation','/api/releases/validation'}:
+                    import ki2validation
+                    if p.path.startswith('/api/'):
+                        self.reply(200,json.dumps(ki2validation.inventory(lib),ensure_ascii=False).encode(),'application/json')
+                    else:self.reply(200,ki2validation.page(lib,render))
+                    return
                 if p.path=='/updates':self.reply(200,update_views.index(lib.updates,render,query));return
                 if p.path=='/updates/new':self.reply(200,update_views.new(lib.updates,render,query));return
                 if p.path=='/updates/security':self.reply(200,update_views.security(lib.updates,render,query));return

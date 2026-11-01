@@ -1,0 +1,11 @@
+[Unit]
+Description=KIKI daily backup verification
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 Asia/Seoul
+RandomizedDelaySec=5min
+Persistent=true
+Unit=kiki-build-backup.service
+
+[Install]
+WantedBy=timers.target

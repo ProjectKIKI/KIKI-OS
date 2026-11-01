@@ -12,6 +12,7 @@ import sqlite3
 import stat
 import tarfile
 import tempfile
+import time
 
 VERSION='1.0.0'
 CONTRACT=dict(schema='kiki-build-contract-v1',version=VERSION,release_stage='stable',architectures=['x86_64'],
@@ -37,10 +38,10 @@ def relative(value):
     return p
 
 
-def files(root):
+def files(root, excluded=()):
     def walk(folder):
         for p in sorted(folder.iterdir()):
-            if p.name in SKIP or p.name.endswith(('-wal','-shm')):continue
+            if p.name in SKIP or p.name in excluded or p.name.endswith(('-wal','-shm')):continue
             if p.is_symlink():yield p
             elif p.is_dir():yield from walk(p)
             elif p.is_file():yield p
@@ -59,25 +60,30 @@ def idle(roots):
                 if data.get('status') in ['pending','running']:raise ValueError('active jobs: wait for a maintenance window')
 
 
-def backup(roots, output):
+def backup(roots, output, *, excluded=()):
     roots={k:Path(v).resolve(strict=True) for k,v in roots.items()};output=Path(output).absolute()
     if not roots or set(roots)-COMPONENTS:raise ValueError('unsupported backup component')
     if any(not p.is_dir() for p in roots.values()):raise ValueError('components must be directories')
     if any(output.is_relative_to(p) for p in roots.values()):raise ValueError('backup output must be outside its inputs')
     if output.exists():raise ValueError('backup output already exists')
     idle(roots);output.parent.mkdir(parents=True,exist_ok=True)
-    estimate=sum(p.stat().st_size for root in roots.values() for p in files(root) if not p.is_symlink())
+    def selected(root):return files(root, excluded)
+    def inventory():
+        return {str(p):(p.lstat().st_size,p.lstat().st_mtime_ns,os.readlink(p) if p.is_symlink() else '')
+                for root in roots.values() for p in selected(root) if p.suffix not in {'.sqlite','.sqlite3','.db'}}
+    initial_inventory=inventory()
+    estimate=sum(p.stat().st_size for root in roots.values() for p in selected(root) if not p.is_symlink())
     if shutil.disk_usage(output.parent).free<estimate+64*1024**2:raise ValueError('not enough disk space for backup; use another volume')
     records={};critical={}
     for key,root in roots.items():
-        for p in files(root):
+        for p in selected(root):
             if not p.is_symlink() and p.suffix in ['.json','.toml','.key','.pub','.conf']:critical[str(p)]=sha(p)
     try:
         with tempfile.TemporaryDirectory(prefix='kiki-backup-',dir=output.parent) as tmp, output.open('xb') as out:
             output.chmod(0o600)
             with tarfile.open(fileobj=out,mode='w:gz') as archive:
                 for key,root in roots.items():
-                    for p in files(root):
+                    for p in selected(root):
                         rel=p.relative_to(root).as_posix();relative(rel);name='components/'+key+'/'+rel
                         mode=p.lstat().st_mode&0o777
                         if p.is_symlink():
@@ -96,8 +102,9 @@ def backup(roots, output):
                         if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns):raise ValueError('backup input changed')
                         records[name]=dict(type='file',bytes=entry.size,sha256=digest,mode=mode)
                 idle(roots)
+                if inventory()!=initial_inventory:raise ValueError('backup inventory changed; retry later')
                 if any(sha(Path(p))!=digest for p,digest in critical.items()):raise ValueError('state changed during backup; retry in a maintenance window')
-                manifest=dict(schema='kiki-build-backup-v1',build_version=VERSION,created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),components=sorted(roots),files=records,excluded_transient_names=sorted(SKIP))
+                manifest=dict(schema='kiki-build-backup-v1',build_version=VERSION,created_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),components=sorted(roots),files=records,excluded_transient_names=sorted(SKIP),additional_exclusions=sorted(excluded))
                 payload=(json.dumps(manifest,sort_keys=True,indent=2)+'\n').encode();entry=tarfile.TarInfo('manifest.json');entry.size=len(payload);entry.mode=0o600;archive.addfile(entry,io.BytesIO(payload))
         return dict(status='passed',files=len(records),bytes=output.stat().st_size,sha256=sha(output),contains_private_state=True)
     except Exception:
@@ -161,12 +168,17 @@ def retention_plan(jobs,keep=10):
     for file in rows:
         row=json.loads(file.read_text(encoding='utf-8'))
         if row.get('status') in ['failed','cancelled','interrupted','succeeded']:terminal.append((file.parent,row))
-    result=[]
+    result=[];deadline=time.monotonic()+0.25
     for folder,row in terminal[keep:]:
         work=folder/'work'
         if not work.exists() or work.is_symlink():continue
-        size=sum(p.stat().st_size for p in work.rglob('*') if p.is_file() and not p.is_symlink())
-        result.append(dict(job=row['id'],status=row['status'],scope='transient work directory only',bytes=size,automatic_delete=False))
+        size=0;complete=True
+        if time.monotonic()>=deadline:complete=False
+        else:
+            for p in work.rglob('*'):
+                if time.monotonic()>=deadline:complete=False;break
+                if p.is_file() and not p.is_symlink():size+=p.stat().st_size
+        result.append(dict(job=row['id'],status=row['status'],scope='transient work directory only',bytes=size,size_complete=complete,automatic_delete=False))
     return result
 
 

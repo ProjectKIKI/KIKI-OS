@@ -129,7 +129,9 @@ if (jobPanel) {
       const progress = document.getElementById("job-progress");
       progress.max = Math.max(steps.length, 1);
       progress.value = finished;
-      document.getElementById("cancel-job").hidden = job.status !== "pending";
+      document.getElementById("cancel-job").hidden = !["pending", "running"].includes(job.status);
+      document.querySelector("#cancel-job button").disabled = Boolean(job.cancel_requested);
+      document.querySelector("#cancel-job button").textContent = job.cancel_requested ? "취소 처리 중…" : "빌드 취소 요청";
       document.getElementById("retry-job").hidden = !terminal.has(job.status);
       document.getElementById("job-steps").replaceChildren(...steps.map(step => {
         const row = document.createElement("tr");

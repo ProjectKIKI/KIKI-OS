@@ -1,0 +1,15 @@
+{
+  "scope": "control-state",
+  "components": {
+    "catalog": "/opt/kiki-build/build/ki2ci/catalog",
+    "auth": "/opt/kiki-build/auth/state",
+    "config": "/opt/kiki-build/private-backup-config",
+    "source": "/opt/kiki-build",
+    "release": "/opt/kiki-build/release-store"
+  },
+  "excluded": ["build", "jobs", "objects", "git", "downloads", "packages", "source"],
+  "idle_jobs": ["/opt/kiki-build/build/ki2ci/jobs", "/opt/kiki-build/release-store/jobs"],
+  "destination": "/mnt/private-backup/kiki",
+  "max_total_bytes": 2147483648,
+  "status_file": "/opt/kiki-build/build/ki2ci/backup-status.json"
+}

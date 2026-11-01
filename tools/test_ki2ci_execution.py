@@ -74,7 +74,7 @@ class BuildExecutionTests(unittest.TestCase):
             started, release = threading.Event(), threading.Event()
             executed = []
 
-            def fake_step(config, step, log):
+            def fake_step(config, step, log, cancel_event=None):
                 executed.append(step.name)
                 if len(executed) == 1:
                     started.set()
@@ -90,8 +90,7 @@ class BuildExecutionTests(unittest.TestCase):
                     cancelled = server.submit("bootstrap")
                     third = server.submit("security")
                     self.assertEqual(server.job(cancelled["id"])["queue_position"], 1)
-                    with self.assertRaises(ki2ci.CiError):
-                        server.cancel(first["id"])
+                    self.assertEqual(server.job(first['id'])['status'], 'running')
                     server.cancel(cancelled["id"])
                     with self.assertRaises(ki2ci.CiError):
                         server.retry(third["id"])

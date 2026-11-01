@@ -1,0 +1,10 @@
+[Unit]
+Description=KIKI automatic backup and isolated restore verification
+
+[Service]
+Type=oneshot
+UMask=0077
+Nice=15
+Environment=KIKI_BUILD_SOURCE=/opt/kiki-build
+ExecStart=/usr/bin/python3 ${KIKI_BUILD_SOURCE}/tools/ki2autobackup.py --config %h/.config/kiki-build/backup.json
+TimeoutStartSec=30min
