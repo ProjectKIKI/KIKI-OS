@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "baseline": "REVIEWED-BASELINE-SNAPSHOT",
+  "interval_seconds": 21600,
+  "security": {"enabled": false, "nvd": true, "interval_seconds": 21600},
+  "build_prerequisites": {"kiki-admin": ["linux-headers"]},
+  "vm_profiles": [
+    {"vm_id": "REGISTERED-HYPER-V-UUID", "profile": "gnome50"}
+  ]
+}

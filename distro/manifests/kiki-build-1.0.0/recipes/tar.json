@@ -1,0 +1,28 @@
+{
+  "recipes": [
+    {
+      "name": "tar",
+      "version": "1.35",
+      "release": "3",
+      "summary": "KIKI native desktop tar",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-desktop-apps-20261027/ownership-tar"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

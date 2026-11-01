@@ -1,0 +1,44 @@
+{
+  "recipes": [
+    {
+      "name": "gnome-bluetooth",
+      "version": "47.2",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-bluetooth/47/gnome-bluetooth-47.2.tar.xz",
+        "sha256": "41f20e6d6176b72590af63552b232d83f2fffdd77ecfaa5eaf32c5a4a86fad64"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "gsound",
+          "gtk",
+          "libadwaita",
+          "libnotify",
+          "systemd",
+          "upower"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dsendto=false",
+          "-Dgtk_doc=false",
+          "-Dintrospection=true"
+        ]
+      }
+    }
+  ]
+}

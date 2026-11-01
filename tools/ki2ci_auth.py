@@ -223,7 +223,7 @@ def hidden(csrf, next_path='/'):
             f"<input type='hidden' name='next' value='{html.escape(next_path, quote=True)}'>")
 
 
-def make_handler(store, upstream, origins, secure=False, release_upstream=None, host_gateway=None):
+def make_handler(store, upstream, origins, secure=False, release_upstream=None, host_gateway=None, repository_upstream=None):
     # This opt-in address is the host loopback gateway of the pinned slirp profile.
     # Never accept arbitrary private networks or DNS names as worker destinations.
     worker_hosts = {'127.0.0.1', 'localhost', '::1'}
@@ -242,6 +242,11 @@ def make_handler(store, upstream, origins, secure=False, release_upstream=None, 
                            or release_target.username or release_target.password or release_target.path not in {'','/'}
                            or release_target.query or release_target.fragment):
         raise ValueError('Release worker must use fixed loopback HTTP')
+    repository_target = urlsplit(repository_upstream) if repository_upstream else None
+    if repository_target and (repository_target.scheme != 'http' or repository_target.hostname not in worker_hosts
+                              or repository_target.username or repository_target.password
+                              or repository_target.path not in {'', '/'} or repository_target.query or repository_target.fragment):
+        raise ValueError('Repository must use fixed loopback HTTP')
     origin_schemes = {}
     for origin in origins:
         u = urlsplit(origin)
@@ -333,13 +338,14 @@ def make_handler(store, upstream, origins, secure=False, release_upstream=None, 
                 return None
             try:
                 length = int(self.headers.get('Content-Length', '0'))
-                limit=131072 if urlsplit(self.path).path.startswith('/releases/') else FORM_LIMIT
+                catalog_route = urlsplit(self.path).path in {'/package-groups/save', '/package-groups/restore', '/packages/metadata','/packages/register','/assistant/analyze','/assistant/draft'}
+                limit=65536 if catalog_route else 131072 if urlsplit(self.path).path.startswith('/releases/') else FORM_LIMIT
                 if not 0 < length <= limit:
                     raise ValueError()
                 body = self.rfile.read(length)
                 if len(body) != length:
                     raise ValueError()
-                values = parse_qs(body.decode('utf-8'), keep_blank_values=True, max_num_fields=16)
+                values = parse_qs(body.decode('utf-8'), keep_blank_values=True, max_num_fields=32 if catalog_route else 16)
                 if any(len(v) != 1 for v in values.values()):
                     raise ValueError()
                 return {k: v[0] for k, v in values.items()}, body
@@ -388,6 +394,9 @@ def make_handler(store, upstream, origins, secure=False, release_upstream=None, 
             if not self.valid_request():
                 return
             path = urlsplit(self.path).path
+            if repository_target and (path == '/ki2' or path.startswith('/ki2/')):
+                self.public_repository()
+                return
             assets = {'/build-theme.css': ('ki2ci_theme.css', 'text/css; charset=utf-8'),
                       '/build-theme.js': ('ki2ci_theme.js', 'text/javascript; charset=utf-8')}
             if path in assets:
@@ -442,6 +451,9 @@ def make_handler(store, upstream, origins, secure=False, release_upstream=None, 
             if not self.valid_request():
                 return
             path = urlsplit(self.path).path
+            if repository_target and (path == '/ki2' or path.startswith('/ki2/')):
+                self.reply(405, extra=[('Allow', 'GET, HEAD')])
+                return
             session = store.session(self.token())
             if not session:
                 self.error(401, '세션이 만료되었습니다. 다시 로그인해 주세요.')
@@ -503,6 +515,8 @@ def make_handler(store, upstream, origins, secure=False, release_upstream=None, 
             if session.get('role') not in {'admin', 'operator'}:
                 self.error(403, '조회자는 빌드·패키지·ISO·릴리즈를 변경할 수 없습니다.')
                 return
+            if path=='/assistant/settings' and session.get('role')!='admin':
+                self.error(403,'Local LLM 연결 설정은 관리자만 변경할 수 있습니다.');return
             self.proxy(session, body)
 
         def accounts_get(self, session, path):
@@ -569,15 +583,57 @@ def make_handler(store, upstream, origins, secure=False, release_upstream=None, 
                 else:
                     self.reply(400, user_page(session, store.user(data.get('username', '') if path == '/users/create' else path[len('/users/'):-len('/manage')]), str(exc)))
 
+        def public_repository(self):
+            # This anonymous boundary accepts only read requests for the dedicated repository.
+            # No cookies, authorization headers, redirects, or build-worker routing cross it.
+            if self.path == '/ki2':
+                self.redirect('/ki2/')
+                return
+            if (not re.fullmatch(r'/ki2/[A-Za-z0-9/._+~-]*', self.path)
+                    or any(part in {'.', '..'} for part in self.path.split('/'))):
+                self.reply(404)
+                return
+            connection = http.client.HTTPConnection(repository_target.hostname, repository_target.port, timeout=30)
+            sent = False
+            try:
+                connection.request(self.command, self.path, headers={'Host': '127.0.0.1', 'Accept-Encoding': 'identity'})
+                response = connection.getresponse()
+                if response.status not in {200, 404, 503}:
+                    self.reply(502)
+                    return
+                length = int(response.getheader('Content-Length', '-1'))
+                if not 0 <= length <= 1024 * 1024 * 1024:
+                    raise ValueError('invalid repository response size')
+                self.send_response(response.status)
+                self.security_headers()
+                self.send_header('Content-Type', response.getheader('Content-Type', 'application/octet-stream'))
+                self.send_header('Content-Length', str(length))
+                self.end_headers()
+                sent = True
+                if self.command != 'HEAD':
+                    while length:
+                        block = response.read(min(length, 65536))
+                        if not block:
+                            self.close_connection = True
+                            break
+                        self.wfile.write(block)
+                        length -= len(block)
+            except (OSError, ValueError, http.client.HTTPException):
+                if not sent:
+                    self.reply(502)
+                self.close_connection = True
+            finally:
+                connection.close()
+
         def proxy(self, session, body=None):
             route = urlsplit(self.path).path
-            destination = release_target if release_target and (route in {'/versions','/iso-build','/cpu-profiles','/releases'} or route.startswith(('/library/','/iso-build/','/api/releases','/releases/'))) else target
-            connection = http.client.HTTPConnection(destination.hostname, destination.port, timeout=30)
+            destination = release_target if release_target and (route in {'/versions','/iso-build','/cpu-profiles','/releases','/updates','/artifacts','/api/artifacts'} or route.startswith(('/library/','/iso-build/','/api/releases','/releases/','/updates/','/api/updates'))) else target
+            connection = http.client.HTTPConnection(destination.hostname, destination.port, timeout=100 if route.startswith('/assistant/') else 30)
             sent = False
             try:
                 # Outer Host, Origin and CSRF were checked before this method.
                 # Workers retain one fixed internal origin for both entry points.
-                headers = {'Host': '127.0.0.1:18090', 'Accept-Encoding': 'identity'}
+                headers = {'Host': '127.0.0.1:18090', 'Accept-Encoding': 'identity', 'X-KIKI-Actor': session['name']}
                 if 'Origin' in self.headers:headers['Origin']='http://127.0.0.1:18090'
                 for name in ['Content-Type', 'Accept']:
                     if name in self.headers:
@@ -680,6 +736,8 @@ def main():
     parser.add_argument('--port', type=int, default=8092)
     parser.add_argument('--upstream', default='http://127.0.0.1:8091')
     parser.add_argument('--release-upstream', default=None)
+    parser.add_argument('--public-repository-config', type=Path, default=Path(__file__).with_name('ki2repository-public.json'),
+                        help='Optional read-only /ki2/ upstream configuration; no other route becomes public')
     parser.add_argument('--origin', action='append')
     parser.add_argument('--secure-cookie', action='store_true')
     parser.add_argument('--slirp-network', action='store_true',
@@ -708,7 +766,10 @@ def main():
             parser.error('Use loopback or the explicitly configured isolated container network')
         host_gateway = '10.0.2.2' if args.slirp_network else None
         origins = args.origin or ['http://127.0.0.1:18090', 'http://localhost:18090']
-        handler = make_handler(store, args.upstream, origins, args.secure_cookie, args.release_upstream, host_gateway)
+        repository_upstream = None
+        if args.public_repository_config.is_file():
+            repository_upstream = json.loads(args.public_repository_config.read_text())['upstream']
+        handler = make_handler(store, args.upstream, origins, args.secure_cookie, args.release_upstream, host_gateway, repository_upstream)
         print('KIKI authenticated web service ready', flush=True)
         with AuthHTTPServer((args.bind, args.port), handler) as server:
             signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown,daemon=True).start())

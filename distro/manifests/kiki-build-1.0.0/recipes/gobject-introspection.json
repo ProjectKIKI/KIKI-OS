@@ -1,0 +1,105 @@
+{
+  "recipes": [
+    {
+      "name": "gobject-introspection",
+      "version": "1.84.0",
+      "release": "9",
+      "summary": "GObject introspection tools, GIR metadata, and typelib runtime",
+      "license": "LGPL-2.1-or-later AND GPL-2.0-or-later",
+      "tier": "runtime",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gobject-introspection/1.84/gobject-introspection-1.84.0.tar.xz",
+        "file": "gobject-introspection-1.84.0.tar.xz",
+        "sha256": "945b57da7ec262e5c266b89e091d14be800cc424277d82a02872b7d794a84779",
+        "extra": [
+          {
+            "url": "https://download.gnome.org/sources/glib/2.84/glib-2.84.4.tar.xz",
+            "file": "glib-2.84.4.tar.xz",
+            "sha256": "8a9ea10943c36fc117e253f80c91e477b673525ae45762942858aef57631bb90"
+          }
+        ]
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "glib",
+          "libffi",
+          "python",
+          "python-setuptools"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "libffi",
+          "python",
+          "python-setuptools"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "inputs": [
+          "distro/specs/graphics-cross.ini",
+          "distro/scripts/ki2-target-python3",
+          "distro/scripts/ki2-target-pkg-config",
+          "distro/scripts/ki2-target-run",
+          "distro/scripts/ki2-target-g-ir-scanner",
+          "distro/scripts/ki2-target-g-ir-compiler"
+        ],
+        "configure_options": [
+          "-Ddefault_library=shared",
+          "-Dbuildtype=release",
+          "-Dcairo=disabled",
+          "-Ddoctool=disabled",
+          "-Dgtk_doc=false",
+          "-Dtests=false",
+          "-Dbuild_introspection_data=true",
+          "-Dpython.platlibdir=lib/python3.12/site-packages",
+          "-Dpython.purelibdir=lib/python3.12/site-packages"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3\" \"${KI2_BUILD_DIR}/target-python3\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "install -m644 \"${KI2_REPO_ROOT}/distro/specs/graphics-cross.ini\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "sed -i -e \"s|@BUILD@|${KI2_BUILD_DIR}|g\" -e \"s|@REPO@|${KI2_REPO_ROOT}|g\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "meson setup \"${KI2_BUILD_DIR}/gobject-introspection\" \"${KI2_SOURCE_DIR}/gobject-introspection-1.84.0\" --cross-file \"${KI2_BUILD_DIR}/cross.ini\" --prefix=/usr --libdir=lib -Ddefault_library=shared -Dbuildtype=release -Dcairo=disabled -Ddoctool=disabled -Dgtk_doc=false -Dtests=false -Dbuild_introspection_data=true -Dpython=\"${KI2_BUILD_DIR}/target-python3\" -Dpython.platlibdir=lib/python3.12/site-packages -Dpython.purelibdir=lib/python3.12/site-packages"
+        ],
+        "compile": [
+          "meson compile -C \"${KI2_BUILD_DIR}/gobject-introspection\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" meson install -C \"${KI2_BUILD_DIR}/gobject-introspection\"",
+          "for tool in g-ir-scanner g-ir-annotation-tool; do sed -i '1c #!/usr/bin/python3' \"${KI2_DESTDIR}/usr/bin/${tool}\"; done",
+          "cp -a \"${KI2_DESTDIR}/usr/.\" \"${KI2_SYSROOT}/usr/\"",
+          "sed -i \"1c #!/usr/bin/env ${KI2_BUILD_DIR}/target-python3\" \"${KI2_SYSROOT}/usr/bin/g-ir-scanner\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-scanner\" \"${KI2_BUILD_DIR}/glib-tools/g-ir-scanner\"",
+          "install -m755 \"${KI2_SYSROOT}/usr/bin/g-ir-compiler\" \"${KI2_BUILD_DIR}/g-ir-compiler.real\"",
+          "install -m755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-compiler\" \"${KI2_SYSROOT}/usr/bin/g-ir-compiler\"",
+          "PATH=\"${KI2_BUILD_DIR}/glib-tools:$PATH\" meson setup \"${KI2_BUILD_DIR}/glib-introspection\" \"${KI2_SOURCE_DIR}/glib-2.84.4\" --cross-file \"${KI2_BUILD_DIR}/cross.ini\" --prefix=/usr --libdir=lib -Ddefault_library=shared -Dbuildtype=release -Dtests=false -Dinstalled_tests=false -Ddocumentation=false -Dman-pages=disabled -Dnls=disabled -Dglib_debug=disabled -Dselinux=disabled -Dlibmount=disabled -Dlibelf=disabled -Dsysprof=disabled -Ddtrace=disabled -Dsystemtap=disabled -Dintrospection=enabled",
+          "ninja -C \"${KI2_BUILD_DIR}/glib-introspection\" -j \"${KI2_JOBS}\"",
+          "mkdir -p \"${KI2_BUILD_DIR}/glib-introspection-install\" && DESTDIR=\"${KI2_BUILD_DIR}/glib-introspection-install\" ninja -C \"${KI2_BUILD_DIR}/glib-introspection\" install",
+          "mkdir -p \"${KI2_DESTDIR}/usr/share/gir-1.0\" \"${KI2_DESTDIR}/usr/lib/girepository-1.0\"",
+          "find \"${KI2_BUILD_DIR}/glib-introspection-install/usr/share/gir-1.0\" -maxdepth 1 -type f -name '*.gir' -exec install -m644 '{}' \"${KI2_DESTDIR}/usr/share/gir-1.0/\" ';'",
+          "find \"${KI2_BUILD_DIR}/glib-introspection-install/usr/lib/girepository-1.0\" -maxdepth 1 -type f -name '*.typelib' -exec install -m644 '{}' \"${KI2_DESTDIR}/usr/lib/girepository-1.0/\" ';'",
+          "find \"${KI2_DESTDIR}/usr\" -type f -name '*.pyc' -delete",
+          "find \"${KI2_DESTDIR}/usr\" -depth -type d -name '__pycache__' -empty -delete",
+          "find \"${KI2_DESTDIR}/usr/lib\" -name '*.a' -delete"
+        ],
+        "env": {
+          "CPPFLAGS": "${KI2_SYSROOT_CPPFLAGS}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now",
+          "PKG_CONFIG": "${KI2_BUILD_DIR}/target-pkg-config",
+          "KI2_USE_TARGET_LOADER": "1",
+          "GI_CROSS_LAUNCHER": "/bin/sh ${KI2_REPO_ROOT}/distro/scripts/ki2-target-run",
+          "KI2_SYSROOT_LIBRARY_PATH": "${KI2_BUILD_DIR}/gobject-introspection/girepository:${KI2_BUILD_DIR}/glib-introspection/glib:${KI2_BUILD_DIR}/glib-introspection/gobject:${KI2_BUILD_DIR}/glib-introspection/gio:${KI2_SYSROOT_LIBRARY_PATH}",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "PYTHONHASHSEED": "0"
+        }
+      }
+    }
+  ]
+}

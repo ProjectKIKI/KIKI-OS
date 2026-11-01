@@ -1,0 +1,31 @@
+{
+  "recipes": [
+    {
+      "name": "colord-gtk",
+      "version": "0.3.1",
+      "release": "1",
+      "summary": "KIKI native desktop colord-gtk",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-gnome-native-apps-20261028/colord-gtk/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "glib",
+          "colord",
+          "lcms2"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "recipes": [
+    {
+      "name": "python",
+      "version": "3.12.4",
+      "release": "6",
+      "summary": "Python runtime for installer and agent tooling",
+      "license": "Python-2.0",
+      "tier": "runtime",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.python.org/ftp/python/3.12.4/Python-3.12.4.tgz",
+        "sha256": "01b3c1c082196f3b33168d344a9c85fb07bfe0e7ecfe77fee4443420d1ce2ad9"
+      },
+      "dependencies": {
+        "build": [
+          "libffi"
+        ],
+        "runtime": [
+          "bzip2",
+          "expat",
+          "glibc",
+          "libffi",
+          "libxcrypt",
+          "ncurses",
+          "openssl",
+          "xz",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure_options": [
+          "--enable-shared",
+          "--without-static-libpython",
+          "--disable-test-modules",
+          "--without-ensurepip",
+          "--with-system-expat",
+          "--with-openssl=/usr"
+        ],
+        "configure": [
+          "mkdir -p ${KI2_BUILD_DIR}/python",
+          "cd ${KI2_BUILD_DIR}/python && ../../source/Python-3.12.4/configure --prefix=/usr --enable-shared --without-static-libpython --disable-test-modules --without-ensurepip --with-system-expat --with-openssl=/usr"
+        ],
+        "compile": [
+          "make -C ${KI2_BUILD_DIR}/python -j${KI2_JOBS}"
+        ],
+        "install": [
+          "make -C ${KI2_BUILD_DIR}/python DESTDIR=${KI2_DESTDIR} install",
+          "ln -sfn python3.12 ${KI2_DESTDIR}/usr/bin/python3",
+          "for metadata in ${KI2_DESTDIR}/usr/bin/python3.12-config ${KI2_DESTDIR}/usr/lib/python3.12/_sysconfigdata_*.py ${KI2_DESTDIR}/usr/lib/python3.12/config-*/Makefile ${KI2_DESTDIR}/usr/lib/python3.12/config-*/config.c ${KI2_DESTDIR}/usr/lib/python3.12/config-*/config.c.in; do test ! -f \"${metadata}\" || sed -i -e \"s#${KI2_WORK}#/usr/src/python#g\" -e \"s#${KI2_SYSROOT}##g\" \"${metadata}\"; done",
+          "find ${KI2_DESTDIR}/usr/lib/python3.12 -type f -name '*.pyc' -delete",
+          "find ${KI2_DESTDIR}/usr/lib/python3.12 -depth -type d -name '__pycache__' -empty -delete",
+          "find ${KI2_DESTDIR}/usr -type f -name '*.a' -delete",
+          "find ${KI2_DESTDIR}/usr/bin ${KI2_DESTDIR}/usr/lib -type f -exec sh -c 'for binary do file \"${binary}\" | grep -q ELF && strip --strip-unneeded \"${binary}\" || true; done' sh {} +"
+        ],
+        "env": {
+          "CPPFLAGS": "${KI2_SYSROOT_CPPFLAGS}",
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=${KI2_WORK}=/usr/src/python -fdebug-prefix-map=${KI2_WORK}=/usr/src/python -ffile-prefix-map=${KI2_SYSROOT}=/usr -fdebug-prefix-map=${KI2_SYSROOT}=/usr",
+          "LDFLAGS": "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now",
+          "LD_LIBRARY_PATH": "${KI2_BUILD_DIR}/python",
+          "PYTHONHASHSEED": "0"
+        }
+      }
+    }
+  ]
+}

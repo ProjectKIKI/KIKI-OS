@@ -1,0 +1,33 @@
+{
+  "recipes": [
+    {
+      "name": "gnome-settings-daemon-schemas",
+      "version": "50.1",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-settings-daemon/50/gnome-settings-daemon-50.1.tar.xz",
+        "sha256": "dd2c9730914f0ececa0229dd8a8c2940a57ddeb0802434558d4b164d79cfe05c"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "gsettings-desktop-schemas"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "recipes": [
+    {
+      "name": "libdisplay-info",
+      "version": "0.4.0",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/c67a3e9bedb05ab61c7443704a1a107e76254595/libdisplay-info-c67a3e9bedb05ab61c7443704a1a107e76254595.tar.gz",
+        "sha256": "34f2109f3ba5a56f4e12062210261c98214f32b5568684311aa029da518bf2fd"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": []
+      }
+    }
+  ]
+}

@@ -50,12 +50,16 @@ async function readJson(url) {
 
 const releaseOverview = document.getElementById("release-overview");
 if (releaseOverview) {
-  readJson("/api/releases").then(library => {
-    const isos = library.jobs.filter(job => job.kind === "iso" && job.status === "succeeded").length;
-    const active = library.jobs.filter(job => ["pending", "running"].includes(job.status)).length;
-    releaseOverview.textContent = `보관 바이너리 ${library.binaries.length}개 · 소스·관련 파일 ${library.sources.length}개 · 고정 버전 ${library.snapshots.length}개 · 완료 ISO ${isos}개 · 대기·실행 작업 ${active}개`;
+  readJson("/api/releases/summary").then(library => {
+    const {isos,active} = library;
+    releaseOverview.textContent = `보관 바이너리 ${library.binaries}개 · 소스·관련 파일 ${library.sources}개 · 고정 버전 ${library.snapshots}개 · 완료 ISO ${isos}개 · 대기·실행 작업 ${active}개`;
+    for (const [key, value] of Object.entries({packages:library.binaries, isos, active})) {
+      const metric = document.querySelector(`[data-release="${key}"] .metric-value`);
+      if (metric) metric.textContent = String(value);
+    }
   }).catch(() => {
     releaseOverview.textContent = "보관소 상태를 불러오지 못했습니다. 후보 버전·ISO 페이지에서 작업 상태를 확인하세요.";
+    document.querySelectorAll('[data-release] .metric-value').forEach(metric => {if(metric.textContent === '—') metric.textContent = '연결 확인';});
   });
 }
 
@@ -144,6 +148,9 @@ if (jobPanel) {
       if (chunk.text) log.textContent = (log.textContent + chunk.text).slice(-120000);
       if (document.getElementById("follow-log").checked) log.scrollTop = log.scrollHeight;
       connection.textContent = terminal.has(job.status) ? "작업 종료" : "실시간 · 매초 갱신";
+      if (jobPanel.dataset.initialStatus && terminal.has(job.status) && !terminal.has(jobPanel.dataset.initialStatus)) {
+        window.location.reload(); return;
+      }
       if (!terminal.has(job.status) || advanced) window.setTimeout(poll, advanced ? 250 : 1000);
     } catch (failure) {
       connection.textContent = `${failure.message} · 다시 연결하는 중…`;

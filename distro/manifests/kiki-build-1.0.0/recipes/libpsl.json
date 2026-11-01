@@ -1,0 +1,42 @@
+{
+  "recipes": [
+    {
+      "name": "libpsl",
+      "version": "0.21.5",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "MIT",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/rockdaboot/libpsl/releases/download/0.21.5/libpsl-0.21.5.tar.gz",
+        "sha256": "1dcc9ceae8b128f3c0b3f654decd0e1e891afc6ff81098f227ef260449dae208"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libidn2",
+          "libunistring"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static",
+          "--disable-gtk-doc",
+          "--disable-man"
+        ]
+      }
+    }
+  ]
+}

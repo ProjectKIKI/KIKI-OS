@@ -1,0 +1,64 @@
+{
+  "recipes": [
+    {
+      "name": "libimobiledevice",
+      "version": "1.4.0",
+      "release": "1",
+      "summary": "Mobile device integration library using GnuTLS",
+      "license": "LGPL-2.1-or-later AND GPL-2.0-or-later AND Zlib AND LicenseRef-Stanford-SRP",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libimobiledevice/libimobiledevice/releases/download/1.4.0/libimobiledevice-1.4.0.tar.bz2",
+        "file": "libimobiledevice-1.4.0.tar.bz2",
+        "sha256": "23cc0077e221c7d991bd0eb02150a0d49199bcca1ddf059edccee9ffd914939d"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libplist",
+          "libimobiledevice-glue",
+          "libusbmuxd",
+          "libtatsu",
+          "gnutls",
+          "libgcrypt",
+          "libtasn1"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "inputs": [
+          "distro/scripts/ki2-target-pkg-config"
+        ],
+        "configure": [
+          "cp -a \"${KI2_SOURCE_DIR}/3rd_party\" \"${KI2_BUILD_DIR}/source-notices\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "cd \"${KI2_SOURCE_DIR}\" && PKG_CONFIG=\"${KI2_BUILD_DIR}/target-pkg-config\" ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --enable-shared --disable-static --without-cython --with-gnutls --without-openssl",
+          "sed -i -e \"s/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=/\" -e \"s/^runpath_var=.*/runpath_var=/\" \"${KI2_SOURCE_DIR}/libtool\""
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "rm -f \"${KI2_DESTDIR}/usr/lib/libimobiledevice-1.0.la\"",
+          "install -d \"${KI2_DESTDIR}/usr/share/licenses/libimobiledevice\"",
+          "install -m644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_SOURCE_DIR}/COPYING.LESSER\" \"${KI2_DESTDIR}/usr/share/licenses/libimobiledevice/\"",
+          "cp -a \"${KI2_BUILD_DIR}/source-notices\" \"${KI2_DESTDIR}/usr/share/licenses/libimobiledevice/source-notices\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libimobiledevice-1.0.so.6\" \"${KI2_DESTDIR}/usr/bin/ideviceinfo\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CC": "cc --sysroot=${KI2_SYSROOT}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

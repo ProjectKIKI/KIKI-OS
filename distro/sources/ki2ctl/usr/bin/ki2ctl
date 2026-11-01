@@ -654,7 +654,11 @@ def safe_target(root: Path, rel: str) -> Path:
     if rel_path.is_absolute() or ".." in rel_path.parts:
         raise Ki2CtlError(f"unsafe package path: {rel}")
     root_resolved = root.resolve()
-    target = (root / rel_path).resolve(strict=False)
+    # Resolve directory aliases, while keeping the leaf itself as the object to
+    # replace. Following libfoo.so -> libfoo.so.1 here corrupts upgrades.
+    candidate=root / rel_path
+    try:target=candidate.parent.resolve(strict=False)/candidate.name
+    except (OSError,RuntimeError) as error:raise Ki2CtlError(f'unsafe package parent: {rel}') from error
     if target != root_resolved and root_resolved not in target.parents:
         raise Ki2CtlError(f"package path escapes root: {rel}")
     return target
@@ -686,7 +690,7 @@ def package_payload_entries(package: Path) -> list[dict[str, str]]:
     return entries
 
 
-def extract_package(package: Path, root: Path) -> list[str]:
+def extract_package(package: Path, root: Path, config_destinations: dict[str,str] | None = None) -> list[str]:
     extracted: list[str] = []
     root.mkdir(parents=True, exist_ok=True)
     with tarfile.open(package, "r:gz") as tar:
@@ -699,8 +703,10 @@ def extract_package(package: Path, root: Path) -> list[str]:
                 continue
             if "/" + rel == GENERATED_INFO_INDEX:
                 continue
-            target = safe_target(root, rel)
+            target = safe_target(root, (config_destinations or {}).get('/'+rel,rel))
             if member.isdir():
+                resolved=target.resolve(strict=False)
+                if resolved!=root.resolve() and root.resolve() not in resolved.parents:raise Ki2CtlError('package directory escapes root: '+rel)
                 target.mkdir(parents=True, exist_ok=True)
                 with contextlib.suppress(PermissionError):
                     target.chmod(member.mode)
@@ -713,6 +719,8 @@ def extract_package(package: Path, root: Path) -> list[str]:
             elif member.islnk():
                 link_rel = member.linkname[len("rootfs/") :] if member.linkname.startswith("rootfs/") else member.linkname
                 link_target = safe_target(root, link_rel)
+                resolved=link_target.resolve(strict=False)
+                if resolved!=root.resolve() and root.resolve() not in resolved.parents:raise Ki2CtlError('hardlink target escapes root')
                 if target.exists() or target.is_symlink():
                     target.unlink()
                 os.link(link_target, target)
@@ -720,10 +728,16 @@ def extract_package(package: Path, root: Path) -> list[str]:
                 handle = tar.extractfile(member)
                 if handle is None:
                     continue
-                with target.open("wb") as out:
-                    shutil.copyfileobj(handle, out)
-                with contextlib.suppress(PermissionError):
-                    target.chmod(member.mode)
+                # Existing processes may still map the previous library inode.
+                # Never truncate it, and never write through an existing leaf symlink.
+                temporary=None
+                try:
+                    with tempfile.NamedTemporaryFile(prefix='.ki2-new-',dir=target.parent,delete=False) as out:
+                        temporary=Path(out.name);shutil.copyfileobj(handle,out);out.flush();os.fsync(out.fileno())
+                    with contextlib.suppress(PermissionError):temporary.chmod(member.mode)
+                    os.replace(temporary,target)
+                finally:
+                    if temporary is not None:temporary.unlink(missing_ok=True)
             else:
                 continue
             if hasattr(os, "chown"):
@@ -913,6 +927,11 @@ def detect_file_conflicts(root: Path, db: dict[str, Any], planned: list[tuple[Re
                 planned_owners[path] = package_name
             exists = target.exists() or target.is_symlink()
             if not exists:
+                continue
+            # Installer-created databases historically include directories in
+            # each package's ownership list. Existing ordinary directories are
+            # shared containers, not conflicting file payloads.
+            if kind == "dir" and target.is_dir() and not (root / path.lstrip("/")).is_symlink():
                 continue
             existing_owners = owners.get(path, set())
             conflicting_owners = sorted(owner for owner in existing_owners if owner != package_name)
@@ -1104,13 +1123,34 @@ def execute_install_plan(
     conflicts = detect_file_conflicts(args.root, db_before, planned)
     if conflicts:
         raise Ki2CtlError("file conflicts:\n" + "\n".join(f"  {item}" for item in conflicts))
+    critical={'linux','glibc','systemd','libsystemd','shadow','linux-pam','gdm','mutter','gnome-shell','gtk','ki2ctl'}
+    if args.root==Path('/') and not getattr(args,'offline_apply',False) and any(pkg['name'] in critical and pkg['name'] in db_before.get('packages',{}) for _,pkg,_ in planned):
+        raise Ki2CtlError('system packages require a frozen offline update; use ki2ctl --repo URL offline-stage --verify-key KEY')
     tx = begin_transaction(args.root, args.command, planned)
     try:
         prepare_backups(args.root, tx, planned)
         for repo, pkg, package_path in planned:
-            files = extract_package(package_path, args.root)
             package_name = str(pkg.get("name", ""))
+            previous=db_before.get('packages',{}).get(package_name,{})
+            defaults={};destinations={}
+            with tarfile.open(package_path,'r:gz') as archive:
+                for member in archive:
+                    if not member.name.startswith('rootfs/etc/') or not member.isfile():continue
+                    path='/'+member.name[len('rootfs/'):];handle=archive.extractfile(member)
+                    default=hashlib.sha256(handle.read()).hexdigest();defaults[path]=default
+                    target=safe_target(args.root,path.lstrip('/'))
+                    if path in previous.get('files',[]) and (target.is_file() or target.is_symlink()):
+                        old_default=previous.get('config_hashes',{}).get(path)
+                        if target.is_symlink() or old_default is None or file_sha256(target)!=old_default:
+                            if not target.is_symlink() and file_sha256(target)==default:continue
+                            sidecar=path+'.ki2new-'+str(tx['id'])
+                            remember_backup(args.root,tx,sidecar);destinations[path]=sidecar.lstrip('/')
+                            tx['events'].append({'event':'config-preserved','path':path,'new_default':sidecar})
+                            print('preserved configuration '+path+'; new default '+sidecar)
+            update_transaction(args.root,tx)
+            files=extract_package(package_path,args.root,config_destinations=destinations) if destinations else extract_package(package_path,args.root)
             record_install(args.root, repo, pkg, files, reasons_by_package.get(package_name, []))
+            db=load_installed(args.root);db['packages'][package_name]['config_hashes']=defaults;save_installed(args.root,db)
             record_pending_hooks(args.root, str(pkg.get("name", "")), files)
             tx.setdefault("events", []).append({"event": "installed", "package": pkg.get("name", ""), "files": len(files)})
             update_transaction(args.root, tx)
@@ -1530,6 +1570,86 @@ def command_upgrade(args: argparse.Namespace) -> None:
     execute_install_plan(args, plan)
 
 
+def offline_directory(root: Path) -> Path:
+    return root/'var/lib/ki2/offline-update'
+
+
+def command_offline_stage(args: argparse.Namespace) -> None:
+    if args.root!=Path('/') or os.geteuid()!=0:raise Ki2CtlError('offline staging requires the running system root')
+    if not args.repo:raise Ki2CtlError('use one immutable repository URL with --repo')
+    stage=offline_directory(args.root)
+    if stage.exists() or Path('/system-update').exists() or Path('/system-update').is_symlink():raise Ki2CtlError('another offline update is already staged')
+    repo=selected_repos(args)[0];metadata=fetch_repo_metadata(repo,args.arch)
+    key=args.verify_key
+    if not key.is_file() or metadata.get('security',{}).get('algorithm')!=ED25519_SIGNATURE_ALGORITHM or not verify_metadata_with_key(metadata,key):raise Ki2CtlError('a trusted Ed25519 repository signature is required')
+    index,payload=fetch_repo_index_payload(repo,args.arch)
+    if bytes_sha256(payload)!=metadata.get('index',{}).get('sha256'):raise Ki2CtlError('signed index hash mismatch')
+    installed=load_installed(args.root).get('packages',{});catalog=package_catalog([(repo,index)])
+    roots=args.names or [n for n,r in installed.items() if n in catalog and package_sort_key(catalog[n][1])>installed_sort_key(r)]
+    if not roots:print('no upgrades available');return
+    for n in roots:
+        if n not in installed or n not in catalog or package_sort_key(catalog[n][1])<=installed_sort_key(installed[n]):raise Ki2CtlError('update must advance an installed package: '+n)
+    plan=resolve_packages(catalog,roots)
+    # A dependency may not silently replace a newer installed version with an older baseline.
+    if any(p['name'] in installed and package_sort_key(p)<installed_sort_key(installed[p['name']]) for _,p in plan):raise Ki2CtlError('offline plan would downgrade an installed dependency')
+    needed=sum(int(p.get('size',0)) for _,p in plan if not installed_matches(args.root,p))*3+256*1024*1024
+    if shutil.disk_usage('/var/lib/ki2').free<needed:raise Ki2CtlError('insufficient disk space for download, staging and transaction backups')
+    subprocess.run(['systemctl','add-wants','system-update.target','ki2-offline-update.service'],check=True)
+    temporary=stage.with_name('offline-pending-'+transaction_id('stage'));temporary.mkdir(mode=0o700,parents=True)
+    try:
+        (temporary/'repo').mkdir();(temporary/'packages').mkdir()
+        write_json(temporary/'repo'/f'metadata.{args.arch}.json',metadata)
+        (temporary/'repo'/f'index.{args.arch}.json').write_bytes(payload)
+        shutil.copyfile(key,temporary/'verify.pub')
+        records=[]
+        for origin,pkg in plan:
+            if installed_matches(args.root,pkg):continue
+            source=fetch_package(origin,pkg,args.root,args.arch);target=temporary/'packages'/pkg['file']
+            shutil.copyfile(source,target)
+            records.append({'name':pkg['name'],'sha256':pkg['sha256'],'file':pkg['file']})
+        shutil.copyfile(Path(__file__),temporary/'ki2ctl')
+        helper=Path(__file__).resolve().parents[1]/'libexec/ki2-kernel-recovery'
+        if not helper.is_file():raise Ki2CtlError('kernel recovery helper is required for offline updates')
+        shutil.copyfile(helper,temporary/'kernel-recovery')
+        write_json(temporary/'request.json',{'schema':'ki2-offline-update-v1','names':roots,'arch':args.arch,'index_sha256':bytes_sha256(payload),
+            'key_sha256':file_sha256(temporary/'verify.pub'),'runner_sha256':file_sha256(temporary/'ki2ctl'),'recovery_sha256':file_sha256(temporary/'kernel-recovery'),'packages':records,'created_at':dt.datetime.now(UTC).isoformat()})
+        temporary.rename(stage)
+        os.symlink('/var/lib/ki2/offline-update','/system-update')
+        print(json.dumps({'staged':True,'packages':len(records),'index_sha256':bytes_sha256(payload),'reboot_required':True}))
+    except Exception:
+        if temporary.exists():shutil.rmtree(temporary)
+        raise
+
+
+def command_offline_apply(args: argparse.Namespace) -> None:
+    if args.root!=Path('/') or os.geteuid()!=0:raise Ki2CtlError('offline apply requires system root')
+    # KIKI retains /sbin separately; systemd's compiled default PATH omits it.
+    os.environ['PATH']='/usr/bin:/bin:/usr/sbin:/sbin'
+    stage=offline_directory(args.root)
+    request=read_json(stage/'request.json')
+    if request.get('schema')!='ki2-offline-update-v1' or file_sha256(stage/'verify.pub')!=request['key_sha256'] or file_sha256(stage/'ki2ctl')!=request['runner_sha256']:raise Ki2CtlError('staged update inputs changed')
+    if Path('/system-update').resolve()!=stage.resolve():raise Ki2CtlError('offline update marker mismatch')
+    if file_sha256(stage/'kernel-recovery')!=request['recovery_sha256']:raise Ki2CtlError('staged recovery helper changed')
+    for entry in request['packages']:
+        if Path(entry['file']).name!=entry['file'] or file_sha256(stage/'packages'/entry['file'])!=entry['sha256']:raise Ki2CtlError('staged package changed')
+    repo=Repo(name='offline-frozen',url=stage.as_uri());args.arch=request['arch'];metadata=fetch_repo_metadata(repo,args.arch)
+    if not verify_metadata_with_key(metadata,stage/'verify.pub'):raise Ki2CtlError('offline repository signature invalid')
+    index,payload=fetch_repo_index_payload(repo,args.arch)
+    if bytes_sha256(payload)!=request['index_sha256'] or bytes_sha256(payload)!=metadata.get('index',{}).get('sha256'):raise Ki2CtlError('offline signed index changed')
+    packages=package_catalog([(repo,index)]);plan=resolve_packages(packages,request['names'])
+    args.offline_apply=True
+    recovery=stage/'kernel-recovery'
+    subprocess.run([sys.executable,str(recovery),'prepare'],check=True)
+    execute_install_plan(args,plan)
+    command_hooks_apply(argparse.Namespace(root=args.root,dry_run=False))
+    if any(p['name']=='linux' for _,p in plan):
+        subprocess.run([sys.executable,str(recovery),'commit'],check=True)
+    write_json(stage/'result.json',{'passed':True,'completed_at':dt.datetime.now(UTC).isoformat(),'index_sha256':request['index_sha256']})
+    Path('/system-update').unlink()
+    archive=stage.with_name('offline-completed-'+transaction_id('apply'));stage.rename(archive)
+    print(json.dumps({'applied':True,'record':str(archive),'index_sha256':request['index_sha256']}))
+
+
 def command_hooks_list(args: argparse.Namespace) -> None:
     hooks = load_pending_hooks(args.root).get("hooks", [])
     if not hooks:
@@ -1701,6 +1821,12 @@ def build_parser() -> argparse.ArgumentParser:
     upgrade.add_argument("--reinstall", action="store_true")
     upgrade.set_defaults(func=command_upgrade)
 
+    offline_stage=subcommands.add_parser('offline-stage',help='download and pin a signed update for the next boot')
+    offline_stage.add_argument('names',nargs='*');offline_stage.add_argument('--verify-key',type=Path,required=True)
+    offline_stage.set_defaults(func=command_offline_stage)
+    offline_apply=subcommands.add_parser('offline-apply',help='apply a staged update in system-update.target')
+    offline_apply.set_defaults(func=command_offline_apply)
+
     installed = subcommands.add_parser("list", help="list installed package records")
     installed.set_defaults(func=command_installed_list)
 
@@ -1721,6 +1847,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+@contextlib.contextmanager
+def mutation_lock(root: Path):
+    """Serialize KI2 writers, including the native administrator's backend."""
+    directory = state_dir(root)
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / "operation.lock").open("a") as lock:
+        if os.name == "posix":
+            import fcntl
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise Ki2CtlError("another KI2 operation is in progress")
+        yield
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1730,8 +1871,19 @@ def main(argv: list[str] | None = None) -> int:
     if isinstance(getattr(args, "verify_key", None), Path):
         args.verify_key = args.verify_key.resolve()
     try:
-        args.func(args)
-    except (Ki2CtlError, OSError, json.JSONDecodeError, tarfile.TarError) as exc:
+        writes = (args.command in {"install", "remove", "upgrade", "update", "offline-stage", "offline-apply"}
+                  or (args.command == "repo" and args.repo_command != "list")
+                  or (args.command == "group" and args.group_command in {"install", "remove", "upgrade"})
+                  or (args.command == "hooks" and args.hooks_command == "apply")
+                  or bool(args.repo)) and not getattr(args, "dry_run", False)
+        with mutation_lock(args.root) if writes else contextlib.nullcontext():
+            args.func(args)
+    except Exception as exc:
+        known=(Ki2CtlError,OSError,json.JSONDecodeError,tarfile.TarError,subprocess.CalledProcessError)
+        if args.command!='offline-apply' and not isinstance(exc,known):raise
+        if args.command=='offline-apply' and Path('/system-update').is_symlink() and os.readlink('/system-update')==str(offline_directory(args.root)):
+            with contextlib.suppress(OSError):write_json(offline_directory(args.root)/'failure.json',{'error':str(exc),'at':dt.datetime.now(UTC).isoformat()})
+            with contextlib.suppress(OSError):Path('/system-update').unlink()
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0

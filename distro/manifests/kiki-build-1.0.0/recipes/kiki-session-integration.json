@@ -1,0 +1,32 @@
+{
+  "recipes": [
+    {
+      "name": "kiki-session-integration",
+      "version": "0.1.0",
+      "release": "1",
+      "summary": "KIKI native login and user-session integration",
+      "license": "GPL-3.0-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/home/tang/kiki-build/gnome50-session-20261017/session-integration"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "systemd",
+          "shadow",
+          "dbus",
+          "python",
+          "kiki-pam-config"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

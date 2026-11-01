@@ -1,0 +1,34 @@
+{
+  "recipes": [
+    {
+      "name": "accountsservice",
+      "version": "26.27.3",
+      "release": "4",
+      "summary": "KIKI native desktop accountsservice",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-gnome-native-apps-20261028/accountsservice-pc/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "dbus",
+          "glib",
+          "glibc",
+          "json-c",
+          "libsystemd",
+          "libxcrypt",
+          "polkit"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

@@ -22,6 +22,23 @@ SPEC.loader.exec_module(ki2build)
 
 
 class Ki2BuildTests(unittest.TestCase):
+    def test_package_creation_rejects_crlf_account_database_before_writing(self):
+        for name in ("passwd", "group", "shadow", "gshadow"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)/"payload"; (root/"etc").mkdir(parents=True)
+                (root/"etc"/name).write_bytes(b"fixture:x:0:\r\n")
+                output=Path(tmp)/"bad.ki2"
+                with self.assertRaisesRegex(ki2build.Ki2Error,"Unix LF"):
+                    ki2build.create_package(None,None,root,output,"",{})
+                self.assertFalse(output.exists())
+
+    def test_lf_account_databases_are_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); (root/"etc").mkdir()
+            for name in ("passwd", "group", "shadow", "gshadow"):
+                (root/"etc"/name).write_bytes(b"fixture:x:0:\n")
+            ki2build.validate_account_database_line_endings(root)
+
     def test_unsupported_rootfs_storage_keeps_existing_files_before_clean(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "rootfs"

@@ -1,0 +1,38 @@
+{
+  "recipes": [
+    {
+      "name": "lcms2",
+      "version": "2.19.1",
+      "release": "1",
+      "summary": "Native ICC color management library",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/mm2/Little-CMS/releases/download/lcms2.19.1/lcms2-2.19.1.tar.gz",
+        "sha256": "bfc54f7bab59fbc921012014a8032e4cba4abd46db47d46b76416a8c0b2815c8"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--disable-static",
+          "--without-jpeg",
+          "--without-tiff"
+        ]
+      }
+    }
+  ]
+}

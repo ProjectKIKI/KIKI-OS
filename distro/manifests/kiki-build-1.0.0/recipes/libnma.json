@@ -1,0 +1,32 @@
+{
+  "recipes": [
+    {
+      "name": "libnma",
+      "version": "1.10.6",
+      "release": "1",
+      "summary": "KIKI native desktop libnma",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-gnome-native-apps-20261028/libnma/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "gtk+-3",
+          "glib",
+          "NetworkManager",
+          "gnutls"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

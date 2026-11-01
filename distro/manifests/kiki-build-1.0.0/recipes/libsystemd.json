@@ -1,0 +1,32 @@
+{
+  "recipes": [
+    {
+      "name": "libsystemd",
+      "version": "255.7",
+      "release": "6",
+      "summary": "Native systemd client library and development files",
+      "license": "LGPL-2.1-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/systemd/systemd-stable/archive/refs/tags/v255.7.tar.gz",
+        "sha256": "da29f2490c192ca743511098b1d15e385b1b5e7744979661dc30514c1ac61f0e"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "libcap",
+          "xz",
+          "zstd"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

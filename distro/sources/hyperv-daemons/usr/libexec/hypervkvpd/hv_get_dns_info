@@ -1,0 +1,3 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+awk '/^nameserver[[:space:]]/ {print $2}' /etc/resolv.conf

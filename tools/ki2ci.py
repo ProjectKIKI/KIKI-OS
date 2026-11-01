@@ -13,10 +13,12 @@ import datetime as dt
 import html
 import json
 import os
+import platform
 import queue
 import random
 import re
 import shlex
+import signal
 import shutil
 import subprocess
 import sys
@@ -32,6 +34,11 @@ from typing import Any, Callable
 
 from ki2git import GitSources, GitError
 from ki2git_views import git_page, source_summary
+from ki2catalog import Catalog, Conflict
+import ki2catalog_views
+import ki2assistant
+import ki2sources
+import ki2buildops
 
 
 UTC = dt.timezone.utc
@@ -227,7 +234,7 @@ def base_smoke_steps(config: CiConfig) -> list[Step]:
                 "--profile",
                 "distro/profiles/world.toml",
                 "--max-packages",
-                "72",
+                "96",
             ),
         ),
         Step(
@@ -711,12 +718,51 @@ def run_job(config: CiConfig, store: JobStore, job_id: str, build_lock: threadin
                 job["source"] = git_sources.export(record["commit"], root)
                 store.write(job)
                 if job.get("package"):
-                    validate_package(replace(config, repo_root=root), job["package"], engine_root=config.repo_root)
+                    validate_package(replace(config, repo_root=root), job["package"], engine_root=config.repo_root,
+                                     catalog_state=json.loads((store.jobs_dir/job_id/'catalog.json').read_text(encoding='utf-8')) if job.get('catalog') else None)
             if job.get("source", {}).get("kind") == "git":
                 config = replace(config, repo_root=store.jobs_dir / job_id / "source",
                                  publish_dir=store.jobs_dir / job_id / "publish")
                 append_log(log_path, "Git source: " + job["source"]["commit"] + "\n")
-            steps = package_build_steps(config, job["package"], job_id) if job.get("package") else pipeline_steps(config, job["pipeline"])
+            if job.get('catalog') and not job.get('update_plan'):
+                import hashlib
+                catalog_file = store.jobs_dir / job_id / 'catalog.json'
+                if hashlib.sha256(catalog_file.read_bytes()).hexdigest() != job['catalog']['sha256']:
+                    raise CiError('고정한 카탈로그의 해시가 변경되었습니다.')
+                engine_file = store.jobs_dir / job_id / 'build-engine.py'
+                if hashlib.sha256(engine_file.read_bytes()).hexdigest() != job['catalog']['engine_sha256']:
+                    raise CiError('고정한 빌드 엔진의 해시가 변경되었습니다.')
+                target = store.jobs_dir / job_id / 'source'
+                Catalog(config.artifact_root / 'catalog', config.repo_root, load_ki2build_module(config.repo_root)).materialize(
+                    config.repo_root, target, json.loads(catalog_file.read_text(encoding='utf-8')))
+                (target / 'tools').mkdir(exist_ok=True)
+                shutil.copy2(engine_file, target / 'tools/ki2build.py')
+                config = replace(config, repo_root=target, publish_dir=store.jobs_dir / job_id / 'publish')
+                append_log(log_path, 'Pinned web catalog r' + str(job['catalog']['revision']) + '\n')
+            if not job.get('update_plan'):
+                engine=load_ki2build_module(config.repo_root)
+                recipes=engine.load_recipes(config.repo_root/'distro/recipes') if (config.repo_root/'distro/recipes').is_dir() else {}
+                inputs=dict(schema='kiki-build-inputs-v1',build_version=ki2buildops.VERSION,job_id=job_id,
+                            arch=config.arch,toolchain_id=config.toolchain_id,python=platform.python_version(),
+                            runtime_image=os.environ.get('KIKI_BUILD_IMAGE_DIGEST','host environment'),
+                            build_engine_sha256=ki2buildops.sha(Path(engine.__file__)),
+                            source={k:v for k,v in job.get('source',{}).items() if k in ['kind','commit','archive_sha256','branch']},
+                            web_catalog=job.get('catalog'),recipe_digests={n:r.digest for n,r in sorted(recipes.items())})
+                container=Path('/run/.containerenv')
+                if container.is_file():
+                    for line in container.read_text().splitlines():
+                        if line.startswith('imageid='):inputs['runtime_image']=line.split('=',1)[1].strip('"')
+                try:inputs['compiler']=subprocess.check_output([os.environ.get('CC','cc'),'--version'],text=True,timeout=5).splitlines()[0]
+                except (OSError,subprocess.SubprocessError):inputs['compiler']='unavailable'
+                from ki2catalog import atomic as save_inputs
+                save_inputs(store.jobs_dir/job_id/'build-inputs.json',inputs)
+                job['input_manifest_sha256']=ki2buildops.sha(store.jobs_dir/job_id/'build-inputs.json')
+            if job.get('update_plan'):
+                steps=[Step('Build pinned package update',python_cmd(config,str(Path(__file__).with_name('ki2updatebuild.py')),
+                    '--plan','/update-inputs/'+job['update_plan']['id']+'.json','--expected',job['update_plan']['sha256'],
+                    '--job-root',str(store.jobs_dir/job_id),'--repo-root','/update-backend','--jobs',str(config.jobs)))]
+            else:
+                steps = package_build_steps(config, job["package"], job_id) if job.get("package") else pipeline_steps(config, job["pipeline"])
             job["steps"] = [
                 {"name": step.name, "command": step.command, "status": "pending", "started_at": None,
                  "finished_at": None, "exit_code": None, "allow_failure": step.allow_failure}
@@ -922,7 +968,7 @@ def package_artifacts(config: CiConfig) -> dict[str, dict[str, Any]]:
 
 def collect_packages(config: CiConfig) -> list[dict[str, Any]]:
     ki2build = load_ki2build_module(config.repo_root)
-    recipes = ki2build.load_recipes(config.repo_root / "distro" / "recipes")
+    recipes = Catalog(config.artifact_root/'catalog',config.repo_root,ki2build).recipes()
     artifacts = package_artifacts(config)
     packages = []
     for recipe in sorted(recipes.values(), key=lambda item: (item.tier, item.name)):
@@ -1099,11 +1145,14 @@ def nav(active: str) -> str:
         ("/", "Dashboard"),
         ("/jobs", "Jobs"),
         ("/packages", "Packages"),
+        ('/package-groups', '패키지 그룹 관리'),
         ("/package-build", "Build KI2"),
         ("/kernel-build", "커널 빌드"),
         ("/profiles", "Profiles"),
         ("/artifacts", "Artifacts"),
         ("/security", "Security"),
+        ('/assistant','Local LLM 보조'),
+        ('/operations','운영·복구'),
         ("/deploy", "Deploy"),
         ("/git", "Git 소스 동기화"),
     ]
@@ -1112,8 +1161,8 @@ def nav(active: str) -> str:
     ) + "</nav>"
 
 
-def metric(label: str, value: Any, tone: str = "") -> str:
-    return f"<div class='metric {tone}'><div class='metric-value'>{html_escape(value)}</div><div class='metric-label'>{html_escape(label)}</div></div>"
+def metric(label: str, value: Any, tone: str = "", release: str = "") -> str:
+    return f"<div class='metric {tone}' data-release='{html_escape(release)}'><div class='metric-value'>{html_escape(value)}</div><div class='metric-label'>{html_escape(label)}</div></div>"
 
 
 def render_page(title: str, body: str, *, active: str = "/", head: str = "") -> bytes:
@@ -1157,6 +1206,8 @@ class BuildServer:
         self.git = GitSources(config.artifact_root / "git", config.git_url, config.git_branch) if config.git_url else None
         self.lease = BuilderLease(config.artifact_root)
         self.store = JobStore(config.artifact_root)
+        self.catalog = Catalog(config.artifact_root / 'catalog', config.repo_root, load_ki2build_module(config.repo_root))
+        self.assistant = ki2assistant.Assistant(config.artifact_root/'assistant')
         self.queue: queue.Queue[str | None] = queue.Queue()
         self.worker: threading.Thread | None = None
         self.closed = False
@@ -1203,8 +1254,10 @@ class BuildServer:
                 self.lease.close()
 
     def _submit(self, pipeline: str, *, package: str | None = None, retry_of: str | None = None,
-                source: str = "preserved", commit: str = "") -> dict[str, Any]:
+                source: str = "preserved", commit: str = "", catalog_state=None, catalog_engine=None) -> dict[str, Any]:
         with self.store.lock:
+            if package and catalog_state is None:catalog_state=self.catalog.current()
+            if not ki2buildops.health(self.config.artifact_root)['ok']:raise CiError('디스크 여유가 1GiB 미만입니다. 저장 공간을 확보한 뒤 빌드하세요.')
             if self.closed:
                 raise CiError("build console is shutting down")
             if source not in {"preserved", "git", "git-latest"}:
@@ -1221,6 +1274,10 @@ class BuildServer:
                 except GitError as exc:
                     raise CiError(str(exc)) from exc
             job = self.store.create(pipeline, package=package)
+            if package:
+                frozen = self.catalog.freeze(self.store.jobs_dir / job['id'], catalog_state, catalog_engine)
+                if frozen:
+                    job['catalog'] = frozen
             if source == "git-latest":
                 job["source"] = {"kind": "git-latest", "branch": self.git.branch, "viewed_commit": commit}
                 job["source_request"] = {"mode": "latest", "viewed_commit": commit}
@@ -1229,7 +1286,7 @@ class BuildServer:
                     job["source"] = self.git.export(commit, self.store.jobs_dir / job["id"] / "source")
                     if package:
                         validate_package(replace(self.config, repo_root=self.store.jobs_dir / job["id"] / "source"), package,
-                                         engine_root=self.config.repo_root)
+                                         engine_root=self.config.repo_root,catalog_state=catalog_state)
                 except Exception as exc:
                     job.update(status="failed", finished_at=now(), exit_code=1, error=str(exc))
                     self.store.write(job)
@@ -1265,6 +1322,12 @@ class BuildServer:
             job = self.store.read(job_id)
             if job["status"] not in TERMINAL_STATUSES:
                 raise CiError("wait until the job finishes before retrying")
+            if job.get('update_plan'):return self.submit_update(job['update_plan']['id'],job['update_plan']['sha256'])
+            if job.get('catalog'):
+                import hashlib
+                for filename, key in [('catalog.json', 'sha256'), ('build-engine.py', 'engine_sha256')]:
+                    if hashlib.sha256((self.store.jobs_dir / job_id / filename).read_bytes()).hexdigest() != job['catalog'][key]:
+                        raise CiError('기존 고정 입력이 변경되어 재시도할 수 없습니다.')
             if job.get("package"):
                 if job.get("source", {}).get("kind") not in {"git", "git-latest"}:
                     validate_package(self.config, job["package"])
@@ -1272,12 +1335,27 @@ class BuildServer:
                 raise CiError("pipeline is no longer available")
             return self._submit(job["pipeline"], package=job.get("package"), retry_of=job_id,
                                 source=job.get("source", {}).get("kind", "preserved"),
-                                commit=job.get("source", {}).get("commit", ""))
+                                commit=job.get("source", {}).get("commit", ""),
+                                catalog_state=json.loads((self.store.jobs_dir / job_id / 'catalog.json').read_text(encoding='utf-8')) if job.get('catalog') else None,
+                                catalog_engine=self.store.jobs_dir / job_id / 'build-engine.py' if job.get('catalog') else None)
 
     def submit(self, pipeline: str, *, source="preserved", commit="") -> dict[str, Any]:
         if pipeline not in pipeline_names():
             raise CiError(f"unknown pipeline {pipeline!r}")
         return self._submit(pipeline, source=source, commit=commit)
+
+    def submit_update(self, plan_id, expected):
+        from ki2updatebuild import read_plan
+        if not re.fullmatch('[a-f0-9]{32}',plan_id) or not re.fullmatch('[a-f0-9]{64}',expected):raise CiError('invalid update plan')
+        try:plan=read_plan(Path('/update-inputs')/(plan_id+'.json'),expected)
+        except (OSError,ValueError,KeyError) as error:raise CiError(str(error)) from error
+        with self.store.lock:
+            if self.closed:raise CiError('build console is shutting down')
+            for existing in self.store.list():
+                if existing.get('update_plan',{}).get('id')==plan_id and existing['status'] in {'pending','running'}:return existing
+            job=self.store.create('update')
+            job.update(update_plan={'id':plan['id'],'sha256':expected},source={'kind':'pinned-update','base':plan['base']})
+            self.store.write(job);self.queue.put(job['id']);self._start_worker();return job
 
     def submit_package(self, name: str, *, source=None, commit="") -> dict[str, Any]:
         source = source or ("git-latest" if self.git else "preserved")
@@ -1308,14 +1386,17 @@ class BuildServer:
             raise CiError(str(exc)) from exc
 
 
-def validate_package(config: CiConfig, name: str, *, engine_root=None) -> None:
+def validate_package(config: CiConfig, name: str, *, engine_root=None, catalog_state=None) -> None:
     try:
-        recipes = load_ki2build_module(engine_root or config.repo_root).load_recipes(config.repo_root / "distro/recipes")
+        engine=load_ki2build_module(engine_root or config.repo_root)
+        recipes = Catalog(config.artifact_root/'catalog',config.repo_root,engine).recipes(state=catalog_state)
     except (ValueError, OSError, RuntimeError) as exc:
         raise CiError("패키지 명세를 읽지 못했습니다. 소스와 명세 형식을 확인하세요.") from exc
     recipe = recipes.get(name)
     if recipe is None or not recipe.supports_arch(config.arch):
         raise CiError("select a supported package from the recipe catalog")
+    if recipe.build.get('system')=='recorded-native':
+        raise CiError('이 패키지는 별도 native SDK 파이프라인을 사용합니다. 전체 소스 명세와 native 빌드 안내를 확인하세요.')
 
 
 def pipeline_plan(config: CiConfig, name: str) -> list[dict[str, Any]]:
@@ -1359,6 +1440,12 @@ def make_handler(server: BuildServer):
                 self.end_headers()
                 self.wfile.write(body)
                 return
+            if parsed.path == '/catalog-ui.js':
+                body=Path(__file__).with_name('ki2catalog_ui.js').read_bytes()
+                self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
+            if parsed.path == '/catalog-ui.css':
+                body=Path(__file__).with_name('ki2catalog_ui.css').read_bytes()
+                self.send_response(200);self.send_header('Content-Type','text/css; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
             if parsed.path == "/api/plan":
                 name = urllib.parse.parse_qs(parsed.query).get("pipeline", [""])[0]
                 try:
@@ -1378,6 +1465,14 @@ def make_handler(server: BuildServer):
                     self.send_error(HTTPStatus.BAD_REQUEST, str(exc))
                 return
             artifact_match = re.fullmatch(r"/jobs/(\d{8}-\d{6}-\d{4})/artifacts/([A-Za-z0-9_.-]+\.ki2)", parsed.path)
+            inputs_match=re.fullmatch(r'/jobs/(\d{8}-\d{6}-\d{4})/inputs',parsed.path)
+            if inputs_match:
+                try:
+                    job=server.store.read(inputs_match[1]);file=server.store.jobs_dir/job['id']/'build-inputs.json'
+                    if not job.get('input_manifest_sha256') or ki2buildops.sha(file)!=job['input_manifest_sha256']:raise ValueError('빌드 입력 명세를 확인할 수 없습니다.')
+                    self.send_json(json.loads(file.read_text(encoding='utf-8')))
+                except (KeyError,ValueError,OSError) as exc:self.send_error(404,str(exc))
+                return
             if artifact_match:
                 job_id, filename = artifact_match.groups()
                 try:
@@ -1406,13 +1501,54 @@ def make_handler(server: BuildServer):
                 self.send_html(self.jobs_page())
                 return
             if parsed.path == "/packages":
-                self.send_html(self.packages_page())
+                self.send_html(self.packages_page(urllib.parse.parse_qs(parsed.query).get('q', [''])[0]))
+                return
+            if parsed.path=='/assistant':
+                self.send_html(render_page('Local LLM 보조',ki2assistant.page(server.assistant,server.store.list(),selected=urllib.parse.parse_qs(parsed.query).get('job',[''])[0]),active='/assistant'));return
+            if parsed.path.startswith('/assistant/reports/'):
+                try:result=server.assistant.report(parsed.path.removeprefix('/assistant/reports/'))
+                except (OSError,ValueError):self.send_error(404,'report not found');return
+                self.send_html(render_page('Local LLM 답변',ki2assistant.page(server.assistant,server.store.list(),result),active='/assistant'));return
+            if parsed.path in ['/api/build-contract','/api/build-health']:
+                self.send_json(ki2buildops.CONTRACT if parsed.path.endswith('contract') else ki2buildops.health(server.config.artifact_root));return
+            if parsed.path in {'/source-manifest','/api/source-manifest'}:
+                path=server.config.repo_root/ki2sources.DEFAULT
+                if not path.is_file():self.send_error(404,'Source manifest unavailable');return
+                manifest=json.loads(path.read_text(encoding='utf-8'))
+                if parsed.path.startswith('/api/'):
+                    self.send_json(manifest);return
+                query=urllib.parse.parse_qs(parsed.query).get('q',[''])[0][:200]
+                self.send_html(render_page('전체 소스 명세',ki2sources.page(manifest,query),active='/operations'));return
+            if parsed.path=='/operations':
+                health=ki2buildops.health(server.config.artifact_root);plan=ki2buildops.retention_plan(server.store.jobs_dir)
+                body="<div class='panel'><h2>KIKI Build "+ki2buildops.VERSION+"</h2><p>x86_64 단일 Linux 빌더 정식 지원 · 복구·OpenStack·Hyper-V 검증 기록을 릴리즈와 함께 보관합니다.</p><p><a href='/api/build-contract'>지원 범위·호환성 명세 JSON</a> · <a href='/source-manifest'>전체 소스 명세</a></p><h3>저장 공간</h3><p>여유 "+f"{health['free_bytes']/1024**3:.1f} GiB / 전체 {health['total_bytes']/1024**3:.1f} GiB</p><p>"+html_escape(health['warning'])+"</p><h3>보존·정리 미리보기</h3><p>최근 10개 완료 작업과 모든 산출물·입력·이력은 보존합니다. 오래된 완료 작업의 임시 work 디렉터리만 정리 후보로 계산합니다. 자동 삭제하지 않습니다.</p><p>후보 "+str(len(plan))+"개 · "+f"{sum(p['bytes'] for p in plan)/1024**3:.2f} GiB</p></div>"
+                body+="<div class='panel'><h2>백업·새 서버 복원</h2><p>작업이 없는 유지보수 시간에 상태와 서명 키를 접근 제한된 저장장치에 백업하세요. 복원 대상은 새 빈 경로여야 합니다. 계정은 유지하고 복원된 로그인 세션은 종료합니다.</p><pre>python3 tools/ki2buildops.py doctor --root STATE_ROOT\npython3 tools/ki2buildops.py backup --component catalog=CATALOG_DIR --component jobs=JOBS_DIR --component release=RELEASE_STORE --component auth=AUTH_STATE --output BACKUP_VOLUME/kiki-state.tar.gz\npython3 tools/ki2buildops.py restore --archive BACKUP_VOLUME/kiki-state.tar.gz --destination NEW_STATE_ROOT</pre><p>백업에는 비공개 키와 계정 정보가 포함될 수 있습니다. 외부 공개 저장소에 게시하지 마세요. 임시 빌드 작업 디렉터리는 제외하며 소스·런타임은 고정 버전으로 다시 준비합니다.</p></div>"
+                self.send_html(render_page('운영·복구',body,active='/operations'));return
+            if parsed.path in {'/package-groups', '/package-groups/edit', '/package-groups/history', '/packages/edit', '/packages/new', '/package-groups/export', '/api/package-groups'}:
+                query = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
+                try:
+                    if parsed.path in {'/package-groups/export', '/api/package-groups'}:
+                        state = server.catalog.current()
+                        if query.get('revision'):
+                            revision = query['revision']
+                            if not re.fullmatch(r'0|[1-9][0-9]{0,8}', revision):
+                                raise ValueError('리비전 형식을 확인하세요.')
+                            state = json.loads((server.catalog.root / 'revisions' / (revision + '.json')).read_text(encoding='utf-8'))
+                        self.send_json(state['catalog'] if query.get('kind') == 'groups' else state)
+                    else:
+                        body = (ki2catalog_views.package_new(server.catalog) if parsed.path=='/packages/new' else ki2catalog_views.group_edit(server.catalog, query.get('id', '')) if parsed.path.endswith('/edit') and parsed.path.startswith('/package-groups')
+                                else ki2catalog_views.metadata_edit(server.catalog, query.get('name', '')) if parsed.path == '/packages/edit'
+                                else ki2catalog_views.history_page(server.catalog) if parsed.path.endswith('/history')
+                                else ki2catalog_views.groups_page(server.catalog, query))
+                        self.send_html(render_page('새 패키지 등록' if parsed.path=='/packages/new' else '패키지 상세' if parsed.path=='/packages/edit' else 'KIKI 패키지 그룹·메타정보 관리', body, active='/packages' if parsed.path.startswith('/packages') else '/package-groups'))
+                except (ValueError, OSError) as exc:
+                    self.send_html(render_page('카탈로그 오류', '<p>' + html_escape(exc) + "</p><a href='/package-groups'>그룹 목록으로</a>", active='/package-groups'))
                 return
             if parsed.path in {"/package-build", "/kernel-build"}:
                 query = urllib.parse.parse_qs(parsed.query)
                 try:
                     self.send_html(self.package_build_page(query.get("source", [None])[0], query.get("commit", [""])[0],
-                                                          kernel=parsed.path == "/kernel-build"))
+                                                          kernel=parsed.path == "/kernel-build",selected=query.get('package',[''])[0]))
                 except CiError as exc:
                     self.send_error(HTTPStatus.BAD_REQUEST, str(exc))
                 return
@@ -1464,7 +1600,7 @@ def make_handler(server: BuildServer):
 
         def do_POST(self) -> None:  # noqa: N802
             action = re.fullmatch(r"/jobs/(\d{8}-\d{6}-\d{4})/(retry|cancel)", self.path)
-            if self.path not in {"/jobs", "/package-build", "/kernel-build", "/git/sync"} and not action:
+            if self.path not in {"/jobs", "/package-build", "/kernel-build", "/git/sync", "/package-update-build", '/package-groups/save', '/package-groups/restore', '/packages/metadata', '/packages/register','/assistant/settings','/assistant/analyze','/assistant/draft'} and not action:
                 self.send_error(HTTPStatus.NOT_FOUND, "not found")
                 return
             origin = self.headers.get("Origin")
@@ -1478,14 +1614,44 @@ def make_handler(server: BuildServer):
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
                 length = 0
-            if not 0 < length <= 4096:
+            if not 0 < length <= (65536 if self.path in {'/package-groups/save', '/packages/metadata','/packages/register','/assistant/draft'} else 4096):
                 self.send_error(HTTPStatus.BAD_REQUEST, "invalid form size")
                 return
             body = self.rfile.read(length).decode("utf-8")
             data = urllib.parse.parse_qs(body)
             pipeline = data.get("pipeline", [""])[0]
             try:
-                if self.path == "/git/sync":
+                if self.path.startswith('/assistant/'):
+                    form={k:v[0] for k,v in data.items()};result=None;error=''
+                    try:
+                        if self.path=='/assistant/settings':server.assistant.configure(form)
+                        elif self.path=='/assistant/analyze':
+                            job=server.store.read(form.get('job',''));file=server.store.log_path(job['id'])
+                            with file.open('rb') as stream:stream.seek(max(0,file.stat().st_size-131072));context=stream.read().decode('utf-8',errors='replace')
+                            result=server.assistant.complete('analyze',context,job['id'])
+                        else:
+                            if not 1<=len(form.get('description',''))<=6000:raise ValueError('레시피 초안 요청을 1~6000자로 입력하세요.')
+                            result=server.assistant.complete('draft',form['description'])
+                    except (ValueError,KeyError) as exc:error=str(exc)
+                    self.send_html(render_page('Local LLM 보조',ki2assistant.page(server.assistant,server.store.list(),result,error),active='/assistant'));return
+                if self.path in {'/package-groups/save', '/package-groups/restore', '/packages/metadata', '/packages/register'}:
+                    values = {k: v[0] for k, v in data.items()}
+                    values['_actor'] = self.headers.get('X-KIKI-Actor', 'local')
+                    if self.path == '/package-groups/save':
+                        draft=server.catalog.group(values)
+                    elif self.path == '/packages/register':
+                        draft=server.catalog.register(values)
+                    elif self.path == '/package-groups/restore':
+                        server.catalog.restore(values)
+                    else:
+                        server.catalog.metadata(values)
+                    if values.get('action')=='preview' and self.path in {'/package-groups/save','/packages/register'}:
+                        self.send_html(render_page('저장 전 검토',ki2catalog_views.preview_page(values,draft,self.path),active='/package-groups' if self.path.startswith('/package-groups') else '/packages'));return
+                    self.send_response(HTTPStatus.SEE_OTHER)
+                    self.send_header('Location', '/packages/edit?name=' + urllib.parse.quote(values['name']) if self.path in {'/packages/metadata','/packages/register'} else '/package-groups')
+                    self.end_headers()
+                    return
+                elif self.path == "/git/sync":
                     if not server.git:
                         raise CiError("Git 연동이 설정되지 않았습니다.")
                     server.git.start_sync()
@@ -1493,6 +1659,8 @@ def make_handler(server: BuildServer):
                     self.send_header("Location", "/git")
                     self.end_headers()
                     return
+                elif self.path=='/package-update-build':
+                    job=server.submit_update(data.get('plan',[''])[0],data.get('sha256',[''])[0])
                 elif action:
                     job = server.retry(action[1]) if action[2] == "retry" else server.cancel(action[1])
                 else:
@@ -1509,6 +1677,17 @@ def make_handler(server: BuildServer):
                 return
             except (CiError, GitError) as exc:
                 self.send_error(HTTPStatus.BAD_REQUEST, str(exc))
+                return
+            except ValueError as exc:
+                if self.path in {'/package-groups/save','/packages/register'} and not isinstance(exc,Conflict):
+                    form={k:v[0] for k,v in data.items()}
+                    body=ki2catalog_views.package_new(server.catalog,form,str(exc)) if self.path=='/packages/register' else ki2catalog_views.group_edit(server.catalog,form.get('id','') if form.get('create')!='yes' else '',form,str(exc))
+                    self.send_html(render_page('입력 내용을 확인하세요',body,active='/packages' if self.path=='/packages/register' else '/package-groups'));return
+                payload = render_page('저장하지 못했습니다', '<div class="panel"><h2>저장하지 못했습니다</h2><p>' + html_escape(exc) + "</p><p>브라우저의 뒤로 가기로 입력값을 확인하세요. 동시 변경이 있었다면 새로고침이 필요합니다.</p><a href='/package-groups'>그룹 목록</a> · <a href='/packages'>패키지 목록</a></div>")
+                self.send_response(HTTPStatus.CONFLICT if isinstance(exc, Conflict) else HTTPStatus.BAD_REQUEST)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', str(len(payload)))
+                self.end_headers(); self.wfile.write(payload)
                 return
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header("Location", f"/jobs/{job['id']}")
@@ -1565,10 +1744,11 @@ def make_handler(server: BuildServer):
             security = overview["security"]
             body = (
                 "<div class='grid'>"
-                + metric("Packages", overview["package_count"])
-                + metric("Built", f"{overview['built_package_count']}/{overview['package_count']}")
+                + metric("소스 레시피", overview["package_count"])
+                + metric("보관 패키지", '—', release='packages')
                 + metric("Profiles", overview["profile_count"])
-                + metric("ISOs", overview["iso_count"])
+                + metric("완료 ISO", '—', release='isos')
+                + metric("ISO 대기·실행", '—', release='active')
                 + metric("Queued builds", overview["job_counts"]["pending"])
                 + metric("Running builds", overview["job_counts"]["running"])
                 + metric("Unpinned", security["unpinned_count"], "bad" if security["unpinned_count"] else "good")
@@ -1594,9 +1774,14 @@ def make_handler(server: BuildServer):
             body = "<div class='panel'><h2>Run Pipeline</h2>" + self.pipeline_forms() + "</div><div class='panel'><h2>Jobs</h2>" + self.jobs_table() + "</div>"
             return render_page("KIKI Jobs", body, active="/jobs")
 
-        def packages_page(self) -> bytes:
+        def packages_page(self, query='') -> bytes:
             rows = []
+            state = server.catalog.current()
             for pkg in collect_packages(server.config):
+                patch = state['metadata'].get(pkg['name'], {})
+                pkg.update({k: patch[k] for k in ['summary', 'license', 'tier'] if k in patch})
+                if query and query.lower() not in (pkg['name'] + ' ' + pkg['summary'] + ' ' + pkg['license']).lower():
+                    continue
                 runtime = "".join(f"<span class='pill'>{html_escape(dep)}</span>" for dep in pkg["runtime_dependencies"]) or "<span class='muted'>none</span>"
                 build = "".join(f"<span class='pill'>{html_escape(dep)}</span>" for dep in pkg["build_dependencies"]) or "<span class='muted'>none</span>"
                 pin = "<span class='good'>pinned</span>" if pkg["pinned"] else "<span class='bad'>unpinned</span>"
@@ -1604,7 +1789,7 @@ def make_handler(server: BuildServer):
                 file_count = str(pkg["artifact"]["file_count"]) if pkg["artifact"] else "<span class='muted'>n/a</span>"
                 rows.append(
                     "<tr>"
-                    f"<td><b>{html_escape(pkg['name'])}</b><br><small>{html_escape(pkg['summary'])}</small></td>"
+                    f"<td><a href='/packages/edit?name={urllib.parse.quote(pkg['name'])}'><b>{html_escape(pkg['name'])}</b></a><br><small>{html_escape(pkg['summary'])}</small><br><small>{html_escape(pkg['license'])}{' · 편집본' if patch else ''}</small></td>"
                     f"<td>{html_escape(pkg['version'])}-{html_escape(pkg['release'])}</td>"
                     f"<td>{html_escape(pkg['tier'])}</td>"
                     f"<td>{runtime}</td>"
@@ -1615,9 +1800,10 @@ def make_handler(server: BuildServer):
                     "</tr>"
                 )
             table = "<table><tr><th>Package</th><th>Version</th><th>Tier</th><th>Runtime</th><th>Build</th><th>Source</th><th>Artifact</th><th>Files</th></tr>" + "".join(rows) + "</table>"
-            return render_page("KIKI Packages", "<div class='panel'>" + table + "</div>", active="/packages")
+            if not rows:table=table.replace('</table>',"<tr><td colspan='8'>검색 결과가 없습니다. 검색어를 바꾸거나 초기화해 주세요.</td></tr></table>")
+            return render_page("KIKI Packages", ki2catalog_views.intro(state) + "<div class='panel'><div class='catalog-heading'><div><h2>패키지 관리</h2><p>레시피를 등록하고 메타정보와 빌드 결과를 관리합니다.</p></div><a class='button' href='/packages/new'>새 패키지 등록</a></div><p>패키지 이름을 누르면 상세 정보와 빌드 작업을 확인할 수 있습니다. 웹 등록 " + str(len(state.get('recipes',{}))) + "개 · 전체 " + str(len(server.catalog.recipes())) + "개</p><form class='catalog-search' method='get' action='/packages'>" + ki2catalog_views.field('q','패키지 검색',query) + "<button>검색</button><a href='/packages'>초기화</a></form><p role='status' class='catalog-result-count'>"+str(len(rows))+"개 검색 결과</p>" + table + "</div>", active="/packages")
 
-        def package_build_page(self, source=None, commit="", *, kernel=False) -> bytes:
+        def package_build_page(self, source=None, commit="", *, kernel=False, selected='') -> bytes:
             source = source or ("git-latest" if server.git else "preserved")
             title = "KIKI 커널 빌드" if kernel else "KIKI Individual Package Build"
             route = "/kernel-build" if kernel else "/package-build"
@@ -1631,14 +1817,15 @@ def make_handler(server: BuildServer):
                     return render_page(title, "<div class='panel'><p>먼저 Git 소스 동기화를 실행하세요.</p><a href='/git'>Git 소스 동기화</a></div>", active=route)
             config = server.git_catalog(commit) if source in {"git", "git-latest"} else server.config
             try:
-                recipes = load_ki2build_module(server.config.repo_root).load_recipes(config.repo_root / "distro/recipes")
+                recipes = server.catalog.recipes(config.repo_root)
             except (ValueError, OSError, RuntimeError) as exc:
                 raise CiError("패키지 명세를 읽지 못했습니다. 소스와 명세 형식을 확인하세요.") from exc
             options = "".join(
-                f"<option value='{html_escape(recipe.name)}'>{html_escape(recipe.name)} — {html_escape(recipe.version)}-{html_escape(recipe.release)}</option>"
+                f"<option value='{html_escape(recipe.name)}'{' selected' if recipe.name==selected else ''}{' disabled' if recipe.build.get('system')=='recorded-native' else ''}>{html_escape(recipe.name)} — {html_escape(recipe.version)}-{html_escape(recipe.release)}{' · 별도 native SDK' if recipe.build.get('system')=='recorded-native' else ''}</option>"
                 for recipe in sorted(recipes.values(), key=lambda item: item.name)
                 if recipe.supports_arch(server.config.arch) and (not kernel or recipe.name == "linux")
             )
+            if selected and (selected not in recipes or not recipes[selected].supports_arch(server.config.arch)):raise CiError('선택한 패키지를 현재 소스에서 빌드할 수 없습니다.')
             kernel_info = ""
             if kernel:
                 recipe = recipes.get("linux")
@@ -1792,9 +1979,12 @@ def make_handler(server: BuildServer):
             ) if job.get("package") else ""
             body = (
                 f"<a class='button secondary' href='/jobs'>Back to builds</a>"
-                + f"<div class='panel' data-job-id='{job_id}' data-log-offset='{chunk['offset']}'><h2>{html.escape(job.get('package') or job['pipeline'])}</h2>"
+                + f"<div class='panel' data-job-id='{job_id}' data-initial-status='{status}' data-log-offset='{chunk['offset']}'><h2>{html.escape(job.get('package') or job['pipeline'])}</h2>"
                 + f"<p><code>{job_id}</code> · <b id='job-status' class='status {status}'>{status}</b></p>"
                 + source_summary(job.get("source"))
+                + (f"<p><a href='/jobs/{job_id}/inputs'>고정된 빌드 입력 명세 JSON</a></p>" if job.get('input_manifest_sha256') else '')
+                + f"<p><a href='/assistant?job={html_escape(job['id'])}'>Local LLM으로 로그 분석</a></p>"
+                + (f"<p>웹 카탈로그 r{job['catalog']['revision']} · SHA-256 <code>{html_escape(job['catalog']['sha256'])}</code></p>" if job.get('catalog') else '')
                 + "<p id='job-summary' role='status'></p><progress id='job-progress' value='0' max='1' aria-label='Completed build steps'></progress>"
                 + f"<p id='job-error' class='bad'>{html_escape(job.get('error', ''))}</p>"
                 + "<div class='bar'>"
@@ -1853,11 +2043,15 @@ def command_serve(args: argparse.Namespace) -> None:
     httpd = ThreadingHTTPServer((args.host, args.port), make_handler(server))
     print(f"KIKI Build Console: http://{args.host}:{args.port}")
     print("No authentication is built in; bind to localhost or protect it with a reverse proxy.")
+    previous_term=None
+    if threading.current_thread() is threading.main_thread():
+        previous_term=signal.signal(signal.SIGTERM,lambda *_:threading.Thread(target=httpd.shutdown,daemon=True).start())
     try:
         httpd.serve_forever()
     finally:
         server.close()
         httpd.server_close()
+        if previous_term is not None:signal.signal(signal.SIGTERM,previous_term)
 
 
 def command_list(args: argparse.Namespace) -> None:

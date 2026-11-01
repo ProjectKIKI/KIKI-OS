@@ -1,0 +1,43 @@
+{
+  "recipes": [
+    {
+      "name": "shared-mime-info",
+      "version": "2.5.1",
+      "release": "3",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/xdg/shared-mime-info/-/archive/2.5.1/shared-mime-info-2.5.1.tar.gz",
+        "sha256": "ea248ea157b7fa0165f4fe282c84919fa84c3f175553642f229c8f1ab7539128"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "libgcc",
+          "libstdcxx",
+          "libxml2"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dbuild-spec=false",
+          "-Dbuild-tests=false",
+          "-Dbuild-tools=true",
+          "-Dbuild-translations=true",
+          "-Dupdate-mimedb=false"
+        ]
+      }
+    }
+  ]
+}

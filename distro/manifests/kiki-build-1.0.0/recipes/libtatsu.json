@@ -1,0 +1,52 @@
+{
+  "recipes": [
+    {
+      "name": "libtatsu",
+      "version": "1.0.5",
+      "release": "5",
+      "summary": "TSS request library required by the GNOME mobile device stack",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libimobiledevice/libtatsu/releases/download/1.0.5/libtatsu-1.0.5.tar.bz2",
+        "file": "libtatsu-1.0.5.tar.bz2",
+        "sha256": "536fa228b14f156258e801a7f4d25a3a9dd91bb936bf6344e23171403c57e440"
+      },
+      "dependencies": {
+        "build": [
+          "libplist",
+          "curl"
+        ],
+        "runtime": [
+          "curl",
+          "glibc",
+          "libplist"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --libdir=/usr/lib --enable-shared --disable-static",
+          "sed -i -e \"s/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=/\" -e \"s/^runpath_var=.*/runpath_var=/\" \"${KI2_SOURCE_DIR}/libtool\""
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "rm -f \"${KI2_DESTDIR}/usr/lib/libtatsu.la\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libtatsu.so.0.0.3\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CC": "cc",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

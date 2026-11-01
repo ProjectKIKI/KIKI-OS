@@ -1,0 +1,30 @@
+{
+  "recipes": [
+    {
+      "name": "acl",
+      "version": "2.3.2",
+      "release": "7",
+      "summary": "Access control list utilities and library",
+      "license": "LGPL-2.1-or-later AND GPL-2.0-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.savannah.nongnu.org/releases/acl/acl-2.3.2.tar.xz",
+        "sha256": "97203a72cae99ab89a067fe2210c1cbf052bc492b479eca7d226d9830883b0bd"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "attr"
+        ]
+      },
+      "build": {
+        "system": "gnu"
+      }
+    }
+  ]
+}

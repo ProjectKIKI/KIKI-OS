@@ -1,0 +1,29 @@
+{
+  "recipes": [
+    {
+      "name": "iproute2",
+      "version": "6.9.0",
+      "release": "1",
+      "summary": "Linux networking utilities",
+      "license": "GPL-2.0-only",
+      "tier": "network",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.kernel.org/pub/linux/utils/net/iproute2/iproute2-6.9.0.tar.xz",
+        "sha256": "2f643d09ea11a4a2a043c92e2b469b5f73228cbf241ae806760296ed0ec413d0"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "make"
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Host-initiated network changes are not part of this integration contract.
+echo 'KIKI: configure networking with NetworkManager or systemd-networkd in the guest.' >&2
+exit 1

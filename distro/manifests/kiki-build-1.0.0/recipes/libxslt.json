@@ -1,0 +1,47 @@
+{
+  "recipes": [
+    {
+      "name": "libxslt",
+      "version": "1.1.45",
+      "release": "1",
+      "summary": "KIKI source-built libxslt",
+      "license": "MIT",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libxslt/1.1/libxslt-1.1.45.tar.xz",
+        "sha256": "9acfe68419c4d06a45c550321b3212762d92f41465062ca4ea19e632ee5d216e"
+      },
+      "dependencies": {
+        "build": [
+          "glibc",
+          "libxml2"
+        ],
+        "runtime": [
+          "glibc",
+          "libxml2"
+        ]
+      },
+      "build": {
+        "system": "custom",
+        "configure": [
+          "cd \"${KI2_BUILD_DIR}\" && \"${KI2_SOURCE_DIR}/configure\" \"--prefix=/usr\" \"--libdir=/usr/lib\" \"--build=x86_64-pc-linux-gnu\" \"--host=x86_64-kiki-linux-gnu\" \"--disable-static\" \"--enable-shared\" \"--without-python\" \"--without-crypto\""
+        ],
+        "compile": [
+          "make -C \"${KI2_BUILD_DIR}\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_BUILD_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "find \"${KI2_DESTDIR}\" -name \"*.la\" -delete"
+        ],
+        "env": {
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} -O2 -pipe -fstack-protector-strong -I${KI2_SYSROOT}/usr/include",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -L${KI2_SYSROOT}/usr/lib -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib -L${KI2_SYSROOT}/usr/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib64 -L${KI2_SYSROOT}/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/lib64 -L${KI2_SYSROOT}/lib -Wl,-rpath-link,${KI2_SYSROOT}/lib -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

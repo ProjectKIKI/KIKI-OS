@@ -1,0 +1,28 @@
+{
+  "recipes": [
+    {
+      "name": "lz4",
+      "version": "1.10.0",
+      "release": "1",
+      "summary": "KIKI native desktop lz4",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-desktop-apps-20261027/lz4/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

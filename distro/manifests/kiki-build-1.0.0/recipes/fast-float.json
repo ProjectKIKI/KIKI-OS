@@ -1,0 +1,26 @@
+{
+  "recipes": [
+    {
+      "name": "fast-float",
+      "version": "8.2.10",
+      "release": "1",
+      "summary": "KIKI native desktop fast-float",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-desktop-apps-20261027/fast-float/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": []
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

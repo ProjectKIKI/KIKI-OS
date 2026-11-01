@@ -1,0 +1,19 @@
+[Unit]
+Description=Apply a frozen signed KIKI package update
+DefaultDependencies=no
+Requires=sysinit.target
+After=sysinit.target system-update-pre.target
+Before=system-update.target
+ConditionPathExists=/var/lib/ki2/offline-update/request.json
+FailureAction=reboot
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/bin:/bin:/usr/sbin:/sbin
+ExecStart=/usr/libexec/ki2-offline-update
+TimeoutStartSec=1h
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=system-update.target

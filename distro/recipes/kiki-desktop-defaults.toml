@@ -1,0 +1,20 @@
+[[recipe]]
+name = "kiki-desktop-defaults"
+version = "0.1.0"
+release = 6
+summary = "Native GNOME desktop defaults, time synchronization and input firewall"
+license = "GPL-3.0-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "distro/sources/kiki-desktop-defaults"
+[recipe.dependencies]
+build = []
+runtime = ["gnome-settings-daemon", "gnome-control-center", "nautilus", "gnome-console", "gnome-backgrounds", "xdg-desktop-portal-gnome", "xdg-user-dirs", "ibus-hangul", "gsettings-desktop-schemas", "systemd", "openssh", "nftables"]
+[recipe.build]
+system = "custom"
+inputs = ["tools/ki2desktopdefaults.py"]
+configure = []
+compile = []
+install = ['python3 "${KI2_REPO_ROOT}/tools/ki2desktopdefaults.py" --source "${KI2_SOURCE_DIR}" --dest "${KI2_DESTDIR}"']

@@ -1,0 +1,30 @@
+{
+  "recipes": [
+    {
+      "name": "kiki-netconfig",
+      "version": "0.1.0",
+      "release": "2",
+      "summary": "KIKI systemd-networkd configuration helper",
+      "license": "GPL-3.0-or-later",
+      "tier": "kiki",
+      "architectures": [
+        "all"
+      ],
+      "source": {
+        "type": "local",
+        "path": "distro/sources/kiki-netconfig"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "python",
+          "systemd",
+          "iproute2"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

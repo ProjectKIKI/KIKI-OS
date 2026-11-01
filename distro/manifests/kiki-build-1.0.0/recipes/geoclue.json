@@ -1,0 +1,48 @@
+{
+  "recipes": [
+    {
+      "name": "geoclue",
+      "version": "2.8.0",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/geoclue/geoclue/-/archive/2.8.0/geoclue-2.8.0.tar.gz",
+        "sha256": "8d1804b3d9d51c2a17af67c882ff5f9169724e248d39ccc3cfa8dba5d9323be7"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Denable-backend=false",
+          "-Dlibgeoclue=true",
+          "-Dintrospection=true",
+          "-Dvapi=false",
+          "-Dgtk-doc=false",
+          "-Ddemo-agent=false",
+          "-Dwifi-source=false",
+          "-D3g-source=false",
+          "-Dcdma-source=false",
+          "-Dmodem-gps-source=false",
+          "-Dnmea-source=false",
+          "-Dip-source=false",
+          "-Dcompass=false"
+        ]
+      }
+    }
+  ]
+}

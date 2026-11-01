@@ -1,0 +1,45 @@
+{
+  "recipes": [
+    {
+      "name": "libadwaita",
+      "version": "1.9.3",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libadwaita/1.9/libadwaita-1.9.3.tar.xz",
+        "sha256": "fc59b37028fe0126308e7b805d2f6e4e80227080a1797715e5e6286b8111e723"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "appstream",
+          "fribidi",
+          "glib",
+          "glibc",
+          "graphene",
+          "gtk",
+          "pango"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dintrospection=enabled",
+          "-Dvapi=false",
+          "-Ddocumentation=false",
+          "-Dtests=false",
+          "-Dexamples=false"
+        ]
+      }
+    }
+  ]
+}

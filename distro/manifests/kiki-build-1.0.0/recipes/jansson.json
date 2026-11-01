@@ -1,0 +1,47 @@
+{
+  "recipes": [
+    {
+      "name": "jansson",
+      "version": "2.15.0",
+      "release": "1",
+      "summary": "C library for encoding and decoding JSON",
+      "license": "MIT",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/akheron/jansson/releases/download/v2.15.0/jansson-2.15.0.tar.gz",
+        "file": "jansson-2.15.0.tar.gz",
+        "sha256": "070a629590723228dc3b744ae90e965a569efb9c535b3309b52e80e75d8eb3be"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --disable-static --enable-shared --enable-dtoa"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "find \"${KI2_DESTDIR}/usr/lib\" -name '*.la' -delete"
+        ],
+        "env": {
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "-Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

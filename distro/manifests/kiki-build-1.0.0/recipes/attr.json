@@ -1,0 +1,29 @@
+{
+  "recipes": [
+    {
+      "name": "attr",
+      "version": "2.5.2",
+      "release": "1",
+      "summary": "Extended attribute utilities and library",
+      "license": "LGPL-2.1-or-later AND GPL-2.0-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.savannah.nongnu.org/releases/attr/attr-2.5.2.tar.xz",
+        "sha256": "f2e97b0ab7ce293681ab701915766190d607a1dba7fae8a718138150b700a70b"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu"
+      }
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "recipes": [
+    {
+      "name": "libxslt",
+      "version": "1.1.45",
+      "release": "1",
+      "summary": "KIKI source-built libxslt",
+      "license": "MIT",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libxslt/1.1/libxslt-1.1.45.tar.xz",
+        "sha256": "9acfe68419c4d06a45c550321b3212762d92f41465062ca4ea19e632ee5d216e"
+      },
+      "dependencies": {
+        "build": [
+          "glibc",
+          "libxml2"
+        ],
+        "runtime": [
+          "glibc",
+          "libxml2"
+        ]
+      },
+      "build": {
+        "system": "custom",
+        "configure": [
+          "cd \"${KI2_BUILD_DIR}\" && \"${KI2_SOURCE_DIR}/configure\" \"--prefix=/usr\" \"--libdir=/usr/lib\" \"--build=x86_64-pc-linux-gnu\" \"--host=x86_64-kiki-linux-gnu\" \"--disable-static\" \"--enable-shared\" \"--without-python\" \"--without-crypto\""
+        ],
+        "compile": [
+          "make -C \"${KI2_BUILD_DIR}\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_BUILD_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "find \"${KI2_DESTDIR}\" -name \"*.la\" -delete"
+        ],
+        "env": {
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} -O2 -pipe -fstack-protector-strong -I${KI2_SYSROOT}/usr/include",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -L${KI2_SYSROOT}/usr/lib -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib -L${KI2_SYSROOT}/usr/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib64 -L${KI2_SYSROOT}/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/lib64 -L${KI2_SYSROOT}/lib -Wl,-rpath-link,${KI2_SYSROOT}/lib -Wl,-z,relro,-z,now"
+        }
+      }
+    },
+    {
+      "name": "xmlsec",
+      "version": "1.3.13",
+      "release": "1",
+      "summary": "KIKI source-built xmlsec",
+      "license": "MIT",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/lsh123/xmlsec/releases/download/1.3.13/xmlsec1-1.3.13.tar.gz",
+        "sha256": "7e500061eed734c55d74c786998e7562e55b1aaa72a2dff8ce3130b4c5b832d5"
+      },
+      "dependencies": {
+        "build": [
+          "glibc",
+          "libxml2",
+          "openssl"
+        ],
+        "runtime": [
+          "glibc",
+          "libxml2",
+          "openssl"
+        ]
+      },
+      "build": {
+        "system": "custom",
+        "configure": [
+          "cd \"${KI2_BUILD_DIR}\" && \"${KI2_SOURCE_DIR}/configure\" \"--prefix=/usr\" \"--libdir=/usr/lib\" \"--build=x86_64-pc-linux-gnu\" \"--host=x86_64-kiki-linux-gnu\" \"--disable-static\" \"--enable-shared\" \"--disable-apps\" \"--disable-docs\" \"--with-openssl=${KI2_SYSROOT}/usr\" \"--without-gnutls\" \"--without-gcrypt\" \"--without-nss\" \"--without-libxslt\" \"--disable-crypto-dl\""
+        ],
+        "compile": [
+          "make -C \"${KI2_BUILD_DIR}\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_BUILD_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "find \"${KI2_DESTDIR}\" -name \"*.la\" -delete"
+        ],
+        "env": {
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} -O2 -pipe -fstack-protector-strong -I${KI2_SYSROOT}/usr/include",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -L${KI2_SYSROOT}/usr/lib -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib -L${KI2_SYSROOT}/usr/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib64 -L${KI2_SYSROOT}/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/lib64 -L${KI2_SYSROOT}/lib -Wl,-rpath-link,${KI2_SYSROOT}/lib -Wl,-z,relro,-z,now"
+        }
+      }
+    },
+    {
+      "name": "openscap",
+      "version": "1.4.6",
+      "release": "2",
+      "summary": "KIKI source-built openscap",
+      "license": "LGPL-2.1-or-later",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/OpenSCAP/openscap/releases/download/1.4.6/openscap-1.4.6.tar.gz",
+        "sha256": "7c6064ea52bc0002a21ba8d49e33bb25f55c388a06ba60b3c5ba02783b8acf8e"
+      },
+      "dependencies": {
+        "build": [
+          "glibc",
+          "libxml2",
+          "libxslt",
+          "xmlsec",
+          "openssl",
+          "pcre2",
+          "curl",
+          "acl",
+          "libcap",
+          "dbus",
+          "libsystemd",
+          "libgcrypt",
+          "util-linux"
+        ],
+        "runtime": [
+          "glibc",
+          "libxml2",
+          "libxslt",
+          "xmlsec",
+          "openssl",
+          "pcre2",
+          "curl",
+          "acl",
+          "libcap",
+          "dbus",
+          "libsystemd",
+          "libgcrypt",
+          "util-linux"
+        ]
+      },
+      "build": {
+        "system": "custom",
+        "configure": [
+          "cmake -S \"${KI2_SOURCE_DIR}\" -B \"${KI2_BUILD_DIR}/out\" \"-DCMAKE_INSTALL_PREFIX=/usr\" \"-DCMAKE_INSTALL_LIBDIR=lib\" \"-DCMAKE_BUILD_TYPE=Release\" \"-DCMAKE_SYSROOT=${KI2_SYSROOT}\" \"-DCMAKE_FIND_ROOT_PATH=${KI2_SYSROOT}\" \"-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY\" \"-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY\" \"-DCMAKE_C_FLAGS=--sysroot=${KI2_SYSROOT} -O2 -pipe -fstack-protector-strong -I${KI2_SYSROOT}/usr/include\" \"-DCMAKE_SHARED_LINKER_FLAGS=--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -L${KI2_SYSROOT}/usr/lib -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib -L${KI2_SYSROOT}/usr/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib64 -L${KI2_SYSROOT}/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/lib64 -L${KI2_SYSROOT}/lib -Wl,-rpath-link,${KI2_SYSROOT}/lib -Wl,-z,relro,-z,now\" \"-DCMAKE_EXE_LINKER_FLAGS=--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -L${KI2_SYSROOT}/usr/lib -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib -L${KI2_SYSROOT}/usr/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib64 -L${KI2_SYSROOT}/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/lib64 -L${KI2_SYSROOT}/lib -Wl,-rpath-link,${KI2_SYSROOT}/lib -Wl,-z,relro,-z,now\" \"-DENABLE_PYTHON3=OFF\" \"-DENABLE_PERL=OFF\" \"-DENABLE_TESTS=OFF\" \"-DENABLE_DOCS=OFF\" \"-DENABLE_SCE=OFF\" \"-DENABLE_OSCAP_UTIL_SSH=OFF\" \"-DENABLE_OSCAP_UTIL_DOCKER=OFF\" \"-DENABLE_OSCAP_UTIL_PODMAN=OFF\" \"-DENABLE_OSCAP_UTIL_VM=OFF\" \"-DENABLE_OSCAP_UTIL_AS_RPM=OFF\" \"-DENABLE_OSCAP_UTIL_IM=OFF\" \"-DENABLE_OSCAP_UTIL_AUTOTAILOR=OFF\" \"-DCMAKE_DISABLE_FIND_PACKAGE_RPM=TRUE\" \"-DCMAKE_DISABLE_FIND_PACKAGE_Ldap=TRUE\" \"-DCMAKE_DISABLE_FIND_PACKAGE_OpenDbx=TRUE\" \"-DCMAKE_DISABLE_FIND_PACKAGE_GConf=TRUE\" \"-DCMAKE_DISABLE_FIND_PACKAGE_Procps=TRUE\" \"-DCMAKE_DISABLE_FIND_PACKAGE_Libyaml=TRUE\" \"-DOPENSCAP_PROBE_INDEPENDENT_YAMLFILECONTENT=OFF\""
+        ],
+        "compile": [
+          "cmake --build \"${KI2_BUILD_DIR}/out\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" cmake --install \"${KI2_BUILD_DIR}/out\""
+        ],
+        "env": {
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} -O2 -pipe -fstack-protector-strong -I${KI2_SYSROOT}/usr/include",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -L${KI2_SYSROOT}/usr/lib -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib -L${KI2_SYSROOT}/usr/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib64 -L${KI2_SYSROOT}/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/lib64 -L${KI2_SYSROOT}/lib -Wl,-rpath-link,${KI2_SYSROOT}/lib -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

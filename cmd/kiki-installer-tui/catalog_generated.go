@@ -4,7 +4,7 @@ type catalogGroup struct { Packages, Enable, Disable, Requires []string; Default
 var catalogGroups = map[string]catalogGroup{
 "minimal": {Packages: []string{"base-files", "linux", "glibc", "tzdata", "libxcrypt", "zlib", "expat", "openssl", "libcap", "libseccomp", "acl", "attr", "ncurses", "util-linux", "cfdisk", "kmod", "dbus", "systemd", "bash", "busybox", "coreutils", "findutils", "grep", "sed", "gawk", "tar", "gzip", "xz", "zstd", "python", "e2fsprogs", "shadow", "sudo", "iproute2", "ca-certificates", "openssh", "curl", "ki2ctl", "kiki-agent", "kiki-netconfig", "kiki-installer-tui"}, Enable: []string{"dbus.service", "kiki-boot-prepare.service", "getty@tty1.service", "systemd-logind.service", "systemd-networkd.service", "systemd-resolved.service", "sshd.service", "kiki-agent.service"}, Disable: []string{}, Requires: []string{}, DefaultTarget: ""},
 "ai-console": {Packages: []string{"kiki-ai-console", "kiki-kmscon", "llama-cpp"}, Enable: []string{"kiki-llama-server.service", "kiki-ai-console-kmscon@tty1.service", "getty@tty2.service"}, Disable: []string{"getty@tty1.service", "kiki-ai-console@tty1.service"}, Requires: []string{}, DefaultTarget: ""},
-"desktop-gnome": {Packages: []string{"kiki-gnome-desktop", "gnome-control-center", "nautilus", "gnome-console"}, Enable: []string{"gdm.service", "getty@tty2.service", "NetworkManager.service"}, Disable: []string{"getty@tty1.service", "kiki-ai-console@tty1.service", "kiki-ai-console-kmscon@tty1.service", "systemd-networkd.service", "systemd-networkd.socket", "systemd-networkd-wait-online.service"}, Requires: []string{"minimal"}, DefaultTarget: "graphical.target"},
+"desktop-gnome": {Packages: []string{"kiki-gnome-desktop", "gnome-control-center", "nautilus", "gnome-console", "kiki-admin"}, Enable: []string{"gdm.service", "getty@tty2.service", "NetworkManager.service"}, Disable: []string{"getty@tty1.service", "kiki-ai-console@tty1.service", "kiki-ai-console-kmscon@tty1.service", "systemd-networkd.service", "systemd-networkd.socket", "systemd-networkd-wait-online.service"}, Requires: []string{"minimal"}, DefaultTarget: "graphical.target"},
 "installer-gui": {Packages: []string{"kiki-installer-gtk"}, Enable: []string{}, Disable: []string{}, Requires: []string{}, DefaultTarget: ""},
 "server": {Packages: []string{"nftables", "iptables", "conntrack-tools", "firewalld", "bridge-utils", "socat", "ethtool", "chrony"}, Enable: []string{"nftables.service", "firewalld.service", "chronyd.service"}, Disable: []string{}, Requires: []string{"minimal"}, DefaultTarget: ""},
 "ai-console-remote": {Packages: []string{"kiki-ai-console", "kiki-kmscon"}, Enable: []string{"kiki-ai-console-kmscon@tty1.service", "getty@tty2.service"}, Disable: []string{"getty@tty1.service", "kiki-llama-server.service", "kiki-ai-console@tty1.service"}, Requires: []string{}, DefaultTarget: ""},
@@ -14,6 +14,10 @@ var catalogGroups = map[string]catalogGroup{
 "systemd-journal-extensions": {Packages: []string{"systemd-journal-gatewayd", "systemd-journal-transport"}, Enable: []string{}, Disable: []string{}, Requires: []string{"minimal"}, DefaultTarget: ""},
 "development": {Packages: []string{"make"}, Enable: []string{}, Disable: []string{}, Requires: []string{"minimal"}, DefaultTarget: ""},
 "xorg-runtime": {Packages: []string{"kiki-x11-runtime"}, Enable: []string{}, Disable: []string{}, Requires: []string{"minimal"}, DefaultTarget: ""},
+"security-audit": {Packages: []string{"openscap", "kiki-security-content"}, Enable: []string{}, Disable: []string{}, Requires: []string{"minimal"}, DefaultTarget: ""},
+"vm-common": {Packages: []string{"kiki-vm-tools"}, Enable: []string{}, Disable: []string{}, Requires: []string{"minimal"}, DefaultTarget: ""},
+"vm-kvm": {Packages: []string{"qemu-guest-agent"}, Enable: []string{"qemu-guest-agent.service"}, Disable: []string{}, Requires: []string{"vm-common"}, DefaultTarget: ""},
+"vm-hyperv": {Packages: []string{"hyperv-daemons"}, Enable: []string{"hv-kvp-daemon.service", "hv-vss-daemon.service"}, Disable: []string{}, Requires: []string{"vm-common"}, DefaultTarget: ""},
 }
 type catalogProfile struct { Groups []string; AIDefault string }
 var catalogProfiles = map[string]catalogProfile{
@@ -27,7 +31,7 @@ var catalogProfiles = map[string]catalogProfile{
 "kiki-kube-compute-containerd": {Groups: []string{"kubernetes-node", "container-containerd"}, AIDefault: "local"},
 "desktop-gnome": {Groups: []string{"desktop-gnome"}, AIDefault: "off"},
 }
-var selectablePackageGroups = []string{"minimal", "ai-console", "desktop-gnome", "server", "ai-console-remote", "container-containerd", "container-crio", "kubernetes-node", "systemd-journal-extensions", "development", "xorg-runtime"}
+var selectablePackageGroups = []string{"minimal", "ai-console", "desktop-gnome", "server", "ai-console-remote", "container-containerd", "container-crio", "kubernetes-node", "systemd-journal-extensions", "development", "xorg-runtime", "security-audit", "vm-common", "vm-kvm", "vm-hyperv"}
 var minimalSystemdPackages = catalogGroups["minimal"].Packages
 var minimalSystemdServices = catalogGroups["minimal"].Enable
 var serverCorePackages = catalogGroups["server"].Packages

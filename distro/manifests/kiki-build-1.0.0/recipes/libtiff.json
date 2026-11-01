@@ -1,0 +1,61 @@
+{
+  "recipes": [
+    {
+      "name": "libtiff",
+      "version": "4.7.2",
+      "release": "2",
+      "summary": "Native TIFF image library",
+      "license": "libtiff",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.osgeo.org/libtiff/tiff-4.7.2.tar.xz",
+        "sha256": "4996f0c4f93094719b1ca5c6279b20e588773ba8a247533e486416fb662ddb88"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libgcc",
+          "libjpeg-turbo",
+          "libstdcxx",
+          "xz",
+          "zlib",
+          "zstd"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "configure_options": [
+          "-DCMAKE_SYSTEM_NAME=Linux",
+          "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+          "-DCMAKE_SYSROOT=/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_INSTALL_PREFIX=/usr",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_SKIP_RPATH=ON",
+          "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
+          "-DBUILD_SHARED_LIBS=ON",
+          "-Dtiff-tests=OFF",
+          "-Dtiff-tools=ON",
+          "-Dtiff-contrib=OFF",
+          "-Dtiff-docs=OFF",
+          "-Dlibdeflate=OFF",
+          "-Dwebp=OFF",
+          "-Djbig=OFF",
+          "-Dlerc=OFF",
+          "-Dlzma=ON",
+          "-Dzstd=ON",
+          "-Djpeg=ON",
+          "-Dzlib=ON",
+          "-Dopengl=OFF"
+        ]
+      }
+    }
+  ]
+}

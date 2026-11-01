@@ -1,0 +1,52 @@
+{
+  "recipes": [
+    {
+      "name": "glib",
+      "version": "2.88.3",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/glib/2.88/glib-2.88.3.tar.xz",
+        "sha256": "ab24d24e698dfa1e408b7bcdb508f4aafc906185a8b8ce72fdf79bbbdc9b383b"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc",
+          "pcre2",
+          "libffi",
+          "zlib",
+          "util-linux"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Ddefault_library=shared",
+          "-Dtests=false",
+          "-Dinstalled_tests=false",
+          "-Ddocumentation=false",
+          "-Dman-pages=disabled",
+          "-Dnls=enabled",
+          "-Dglib_debug=disabled",
+          "-Dselinux=disabled",
+          "-Dlibmount=enabled",
+          "-Dlibelf=disabled",
+          "-Dsysprof=disabled",
+          "-Ddtrace=disabled",
+          "-Dsystemtap=disabled",
+          "-Dintrospection=enabled"
+        ]
+      }
+    }
+  ]
+}

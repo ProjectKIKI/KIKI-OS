@@ -1,0 +1,18 @@
+#!/usr/sbin/nft -f
+# Replace only KIKI's own table in one atomic transaction.
+add table inet kiki_desktop
+delete table inet kiki_desktop
+table inet kiki_desktop {
+    chain input {
+        type filter hook input priority filter; policy drop;
+        iifname "lo" accept
+        ct state invalid drop
+        ct state established,related accept
+        # ICMPv4 (1) and ICMPv6 (58), independent of /etc/protocols aliases.
+        meta l4proto { 1, 58 } accept
+        udp sport 67 udp dport 68 accept
+        udp sport 547 udp dport 546 accept
+        tcp dport 22 ct state new accept
+        counter drop
+    }
+}

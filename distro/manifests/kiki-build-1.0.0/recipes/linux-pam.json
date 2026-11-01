@@ -1,0 +1,58 @@
+{
+  "recipes": [
+    {
+      "name": "linux-pam",
+      "version": "1.7.2",
+      "release": "2",
+      "summary": "Pluggable authentication library and modules",
+      "license": "BSD-3-Clause OR GPL-2.0-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/linux-pam/linux-pam/releases/download/v1.7.2/Linux-PAM-1.7.2.tar.xz",
+        "file": "Linux-PAM-1.7.2.tar.xz",
+        "sha256": "3d86b6383fb5fd9eb9578d2cd47d92801191f4bf3f9bc61419bfefc8aa1e531a"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libxcrypt",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "inputs": [
+          "distro/specs/pam-cross.ini",
+          "distro/scripts/ki2-target-pkg-config",
+          "distro/scripts/ki2-target-run"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "install -m644 \"${KI2_REPO_ROOT}/distro/specs/pam-cross.ini\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "sed -i -e \"s|@BUILD@|${KI2_BUILD_DIR}|g\" -e \"s|@REPO@|${KI2_REPO_ROOT}|g\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "meson setup \"${KI2_BUILD_DIR}/pam\" \"${KI2_SOURCE_DIR}\" --cross-file \"${KI2_BUILD_DIR}/cross.ini\" --prefix=/usr --libdir=lib --sysconfdir=/etc --buildtype=release -Ddocs=disabled -Dexamples=false -Dpam_unix=enabled -Dlogind=enabled -Dsecuredir=/usr/lib/security -Dsconfigdir=/etc/security"
+        ],
+        "compile": [
+          "meson compile -C \"${KI2_BUILD_DIR}/pam\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" meson install -C \"${KI2_BUILD_DIR}/pam\"",
+          "install -d \"${KI2_DESTDIR}/usr/share/licenses/linux-pam\"",
+          "install -m644 \"${KI2_SOURCE_DIR}/Copyright\" \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_DESTDIR}/usr/share/licenses/linux-pam/\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libpam.so.0\" \"${KI2_DESTDIR}/usr/lib/security/pam_unix.so\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

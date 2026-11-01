@@ -1,0 +1,40 @@
+{
+  "recipes": [
+    {
+      "name": "vte",
+      "version": "0.84.1",
+      "release": "1",
+      "summary": "KIKI native desktop vte",
+      "license": "LGPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-desktop-apps-20261027/vte/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "glib",
+          "pango",
+          "cairo",
+          "pcre2",
+          "fribidi",
+          "gnutls",
+          "icu",
+          "libstdcxx",
+          "fmt",
+          "simdutf",
+          "lz4",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

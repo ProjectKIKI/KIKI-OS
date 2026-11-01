@@ -17,6 +17,17 @@ deploy/container/* text eol=lf
 distro/sources/kiki-podman/usr/bin/* text eol=lf
 distro/scripts/ki2-* text eol=lf
 distro/sources/kiki-desktop-defaults/** text eol=lf
+distro/sources/base-files/** text=auto eol=lf
+distro/sources/openssh-policy/** text=auto eol=lf
+distro/sources/ki2ctl/usr/share/ki2/package-groups.json text eol=lf
+distro/sources/ki2ctl/etc/ki2/** text=auto eol=lf
+distro/sources/ki2ctl/** text=auto eol=lf
+distro/sources/qemu-guest-agent/** text=auto eol=lf
+distro/sources/hyperv-daemons/** text=auto eol=lf
+distro/sources/kiki-vm-tools/** text=auto eol=lf
 tools/gnome_native/*.config text eol=lf
 tools/gnome_native/*.json text eol=lf
 releases/ki2/stage3-v3-20260929-podman/repo/*.json text eol=lf
+tools/gnome_native/** text eol=lf
+distro/manifests/** text eol=lf
+distro/recipes/native-runtime.json text eol=lf

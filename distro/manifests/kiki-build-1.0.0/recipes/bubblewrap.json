@@ -1,0 +1,40 @@
+{
+  "recipes": [
+    {
+      "name": "bubblewrap",
+      "version": "0.13.1",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/containers/bubblewrap/releases/download/v0.13.1/bubblewrap-0.13.1.tar.xz",
+        "sha256": "0e85c8702248b8dd64144f594147553650cdd0e4c951690345faace79c217c4d"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc",
+          "libcap"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dman=disabled",
+          "-Dselinux=disabled",
+          "-Dtests=false",
+          "-Dbash_completion=disabled",
+          "-Dzsh_completion=disabled"
+        ]
+      }
+    }
+  ]
+}

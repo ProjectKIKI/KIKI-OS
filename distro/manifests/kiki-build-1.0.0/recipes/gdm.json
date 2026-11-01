@@ -1,0 +1,54 @@
+{
+  "recipes": [
+    {
+      "name": "gdm",
+      "version": "50.2",
+      "release": "4",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gdm/50/gdm-50.2.tar.xz",
+        "sha256": "8a4679e47cddfe8b0a1bd9d3836042deb68fb3e1b0e7e62dfd0631dc5b6fc541"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "accountsservice",
+          "at-spi2-core",
+          "dconf",
+          "glib",
+          "glibc",
+          "json-glib",
+          "kiki-pam-config",
+          "libgudev",
+          "libsystemd",
+          "linux-pam",
+          "polkit"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dx11-support=false",
+          "-Ddefault-pam-config=none",
+          "-Dsplit-authentication=false",
+          "-Dlibaudit=disabled",
+          "-Dplymouth=disabled",
+          "-Dselinux=disabled",
+          "-Dsystemdsystemunitdir=/usr/lib/systemd/system",
+          "-Dsystemduserunitdir=/usr/lib/systemd/user",
+          "-Dworking-dir=/var/lib/gdm",
+          "-Dinitial-vt=1"
+        ]
+      }
+    }
+  ]
+}

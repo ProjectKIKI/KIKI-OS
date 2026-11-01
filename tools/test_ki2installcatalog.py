@@ -1,12 +1,26 @@
 import json
 import tempfile
 import unittest
+import os
+import hashlib
+from unittest import mock
 from pathlib import Path
 
 import ki2installcatalog as catalog
 
 
 class InstallerCatalogTests(unittest.TestCase):
+    def test_iso_catalog_override_controls_generated_backend_and_media_hash(self):
+        data=catalog.load()
+        data['groups'].append(dict(id='web-custom',name_ko='웹 그룹',name_en='Web group',description_ko='웹 편집본',requires=[],packages=dict(mandatory=[],default=[],optional=[]),services=dict(enable=[])))
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'catalog.json';path.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
+            with mock.patch.dict(os.environ,{'KI2_PACKAGE_GROUPS_FILE':str(path)}):
+                self.assertIn('catalog_web_custom',catalog.backend_c())
+                result=catalog.media_catalog(dict(packages=[]))
+                self.assertEqual(result['catalog_sha256'],hashlib.sha256(path.read_bytes()).hexdigest())
+                self.assertIn('web-custom',[g['id'] for g in result['groups']])
+
     def test_generated_frontends_are_current(self):
         for path, content in catalog.generated().items():
             self.assertEqual(path.read_text(encoding='utf-8'), content, str(path))

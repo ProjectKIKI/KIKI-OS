@@ -1,0 +1,73 @@
+{
+  "recipes": [
+    {
+      "name": "mesa",
+      "version": "25.2.7",
+      "release": "1",
+      "summary": "Native Mesa EGL GBM Wayland llvmpipe and softpipe",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://archive.mesa3d.org/mesa-25.2.7.tar.xz",
+        "sha256": "b40232a642011820211aab5a9cdf754e106b0bce15044bc4496b0ac9615892ad"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "llvm",
+          "libglvnd",
+          "libdrm",
+          "wayland",
+          "wayland-protocols"
+        ],
+        "runtime": [
+          "glibc",
+          "libstdcxx",
+          "libgcc",
+          "zlib",
+          "zstd",
+          "expat",
+          "libdrm",
+          "libglvnd",
+          "wayland",
+          "systemd",
+          "llvm"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=lib",
+          "--sysconfdir=/etc",
+          "--buildtype=release",
+          "--wrap-mode=nodownload",
+          "-Dplatforms=wayland",
+          "-Degl-native-platform=wayland",
+          "-Dgallium-drivers=llvmpipe,softpipe,svga,virgl",
+          "-Dvulkan-drivers=[]",
+          "-Dglx=disabled",
+          "-Degl=enabled",
+          "-Dgbm=enabled",
+          "-Dglvnd=enabled",
+          "-Dgles1=disabled",
+          "-Dgles2=enabled",
+          "-Dopengl=true",
+          "-Dllvm=enabled",
+          "-Dshared-llvm=enabled",
+          "-Dgallium-va=disabled",
+          "-Dgallium-vdpau=disabled",
+          "-Dvalgrind=disabled",
+          "-Dbuild-tests=false",
+          "-Dmicrosoft-clc=disabled",
+          "-Dxmlconfig=enabled",
+          "-Dlibunwind=disabled"
+        ]
+      }
+    }
+  ]
+}

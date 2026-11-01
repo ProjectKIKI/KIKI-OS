@@ -1,0 +1,47 @@
+{
+  "recipes": [
+    {
+      "name": "xz",
+      "version": "5.6.2",
+      "release": "3",
+      "summary": "XZ compression utilities and liblzma",
+      "license": "0BSD AND LGPL-2.1-or-later",
+      "tier": "archive",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/tukaani-project/xz/releases/download/v5.6.2/xz-5.6.2.tar.xz",
+        "sha256": "a9db3bb3d64e248a0fae963f8fb6ba851a26ba1822e504dc0efd18a80c626caf"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure_options": [
+          "--disable-static"
+        ],
+        "configure": [
+          "cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --disable-static"
+        ],
+        "compile": [
+          "make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"
+        ],
+        "install": [
+          "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
+          "find ${KI2_DESTDIR}/usr/lib -name '*.la' -delete",
+          "find ${KI2_DESTDIR}/usr/lib -name '*.a' -delete",
+          "find ${KI2_DESTDIR}/usr/bin ${KI2_DESTDIR}/usr/lib -type f -exec sh -c 'for binary do file \"${binary}\" | grep -q ELF && strip --strip-unneeded \"${binary}\" || true; done' sh {} +"
+        ]
+      }
+    }
+  ]
+}

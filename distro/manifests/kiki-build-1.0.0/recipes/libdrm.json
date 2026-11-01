@@ -1,0 +1,38 @@
+{
+  "recipes": [
+    {
+      "name": "libdrm",
+      "version": "2.4.128",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://dri.freedesktop.org/libdrm/libdrm-2.4.128.tar.xz",
+        "sha256": "3bb35db8700c2a0b569f2c6729a53f5495786856b310854c8de57782a22bddac"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dintel=disabled",
+          "-Dtests=false",
+          "-Dman-pages=disabled",
+          "-Dvalgrind=disabled"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "recipes": [
+    {
+      "name": "upower",
+      "version": "1.91.3",
+      "release": "4",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://deb.debian.org/debian/pool/main/u/upower/upower_1.91.3.orig.tar.bz2",
+        "sha256": "12227b3dcd34c5097bbda25984b192ea0bd5e11dce479358d9ef70415a38e4b6"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "libgudev",
+          "libimobiledevice",
+          "libplist",
+          "polkit",
+          "systemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dman=false",
+          "-Dgtk-doc=false",
+          "-Dinstalled_tests=false",
+          "-Dintrospection=enabled",
+          "-Didevice=enabled",
+          "-Dpolkit=enabled",
+          "-Dos_backend=linux",
+          "-Dsystemdsystemunitdir=/usr/lib/systemd/system",
+          "-Dudevrulesdir=/usr/lib/udev/rules.d",
+          "-Dudevhwdbdir=/usr/lib/udev/hwdb.d",
+          "-Dhistorydir=/var/lib/upower",
+          "-Dstatedir=/var/lib/upower",
+          "-Dzshcompletiondir=no"
+        ]
+      }
+    }
+  ]
+}

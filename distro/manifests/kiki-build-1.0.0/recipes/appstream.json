@@ -1,0 +1,53 @@
+{
+  "recipes": [
+    {
+      "name": "appstream",
+      "version": "1.1.6",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.freedesktop.org/software/appstream/releases/AppStream-1.1.6.tar.xz",
+        "sha256": "e298929f39729e84a70f6be6941f3e7f3fc2ee3c83cb3ea1b1b5b280a8fe3a24"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "curl",
+          "glib",
+          "glibc",
+          "libfyaml",
+          "libxml2",
+          "libxmlb",
+          "zstd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dstemming=false",
+          "-Dsystemd=false",
+          "-Dqt=false",
+          "-Dcompose=false",
+          "-Dbash-completion=false",
+          "-Dgir=true",
+          "-Dtools=false",
+          "-Dsvg-support=false",
+          "-Ddocs=false",
+          "-Dapidocs=false",
+          "-Dinstall-docs=false",
+          "-Dman=false",
+          "-Ddisplay-detection=none"
+        ]
+      }
+    }
+  ]
+}

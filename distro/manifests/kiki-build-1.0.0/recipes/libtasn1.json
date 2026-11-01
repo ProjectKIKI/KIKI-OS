@@ -1,0 +1,50 @@
+{
+  "recipes": [
+    {
+      "name": "libtasn1",
+      "version": "4.21.0",
+      "release": "1",
+      "summary": "ASN.1 and DER parsing library and command-line tools",
+      "license": "LGPL-2.1-or-later AND GPL-3.0-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/libtasn1/libtasn1-4.21.0.tar.gz",
+        "file": "libtasn1-4.21.0.tar.gz",
+        "sha256": "1d8a444a223cc5464240777346e125de51d8e6abf0b8bac742ac84609167dc87"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --disable-static --disable-doc"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "rm -f \"${KI2_DESTDIR}/usr/lib/libtasn1.la\"",
+          "install -d \"${KI2_DESTDIR}/usr/share/licenses/libtasn1\"",
+          "install -m 0644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_SOURCE_DIR}/COPYING.LESSERv2\" \"${KI2_SOURCE_DIR}/README.md\" \"${KI2_DESTDIR}/usr/share/licenses/libtasn1/\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libtasn1.so.6\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CC": "cc --sysroot=${KI2_SYSROOT}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

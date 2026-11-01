@@ -1,0 +1,52 @@
+{
+  "recipes": [
+    {
+      "name": "libusbmuxd",
+      "version": "2.1.1",
+      "release": "3",
+      "summary": "USB multiplexing client library with iproxy and inetcat tools",
+      "license": "LGPL-2.1-or-later AND GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libimobiledevice/libusbmuxd/releases/download/2.1.1/libusbmuxd-2.1.1.tar.bz2",
+        "file": "libusbmuxd-2.1.1.tar.bz2",
+        "sha256": "5546f1aba1c3d1812c2b47d976312d00547d1044b84b6a461323c621f396efce"
+      },
+      "dependencies": {
+        "build": [
+          "libplist",
+          "libimobiledevice-glue"
+        ],
+        "runtime": [
+          "glibc",
+          "libimobiledevice-glue",
+          "libplist"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --libdir=/usr/lib --enable-shared --disable-static",
+          "sed -i -e \"s/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=/\" -e \"s/^runpath_var=.*/runpath_var=/\" \"${KI2_SOURCE_DIR}/libtool\""
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "rm -f \"${KI2_DESTDIR}/usr/lib/libusbmuxd-2.0.la\"",
+          "for file in usr/lib/libusbmuxd-2.0.so.7.0.1 usr/bin/iproxy usr/bin/inetcat; do readelf -d \"${KI2_DESTDIR}/$file\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" || exit 1; if grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\"; then exit 1; fi; done"
+        ],
+        "env": {
+          "CC": "cc",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

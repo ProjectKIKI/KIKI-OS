@@ -1,0 +1,45 @@
+{
+  "recipes": [
+    {
+      "name": "gjs",
+      "version": "1.88.1",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT OR LGPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gjs/1.88/gjs-1.88.1.tar.xz",
+        "sha256": "767bab80e665d672cb00563c25f0b392a9ec8c2996ed1d4454c698b4c2f0a3d9"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "cairo",
+          "glib",
+          "glibc",
+          "gobject-introspection",
+          "libffi",
+          "libstdcxx",
+          "mozjs"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dinstalled_tests=false",
+          "-Dprofiler=disabled",
+          "-Dreadline=disabled",
+          "-Dskip_gtk_tests=true",
+          "-Dskip_dbus_tests=true"
+        ]
+      }
+    }
+  ]
+}

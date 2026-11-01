@@ -1,6 +1,6 @@
 [profile]
 name = "desktop-gnome"
-description = "GNOME 50 with native Settings, Files, Console, Mesa and Korean input"
+description = "GNOME 50 with native apps, KIKI Administrator, Mesa and Korean input"
 arch = "x86_64"
 groups = ["desktop-gnome"]
 
@@ -10,7 +10,7 @@ kernel = "/boot/vmlinuz-kiki"
 
 # Separate signed candidate; original GNOME and server snapshots are preserved.
 [profile.prebuilt]
-repository = "dist/ki2/gnome-native-apps-20261028-r3"
+repository = "dist/ki2/kiki-admin-20261028-r4"
 public_key = "desktop-installer.ed25519.pub"
 public_key_sha256 = "b6aaadb5491676d154efc62c0bf20a2f6b1026a741d92698d99c75f18390f4f4"
-index_sha256 = "eb14c3907902b6a3f85ce044849b58237b7f0e0ae80acaf256be976e624d5aa6"
+index_sha256 = "943f7b5cb3ac05ef3e5099f47fbd0de3d112b7f5a032579b0e639d74d2383849"

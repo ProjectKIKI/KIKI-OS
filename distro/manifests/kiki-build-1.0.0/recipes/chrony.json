@@ -1,0 +1,74 @@
+{
+  "recipes": [
+    {
+      "name": "chrony",
+      "version": "4.8",
+      "release": "3",
+      "summary": "Time synchronization package for Kubernetes nodes",
+      "license": "GPL-2.0-only",
+      "tier": "network",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://chrony-project.org/releases/chrony-4.8.tar.gz",
+        "file": "chrony-4.8.tar.gz",
+        "sha256": "33ea8eb2a4daeaa506e8fcafd5d6d89027ed6f2f0609645c6f149b560d301706"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "libcap",
+          "libseccomp",
+          "systemd"
+        ]
+      },
+      "build": {
+        "system": "make",
+        "skip_sysroot": true,
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --with-user=chrony --disable-readline --disable-sechash --disable-nts --enable-scfilter"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install"
+        ],
+        "env": {
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        },
+        "stub": {
+          "directories": [
+            "/etc/chrony"
+          ],
+          "files": [
+            {
+              "path": "/etc/chrony.conf",
+              "lines": [
+                "# KIKI Stage 3 chrony baseline.",
+                "pool pool.ntp.org iburst",
+                "driftfile /var/lib/chrony/drift"
+              ]
+            }
+          ],
+          "services": [
+            {
+              "name": "chronyd.service",
+              "description": "chrony network time daemon",
+              "exec_start": "/usr/sbin/chronyd -F 2",
+              "after": [
+                "network-online.target"
+              ],
+              "wants": [
+                "network-online.target"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

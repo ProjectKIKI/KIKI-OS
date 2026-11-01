@@ -1,0 +1,47 @@
+{
+  "recipes": [
+    {
+      "name": "libnfnetlink",
+      "version": "1.0.2",
+      "release": "1",
+      "summary": "Low-level nfnetlink userspace library",
+      "license": "GPL-2.0-or-later",
+      "tier": "network",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.netfilter.org/projects/libnfnetlink/files/libnfnetlink-1.0.2.tar.bz2",
+        "file": "libnfnetlink-1.0.2.tar.bz2",
+        "sha256": "b064c7c3d426efb4786e60a8e6859b82ee2f2c5e49ffeea640cfe4fe33cbc376"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "find \"${KI2_DESTDIR}/usr/lib\" -name '*.la' -delete"
+        ],
+        "env": {
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "-Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

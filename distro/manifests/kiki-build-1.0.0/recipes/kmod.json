@@ -1,0 +1,32 @@
+{
+  "recipes": [
+    {
+      "name": "kmod",
+      "version": "32",
+      "release": "1",
+      "summary": "Kernel module loader and libraries",
+      "license": "LGPL-2.1-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.kernel.org/pub/linux/utils/kernel/kmod/kmod-32.tar.xz",
+        "sha256": "630ed0d92275a88cb9a7bf68f5700e911fdadaf02e051cf2e4680ff8480bd492"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "xz",
+          "zstd",
+          "openssl"
+        ]
+      },
+      "build": {
+        "system": "gnu"
+      }
+    }
+  ]
+}

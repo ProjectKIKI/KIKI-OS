@@ -1,0 +1,11 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+case "$1" in ''|*[!a-zA-Z0-9_.:-]*) exit 1;; esac
+if command -v nmcli >/dev/null 2>&1; then
+    uuid=$(nmcli -g GENERAL.CON-UUID device show "$1" 2>/dev/null)
+    method=$(nmcli -g ipv4.method connection show "$uuid" 2>/dev/null)
+    case "$method" in auto) echo Enabled; exit 0;; manual|disabled|link-local) echo Disabled; exit 0;; esac
+fi
+# systemd-networkd exposes active DHCP leases by interface index.
+index=$(cat "/sys/class/net/$1/ifindex" 2>/dev/null) || exit 1
+if [ -f "/run/systemd/netif/leases/$index" ]; then echo Enabled; else echo Disabled; fi

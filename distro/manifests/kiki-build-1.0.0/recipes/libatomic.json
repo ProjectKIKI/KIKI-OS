@@ -1,0 +1,28 @@
+{
+  "recipes": [
+    {
+      "name": "libatomic",
+      "version": "11.5.0",
+      "release": "2",
+      "summary": "KIKI native desktop libatomic",
+      "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-gnome-native-apps-20261028/libatomic-runtime/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

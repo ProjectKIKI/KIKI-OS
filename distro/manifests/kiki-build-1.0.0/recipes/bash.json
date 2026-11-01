@@ -1,0 +1,97 @@
+{
+  "recipes": [
+    {
+      "name": "bash",
+      "version": "5.2.37",
+      "release": "5",
+      "summary": "GNU Bourne Again Shell",
+      "license": "GPL-3.0-or-later",
+      "tier": "shell",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/bash/bash-5.2.tar.gz",
+        "sha256": "a139c166df7ff4471c5e0733051642ee5556c1cc8a4a78f145583c5c81ab32fb"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "ncurses"
+        ],
+        "runtime": [
+          "glibc",
+          "ncurses"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--without-bash-malloc"
+        ],
+        "patches": [
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-001",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-002",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-003",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-004",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-005",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-006",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-007",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-008",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-009",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-010",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-011",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-012",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-013",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-014",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-015",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-016",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-017",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-018",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-019",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-020",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-021",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-022",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-023",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-024",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-025",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-026",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-027",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-028",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-029",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-030",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-031",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-032",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-033",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-034",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-035",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-036",
+          "/home/tang/kiki-build/gnome50-session-20261017/sources/bash52-037"
+        ],
+        "env": {
+          "PATH": "/home/tang/kiki-build/gnome50-session-20261017/venv/bin:/usr/bin:/bin:/usr/sbin",
+          "HOME": "/home/tang/kiki-build/gnome50-session-20261017/home",
+          "LC_ALL": "C",
+          "TZ": "UTC",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "XDG_CACHE_HOME": "/home/tang/kiki-build/gnome50-session-20261017/cache",
+          "KI2_SYSROOT": "/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "KI2_SYSROOT_LIBRARY_PATH": "/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib:/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64:/home/tang/kiki-build/gnome50-session-20261017/sdk/lib:/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64",
+          "PKG_CONFIG_SYSROOT_DIR": "/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "PKG_CONFIG_LIBDIR": "/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib/pkgconfig:/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64/pkgconfig:/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/share/pkgconfig:/home/tang/kiki-build/gnome50-session-20261017/sdk/lib/pkgconfig:/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64/pkgconfig",
+          "CC": "gcc",
+          "CXX": "g++",
+          "AR": "ar",
+          "RANLIB": "ranlib",
+          "CPPFLAGS": "--sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "CFLAGS": "--sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "CXXFLAGS": "--sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk -B/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64/ -B/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64/ -L/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib -L/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64 -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64 -L/home/tang/kiki-build/gnome50-session-20261017/sdk/lib -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/lib -L/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64 -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64 -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

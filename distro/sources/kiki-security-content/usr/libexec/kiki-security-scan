@@ -1,0 +1,88 @@
+#!/usr/bin/python3
+"""Read-only OpenSCAP scan with fixed policy and redacted effective observations."""
+import argparse,datetime,hashlib,json,os,pwd,shutil,subprocess,tempfile
+from pathlib import Path
+import xml.etree.ElementTree as ET
+
+CONTENT=Path('/usr/share/kiki-security')
+PROFILE='xccdf_org.kiki_profile_desktop'
+
+def policy_hash(content=CONTENT):
+ h=hashlib.sha256()
+ for name in ['kiki-desktop-xccdf.xml','kiki-desktop-oval.xml','kiki-cpe.xml']:
+  h.update(name.encode()+b'\0'+(content/name).read_bytes())
+ return h.hexdigest()
+
+def command(args,timeout=30):
+ p=subprocess.run(args,capture_output=True,text=True,timeout=timeout)
+ if p.returncode:raise RuntimeError('command failed: '+args[0])
+ return p.stdout
+
+def observe():
+ values={};errors={}
+ def probe(key,fn):
+  try:values[key]=str(fn())
+  except Exception as e:values[key]='unknown';errors[key]=type(e).__name__
+ probe('root_uid_unique',lambda:'yes' if [(p.pw_name,p.pw_uid) for p in pwd.getpwall() if p.pw_uid==0]==[('root',0)] else 'no')
+ try:
+  text=command(['/usr/sbin/sshd','-T','-C','user=root,host=localhost,addr=127.0.0.1'])
+  config=dict(line.split(None,1) for line in text.splitlines() if ' ' in line)
+  values['ssh_root_login']=config.get('permitrootlogin','unknown');values['ssh_empty_password']=config.get('permitemptypasswords','unknown')
+ except Exception as e:
+  for key in ['ssh_root_login','ssh_empty_password']:values[key]='unknown';errors[key]=type(e).__name__
+ for key in ['hardlinks','symlinks']:probe(key,lambda k=key:Path('/proc/sys/fs/protected_'+k).read_text().strip())
+ def timesync():
+  names=['systemd-timesyncd.service','chronyd.service','ntpd.service']
+  return 'yes' if any(subprocess.run(['/usr/bin/systemctl','is-active','--quiet',n],timeout=10).returncode==0 for n in names) else 'no'
+ probe('time_sync',timesync)
+ def firewall():
+  data=json.loads(command(['/usr/sbin/nft','-j','list','ruleset']))
+  return 'yes' if any(r.get('chain',{}).get('hook')=='input' and r['chain'].get('policy')=='drop' for r in data.get('nftables',[])) else 'no'
+ probe('firewall',firewall)
+ return values,errors
+
+def parse_results(path):
+ root=ET.parse(path).getroot();ns={'x':'http://checklists.nist.gov/xccdf/1.2'};rows=[]
+ for r in root.findall('.//x:rule-result',ns):rows.append({'id':r.attrib['idref'],'result':r.findtext('x:result',default='unknown',namespaces=ns)})
+ if not rows:raise ValueError('OpenSCAP produced no rule results')
+ return rows
+
+def scan():
+ if os.geteuid()!=0:raise PermissionError('root is required for a complete system configuration scan')
+ if 'ID=kiki' not in Path('/etc/os-release').read_text().splitlines():raise ValueError('this policy requires KIKI OS')
+ engine='/usr/bin/oscap'
+ if not Path(engine).is_file():raise FileNotFoundError('OpenSCAP is not installed')
+ state=Path('/run/kiki-security');state.mkdir(mode=0o700,exist_ok=True)
+ if state.is_symlink() or state.stat().st_uid!=0:raise ValueError('unsafe scan state directory')
+ os.chmod(state,0o700)
+ values,errors=observe();observed=state/'observed.conf'
+ if observed.is_symlink():raise ValueError('unsafe observations file')
+ observed.write_text(''.join(k+'='+v+'\n' for k,v in values.items()));os.chmod(observed,0o600)
+ started=datetime.datetime.now(datetime.timezone.utc).isoformat()
+ with tempfile.TemporaryDirectory(prefix='scan-',dir=state) as folder:
+  result=Path(folder)/'results.xml'
+  version=command([engine,'--version']).splitlines()[0]
+  proc=subprocess.run([engine,'xccdf','eval','--profile',PROFILE,'--cpe',str(CONTENT/'kiki-cpe.xml'),'--results',str(result),str(CONTENT/'kiki-desktop-xccdf.xml')],capture_output=True,text=True,timeout=180)
+  if proc.returncode not in {0,2}:raise RuntimeError('OpenSCAP evaluation failed: '+proc.stderr[-1500:])
+  rows=parse_results(result)
+  aliases={'ssh_root_login':'ssh_root_login','ssh_empty_password':'ssh_empty_password','root_uid_unique':'root_uid_unique','hardlinks':'hardlinks','symlinks':'symlinks','time_sync':'time_sync','firewall':'firewall'}
+  for row in rows:
+   key=aliases.get(row['id'].removeprefix('xccdf_org.kiki_rule_'))
+   if key in errors:row.update(result='error',message='관측 실패: '+errors[key])
+  report={'schema':'kiki-scap-report-v1','status':'completed','started_at':started,'profile':PROFILE,'policy_sha256':policy_hash(),
+    'engine':version,'exit_code':proc.returncode,'rules':rows,'observation_errors':errors,
+    'summary':{s:sum(r['result']==s for r in rows) for s in ['pass','fail','error','unknown','notapplicable','notchecked']},'mode':'advisory'}
+  report['results_sha256']=hashlib.sha256(result.read_bytes()).hexdigest()
+  private=Path('/var/lib/kiki-security');private.mkdir(mode=0o700,exist_ok=True)
+  if private.is_symlink() or private.stat().st_uid!=0:raise ValueError('unsafe report directory')
+  os.chmod(private,0o700)
+  shutil.copyfile(result,private/'last-results.xml');os.chmod(private/'last-results.xml',0o600)
+  path=private/'last.json';path.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');os.chmod(path,0o600)
+  return report
+
+if __name__=='__main__':
+ p=argparse.ArgumentParser();p.add_argument('--policy-hash',action='store_true');a=p.parse_args()
+ if a.policy_hash:print(policy_hash())
+ else:
+  try:print(json.dumps(scan(),ensure_ascii=False))
+  except Exception as e:print(json.dumps({'schema':'kiki-scap-report-v1','status':'error','error':str(e)}));raise SystemExit(1)

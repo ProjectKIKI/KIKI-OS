@@ -1,0 +1,49 @@
+{
+  "recipes": [
+    {
+      "name": "openssl",
+      "version": "3.3.1",
+      "release": "5",
+      "summary": "TLS and cryptographic primitives",
+      "license": "Apache-2.0",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.openssl.org/source/openssl-3.3.1.tar.gz",
+        "sha256": "777cd596284c883375a2a7a11bf5d2786fc5413255efab20c50d6ffe6d020b7e"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "make",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure": [
+          "cd ${KI2_SOURCE_DIR} && ./Configure linux-x86_64 --prefix=/usr --openssldir=/etc/ssl --with-zlib-include=${KI2_SYSROOT}/usr/include --with-zlib-lib=${KI2_SYSROOT}/usr/lib shared zlib no-tests",
+          "sed -i '/^CPPFLAGS_Q=/s#${KI2_SYSROOT}##g' ${KI2_SOURCE_DIR}/Makefile"
+        ],
+        "compile": [
+          "make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"
+        ],
+        "install": [
+          "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install_sw install_ssldirs",
+          "find ${KI2_DESTDIR}/usr/lib64 -name '*.a' -delete",
+          "find ${KI2_DESTDIR}/usr/bin ${KI2_DESTDIR}/usr/lib64 -type f -exec sh -c 'for binary do file \"${binary}\" | grep -q ELF && strip --strip-unneeded \"${binary}\" || true; done' sh {} +"
+        ],
+        "env": {
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

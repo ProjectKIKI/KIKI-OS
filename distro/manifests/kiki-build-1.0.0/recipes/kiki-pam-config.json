@@ -1,0 +1,28 @@
+{
+  "recipes": [
+    {
+      "name": "kiki-pam-config",
+      "version": "0.1.0",
+      "release": "3",
+      "summary": "KIKI native login and user-session integration",
+      "license": "GPL-3.0-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/home/tang/kiki-build/gnome50-session-20261017/pam-config"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "linux-pam"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

@@ -352,6 +352,13 @@ class HTTPTests(unittest.TestCase):
         self.server.RequestHandlerClass = handler
         self.assertEqual(self.request('GET', '/')[0], 502)
 
+    def test_llm_settings_require_admin_while_operator_may_request_drafts(self):
+        _,session=self.as_user('llm-builder','operator')
+        form={'_csrf':session['csrf'],'endpoint':'http://127.0.0.1:8080/v1','model':'kiki-ops','enabled':'yes'}
+        self.assertEqual(self.request('POST','/assistant/settings',form)[0],403);self.assertEqual(self.hits,[])
+        self.assertEqual(self.request('POST','/assistant/draft',{'_csrf':session['csrf'],'description':'read-only draft'})[0],303)
+        self.assertEqual(self.hits[-1][0],'/assistant/draft')
+
     def test_arbitrary_upstream_and_plaintext_public_origin_rejected(self):
         with self.assertRaises(ValueError):
             auth.make_handler(self.store, 'http://evil.test', [ORIGIN])
@@ -359,6 +366,28 @@ class HTTPTests(unittest.TestCase):
             auth.make_handler(self.store, 'http://127.0.0.1:8091', ['http://public.example:8092'])
         with self.assertRaises(ValueError):
             auth.make_handler(self.store, 'http://127.0.0.1:8091', [ORIGIN, 'https://localhost:18090'])
+
+    def test_public_repository_only_exposes_read_only_prefix_without_credentials(self):
+        destination=f'http://127.0.0.1:{self.backend.server_port}'
+        handler=auth.make_handler(self.store,destination,[ORIGIN],repository_upstream=destination)
+        handler.log_message=lambda *args:None
+        self.server.RequestHandlerClass=handler
+        status,headers,body=self.request('GET','/ki2/candidate/packages/demo.ki2',headers={'Cookie':'secret=private','Authorization':'Bearer private'})
+        self.assertEqual(status,200)
+        self.assertEqual(body,b'KI2-PAYLOAD')
+        self.assertNotIn('Set-Cookie',headers)
+        self.assertNotIn('Cookie',self.hits[-1][1])
+        self.assertNotIn('Authorization',self.hits[-1][1])
+        self.assertEqual(self.request('GET','/ki2/candidate/packages/gtk+-3-3.24.52-1.x86_64.ki2')[0],200)
+        for path in ['/ki2/../api/jobs','/ki2/%2e%2e/api/jobs','/ki2/candidate/repo/index.x86_64.json?next=/api/jobs']:
+            self.assertEqual(self.request('GET',path)[0],404)
+        self.assertEqual(self.request('POST','/ki2/candidate/repo/index.x86_64.json',{'anything':'yes'})[0],405)
+        self.assertEqual(self.request('GET','/api/jobs')[0],401)
+        self.assertEqual(self.request('GET','/versions')[0],303)
+
+    def test_public_repository_cannot_target_external_host(self):
+        with self.assertRaises(ValueError):
+            auth.make_handler(self.store,'http://127.0.0.1:8091',[ORIGIN],repository_upstream='http://example.com')
 
     def web(self):
         handler=auth.make_handler(self.store,f'http://127.0.0.1:{self.backend.server_port}',
@@ -445,7 +474,9 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request('GET', '/jobs')[0], 200)
         self.assertEqual(self.request('GET', '/jobs/a.ki2')[2], b'KI2-PAYLOAD')
         self.hits.clear()
-        for path in ['/jobs', '/api/jobs', '/kernel-build', '/git/sync', '/releases/register', '/releases/r1/manage', '/iso-build/create', '/library/import']:
+        for path in ['/package-groups/save', '/package-groups/restore', '/packages/metadata', '/jobs', '/api/jobs', '/kernel-build', '/git/sync', '/releases/register', '/releases/r1/manage', '/iso-build/create', '/library/import',
+                     '/updates/check','/updates/create','/updates/security/check','/updates/security/acknowledge','/updates/'+('a'*32)+'/build','/updates/'+('a'*32)+'/validate',
+                     '/updates/'+('a'*32)+'/accept-validation','/updates/'+('a'*32)+'/promote']:
             self.assertEqual(self.request('POST', path, {'_csrf':session['csrf']})[0], 403, path)
         self.assertEqual(self.hits, [])
         self.assertIn(b'<fieldset disabled', self.request('GET', '/jobs')[2])

@@ -1,0 +1,43 @@
+{
+  "recipes": [
+    {
+      "name": "socat",
+      "version": "1.8.1.3",
+      "release": "3",
+      "summary": "Bidirectional relay tool package for kubeadm workflows",
+      "license": "GPL-2.0-only",
+      "tier": "network",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://deb.debian.org/debian/pool/main/s/socat/socat_1.8.1.3.orig.tar.bz2",
+        "file": "socat-1.8.1.3.tar.bz2",
+        "sha256": "25bc6476292b2e614220989c77b0b6fca87bb2525d9747b31a6639b1fb602418"
+      },
+      "dependencies": {
+        "build": [
+          "openssl"
+        ],
+        "runtime": [
+          "glibc",
+          "openssl"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "skip_sysroot": true,
+        "configure_options": [
+          "--disable-readline",
+          "--disable-libwrap"
+        ],
+        "env": {
+          "SOURCE_DATE_EPOCH": "1782453234",
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "-Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

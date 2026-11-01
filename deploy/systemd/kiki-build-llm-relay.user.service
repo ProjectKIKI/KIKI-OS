@@ -1,0 +1,16 @@
+[Unit]
+Description=KIKI Build private Local LLM relay
+After=kiki-candidate-buildd.service
+PartOf=kiki-candidate-buildd.service
+
+[Service]
+EnvironmentFile=%h/.config/kiki-build/llm-relay.env
+ExecStart=/usr/bin/python3 ${KIKI_TOOLS}/ki2llmrelaycontainer.py --assistant ${KIKI_ASSISTANT_STATE} --relay ${KIKI_TOOLS}/ki2llmrelay.py
+ExecStop=/usr/bin/podman stop --time 5 kiki-build-llm-relay
+TimeoutStopSec=15
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,40 @@
+{
+  "recipes": [
+    {
+      "name": "openssh",
+      "version": "9.8p1",
+      "release": "4",
+      "summary": "OpenSSH server and client",
+      "license": "BSD-2-Clause AND ISC",
+      "tier": "network",
+      "source": {
+        "type": "local",
+        "path": "distro/sources/openssh-policy",
+        "inputs": [
+          "input/openssh-9.8p1-3.x86_64.ki2",
+          "tools/ki2sshpolicy.py"
+        ]
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "openssl",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "custom",
+        "skip_sysroot": true,
+        "configure": [],
+        "compile": [],
+        "install": [
+          "python3 \"${KI2_REPO_ROOT}/tools/ki2sshpolicy.py\" --baseline \"${KI2_REPO_ROOT}/input/openssh-9.8p1-3.x86_64.ki2\" --expected 5210ac1dddfab94030f549819596f921be762c91ff8170aeaf75a6892d536fc5 --root \"${KI2_DESTDIR}\" --source \"${KI2_SOURCE_DIR}\""
+        ]
+      },
+      "architectures": [
+        "x86_64"
+      ]
+    }
+  ]
+}

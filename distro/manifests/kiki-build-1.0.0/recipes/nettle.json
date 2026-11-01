@@ -1,0 +1,51 @@
+{
+  "recipes": [
+    {
+      "name": "nettle",
+      "version": "3.10.2",
+      "release": "1",
+      "summary": "Low-level cryptography and GMP-backed public key algorithms",
+      "license": "LGPL-3.0-or-later OR GPL-2.0-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/nettle/nettle-3.10.2.tar.gz",
+        "file": "nettle-3.10.2.tar.gz",
+        "sha256": "fe9ff51cb1f2abb5e65a6b8c10a92da0ab5ab6eaf26e7fc2b675c45f1fb519b5"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "gmp"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --enable-shared --disable-static --enable-fat --disable-documentation --disable-openssl"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "install -d \"${KI2_DESTDIR}/usr/share/licenses/nettle\"",
+          "install -m 0644 \"${KI2_SOURCE_DIR}/COPYINGv2\" \"${KI2_SOURCE_DIR}/COPYINGv3\" \"${KI2_SOURCE_DIR}/COPYING.LESSERv3\" \"${KI2_SOURCE_DIR}/AUTHORS\" \"${KI2_DESTDIR}/usr/share/licenses/nettle/\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libnettle.so.8\" \"${KI2_DESTDIR}/usr/lib/libhogweed.so.6\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CC": "cc --sysroot=${KI2_SYSROOT}",
+          "CC_FOR_BUILD": "cc",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

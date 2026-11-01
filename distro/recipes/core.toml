@@ -8,7 +8,7 @@
 [[recipe]]
 name = "base-files"
 version = "0.1.0"
-release = 22
+release = 28
 summary = "KIKI filesystem skeleton, os-release, and default system layout"
 license = "GPL-3.0-or-later"
 tier = "base"
@@ -25,7 +25,7 @@ system = "copy"
 [[recipe]]
 name = "linux"
 version = "6.1.187"
-release = 3
+release = 4
 summary = "Linux kernel for KIKI OS"
 license = "GPL-2.0-only"
 tier = "kernel"
@@ -39,7 +39,7 @@ build = []
 runtime = []
 [recipe.build]
 system = "kernel"
-config_fragments = ["distro/kernel/x86_64-vm-stage1.config"]
+config_fragments = ["distro/kernel/x86_64-vm-stage1.config", "distro/kernel/desktop-security.config"]
 strip_module_build_links = true
 
 [[recipe]]
@@ -237,7 +237,7 @@ system = "gnu"
 [[recipe]]
 name = "acl"
 version = "2.3.2"
-release = 1
+release = 7
 summary = "Access control list utilities and library"
 license = "LGPL-2.1-or-later AND GPL-2.0-or-later"
 tier = "base"
@@ -899,7 +899,7 @@ install = [
 [[recipe]]
 name = "openssh"
 version = "9.8p1"
-release = 2
+release = 4
 summary = "OpenSSH server and client"
 license = "BSD-2-Clause AND ISC"
 tier = "network"
@@ -914,6 +914,11 @@ runtime = ["glibc", "openssl", "zlib"]
 [recipe.build]
 system = "gnu"
 configure_options = ["--sysconfdir=/etc/ssh", "--with-privsep-path=/var/lib/sshd"]
+inputs = ["tools/ki2sshpolicy.py", "distro/sources/openssh-policy"]
+install = [
+  "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
+  'python3 "${KI2_REPO_ROOT}/tools/ki2sshpolicy.py" --root "${KI2_DESTDIR}" --source "${KI2_REPO_ROOT}/distro/sources/openssh-policy"'
+]
 
 [[recipe]]
 name = "curl"
@@ -950,7 +955,7 @@ LDFLAGS = "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}
 [[recipe]]
 name = "ki2ctl"
 version = "0.1.0"
-release = 18
+release = 37
 summary = "KIKI HTTP package and package-group manager"
 license = "GPL-3.0-or-later"
 tier = "kiki"
@@ -1027,7 +1032,7 @@ system = "copy"
 [[recipe]]
 name = "kiki-installer-tui"
 version = "0.1.0"
-release = 21
+release = 26
 summary = "Go-based KIKI installer TUI with execution and progress reporting"
 license = "GPL-3.0-or-later"
 tier = "kiki"

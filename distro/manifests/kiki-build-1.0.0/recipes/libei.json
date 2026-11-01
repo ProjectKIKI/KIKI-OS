@@ -1,0 +1,42 @@
+{
+  "recipes": [
+    {
+      "name": "libei",
+      "version": "1.5.0",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/libinput/libei/-/archive/1.5.0/libei-1.5.0.tar.gz",
+        "sha256": "7687c3bbcff89ff331c5db72e0a5cce6bcae382e3c238d6f7019a6bc71d88e43"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc",
+          "libevdev",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dtests=disabled",
+          "-Ddocumentation=[]",
+          "-Dliboeffis=disabled",
+          "-Dlibei=enabled",
+          "-Dlibeis=enabled",
+          "-Dsd-bus-provider=libsystemd"
+        ]
+      }
+    }
+  ]
+}

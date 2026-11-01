@@ -1,0 +1,25 @@
+{
+  "schema": "ki2-security-mappings-v1",
+  "reviewed_at": "2026-10-29",
+  "packages": {
+    "linux": {"osv":false,"ecosystem":"GIT","project":"https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git","tag_prefix":"v","cpe":"cpe:2.3:o:linux:linux_kernel:{version}:*:*:*:*:*:*:*","source_prefixes":["https://cdn.kernel.org/pub/linux/kernel/"]},
+    "glibc": {"ecosystem":"GIT","project":"https://sourceware.org/git/glibc.git","tag_prefix":"glibc-","cpe":"cpe:2.3:a:gnu:glibc:{version}:*:*:*:*:*:*:*","source_prefixes":["https://ftp.gnu.org/gnu/libc/"]},
+    "libxslt": {"ecosystem":"OSS-Fuzz","project":"libxslt","source_prefixes":["https://download.gnome.org/sources/libxslt/"]},
+    "xmlsec": {"ecosystem":"OSS-Fuzz","project":"xmlsec","source_prefixes":["https://github.com/lsh123/xmlsec/"]},
+    "openscap": {"ecosystem":"GIT","project":"https://github.com/OpenSCAP/openscap","source_prefixes":["https://github.com/OpenSCAP/openscap/"]},
+    "curl": {"ecosystem":"GIT","project":"https://github.com/curl/curl.git","cpe":"cpe:2.3:a:haxx:curl:{version}:*:*:*:*:*:*:*","source_prefixes":["https://curl.se/download/"]},
+    "openssl": {"ecosystem":"OSS-Fuzz","project":"openssl","cpe":"cpe:2.3:a:openssl:openssl:{version}:*:*:*:*:*:*:*","source_prefixes":["https://www.openssl.org/source/"]},
+    "libxml2": {"ecosystem":"OSS-Fuzz","project":"libxml2","cpe":"cpe:2.3:a:xmlsoft:libxml2:{version}:*:*:*:*:*:*:*","source_prefixes":["https://download.gnome.org/sources/libxml2/"]},
+    "zlib": {"ecosystem":"OSS-Fuzz","project":"zlib","cpe":"cpe:2.3:a:zlib:zlib:{version}:*:*:*:*:*:*:*","source_prefixes":["https://zlib.net/"]},
+    "expat": {"ecosystem":"OSS-Fuzz","project":"expat","cpe":"cpe:2.3:a:libexpat_project:libexpat:{version}:*:*:*:*:*:*:*","source_prefixes":["https://github.com/libexpat/libexpat/"]},
+    "libarchive": {"ecosystem":"OSS-Fuzz","project":"libarchive","cpe":"cpe:2.3:a:libarchive:libarchive:{version}:*:*:*:*:*:*:*","source_prefixes":["https://github.com/libarchive/libarchive/"]},
+    "libjpeg-turbo": {"ecosystem":"OSS-Fuzz","project":"libjpeg-turbo","source_prefixes":["https://github.com/libjpeg-turbo/libjpeg-turbo/"]},
+    "libpng": {"ecosystem":"OSS-Fuzz","project":"libpng","cpe":"cpe:2.3:a:libpng:libpng:{version}:*:*:*:*:*:*:*","source_prefixes":["https://download.sourceforge.net/libpng/"]},
+    "gnutls": {"ecosystem":"OSS-Fuzz","project":"gnutls","cpe":"cpe:2.3:a:gnu:gnutls:{version}:*:*:*:*:*:*:*","source_prefixes":["https://www.gnupg.org/ftp/gcrypt/gnutls/"]},
+    "libtasn1": {"ecosystem":"OSS-Fuzz","project":"libtasn1","source_prefixes":["https://ftp.gnu.org/gnu/libtasn1/"]},
+    "openssh": {"ecosystem":"GIT","project":"https://github.com/openssh/openssh-portable","tag_prefix":"V_","version_separator":"_","cpe":"cpe:2.3:a:openbsd:openssh:{version}:*:*:*:*:*:*:*","source_prefixes":["https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/"]},
+    "python": {"ecosystem":"GIT","project":"https://github.com/python/cpython","tag_prefix":"v","cpe":"cpe:2.3:a:python:python:{version}:*:*:*:*:*:*:*","source_prefixes":["https://www.python.org/ftp/python/"]},
+    "xz": {"ecosystem":"GIT","project":"https://github.com/tukaani-project/xz","tag_prefix":"v","cpe":"cpe:2.3:a:tukaani:xz:{version}:*:*:*:*:*:*:*","source_prefixes":["https://github.com/tukaani-project/xz/"]},
+    "systemd": {"ecosystem":"GIT","project":"https://github.com/systemd/systemd-stable","tag_prefix":"v","source_prefixes":["https://github.com/systemd/systemd-stable/"]}
+  }
+}

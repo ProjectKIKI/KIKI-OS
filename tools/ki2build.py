@@ -16,6 +16,8 @@ from __future__ import annotations
 import argparse
 import ast
 import datetime as dt
+import contextlib
+import gzip
 import hashlib
 import json
 import os
@@ -280,6 +282,11 @@ def read_yaml(path: Path) -> dict[str, Any]:
 
 
 def read_structured_file(path: Path) -> dict[str, Any]:
+    if path.suffix == '.json':
+        data = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(data, dict):
+            raise Ki2Error(f'{path}: top-level JSON document must be a mapping')
+        return data
     if path.suffix == ".toml":
         return read_toml(path)
     if path.suffix in {".yaml", ".yml"}:
@@ -288,7 +295,7 @@ def read_structured_file(path: Path) -> dict[str, Any]:
 
 
 def iter_config_files(root: Path) -> list[Path]:
-    return sorted([*root.rglob("*.toml"), *root.rglob("*.yaml"), *root.rglob("*.yml")])
+    return sorted([*root.rglob("*.toml"), *root.rglob("*.yaml"), *root.rglob("*.yml"), *root.rglob('*.json')])
 
 
 def stable_hash(value: Any) -> str:
@@ -1044,6 +1051,8 @@ def format_command(command: str, env: dict[str, str]) -> str:
 
 def default_commands(recipe: Recipe, env: dict[str, str]) -> list[str]:
     system = recipe.build.get("system", "gnu")
+    if system == "recorded-native":
+        raise Ki2Error(f"{recipe.name}: use the recorded native SDK pipeline; see {recipe.build['manifest']} and tools/gnome_native/README.ko.md. A staged binary directory is not a source recipe.")
     options = " ".join(format_command(str(option), env) for option in recipe.build.get("configure_options", []))
     source = shell_quote(env["KI2_SOURCE_DIR"])
     build = shell_quote(env["KI2_BUILD_DIR"])
@@ -1729,7 +1738,23 @@ def normalize_tar_owner(info: tarfile.TarInfo) -> None:
     info.gname = "root"
 
 
+def validate_account_database_line_endings(destdir: Path) -> None:
+    # shadow's useradd can partly update passwd before rejecting CR-bearing
+    # group records. Catch Windows checkout line endings before publication.
+    for name in ("passwd", "group", "shadow", "gshadow"):
+        path = destdir / "etc" / name
+        if path.is_symlink():
+            raise Ki2Error(f"Account database must be a regular file: /etc/{name}")
+        if path.is_file() and b"\r" in path.read_bytes():
+            raise Ki2Error(f"Unix LF line endings required for account database: /etc/{name}")
+
+
 def create_package(ctx: BuildContext, recipe: Recipe, destdir: Path, output: Path, key: str, dep_keys: dict[str, str]) -> None:
+    validate_account_database_line_endings(destdir)
+    epoch_text=os.environ.get('SOURCE_DATE_EPOCH')
+    if epoch_text is not None and (not epoch_text.isdigit() or int(epoch_text)>253402300799):
+        raise Ki2Error('SOURCE_DATE_EPOCH must be a valid non-negative Unix timestamp')
+    epoch=int(epoch_text) if epoch_text is not None else None
     output.parent.mkdir(parents=True, exist_ok=True)
     dependencies = {
         "build": recipe.dependencies.get("build", []),
@@ -1759,13 +1784,18 @@ def create_package(ctx: BuildContext, recipe: Recipe, destdir: Path, output: Pat
         "build_key": key,
         "recipe_digest": recipe.digest,
         "dependency_keys": dep_keys,
-        "built_at": dt.datetime.now(UTC).isoformat(),
+        "built_at": (dt.datetime.fromtimestamp(epoch,UTC) if epoch is not None else dt.datetime.now(UTC)).isoformat(),
     }
 
     tmp = output.with_suffix(".ki2.tmp")
     if tmp.exists():
         tmp.unlink()
-    with tarfile.open(tmp, "w:gz") as tar:
+    with contextlib.ExitStack() as stack:
+        if epoch is None:tar=stack.enter_context(tarfile.open(tmp,"w:gz"))
+        else:
+            stream=stack.enter_context(tmp.open('wb'))
+            compressed=stack.enter_context(gzip.GzipFile(filename='',mode='wb',fileobj=stream,mtime=epoch))
+            tar=stack.enter_context(tarfile.open(fileobj=compressed,mode='w'))
         manifest_bytes = json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8")
         manifest_file = tempfile.SpooledTemporaryFile()
         manifest_file.write(manifest_bytes)
@@ -1773,6 +1803,7 @@ def create_package(ctx: BuildContext, recipe: Recipe, destdir: Path, output: Pat
         info = tarfile.TarInfo("manifest.json")
         info.size = len(manifest_bytes)
         info.mode = 0o644
+        if epoch is not None:info.mtime=epoch
         normalize_tar_owner(info)
         tar.addfile(info, manifest_file)
         manifest_file.close()
@@ -1783,6 +1814,7 @@ def create_package(ctx: BuildContext, recipe: Recipe, destdir: Path, output: Pat
                 arcname = "rootfs/" + rel
                 info = tar.gettarinfo(str(path), arcname=arcname)
                 info.mode = package_entry_mode(rel, path)
+                if epoch is not None:info.mtime=epoch;info.pax_headers={}
                 normalize_tar_owner(info)
                 if path.is_dir():
                     tar.addfile(info)
@@ -1835,7 +1867,7 @@ def package_manifest_files(manifest: dict[str, Any]) -> list[str]:
         if not isinstance(entry, dict):
             continue
         path = str(entry.get("path") or "")
-        if path:
+        if path and entry.get("type") != "dir" and path != "/usr/share/info/dir":
             paths.append(path)
     return sorted(paths)
 
@@ -2383,6 +2415,9 @@ def command_validate(args: argparse.Namespace) -> None:
     profile = load_profile(args.profile) if args.profile else None
     if profile and profile.get("prebuilt"):
         _, recipes, _ = load_prebuilt_profile(profile, args.repo_root, args.arch)
+    elif profile:
+        selected=dependency_closure(recipes,list(profile['packages']),args.arch,include_build_deps=True)
+        recipes={name:recipes[name] for name in selected}
     warnings = validate_recipes(recipes, args.arch, profile, args.max_packages)
     print(f"validated {len(recipes)} recipes")
     for warning in warnings:
@@ -2429,8 +2464,11 @@ def command_build(args: argparse.Namespace) -> None:
     profile = load_profile(args.profile)
     if profile.get("prebuilt"):
         raise Ki2Error("this profile reuses a signed package snapshot; use plan/rootfs, or its recorded GNOME source build pipeline")
-    validate_recipes(recipes, args.arch, profile, None)
     ordered = dependency_closure(recipes, list(profile["packages"]), args.arch, include_build_deps=True)
+    # A single-package build validates its complete dependency closure. Draft
+    # recipes outside that closure remain visible to the full catalog audit,
+    # but must not prevent an unrelated reviewed package from being built.
+    validate_recipes({name:recipes[name] for name in ordered}, args.arch, profile, None)
     if args.only:
         requested = set(args.only)
         unknown = requested - set(recipes)
@@ -2515,7 +2553,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_parser = subcommands.add_parser("validate", help="validate recipe catalog")
     validate_parser.add_argument("--profile", type=Path)
-    validate_parser.add_argument("--max-packages", type=int, default=40)
+    validate_parser.add_argument("--max-packages", type=int, default=512)
     validate_parser.set_defaults(func=command_validate)
 
     plan_parser = subcommands.add_parser("plan", help="print a dependency-ordered package plan")

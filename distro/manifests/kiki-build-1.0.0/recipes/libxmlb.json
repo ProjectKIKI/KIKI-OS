@@ -1,0 +1,43 @@
+{
+  "recipes": [
+    {
+      "name": "libxmlb",
+      "version": "0.3.24",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/hughsie/libxmlb/releases/download/0.3.24/libxmlb-0.3.24.tar.xz",
+        "sha256": "ded52667aac942bb1ff4d1e977e8274a9432d99033d86918feb82ade82b8e001"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "xz",
+          "zstd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dgtkdoc=false",
+          "-Dintrospection=true",
+          "-Dtests=false",
+          "-Dcli=true",
+          "-Dlzma=enabled",
+          "-Dzstd=enabled"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "recipes": [
+    {
+      "name": "ibus",
+      "version": "1.5.32",
+      "release": "3",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/ibus/ibus/releases/download/1.5.32/ibus-1.5.32.tar.gz",
+        "sha256": "b24f41ae38b236b254c09f1a8f53c2354b69b0789e89cea888d0494b09d15d67"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "cairo",
+          "dbus",
+          "dconf",
+          "gdk-pixbuf",
+          "glib",
+          "glibc",
+          "graphene",
+          "gtk",
+          "harfbuzz",
+          "libxkbcommon",
+          "pango",
+          "python",
+          "wayland"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static",
+          "--disable-gtk2",
+          "--disable-gtk3",
+          "--enable-gtk4",
+          "--disable-xim",
+          "--enable-wayland",
+          "--disable-setup",
+          "--disable-ui",
+          "--disable-tests",
+          "--disable-appindicator",
+          "--enable-memconf",
+          "--enable-engine",
+          "--disable-glibtest",
+          "--disable-python2",
+          "--disable-emoji-dict",
+          "--disable-unicode-dict",
+          "--disable-gtk-doc",
+          "--disable-libnotify",
+          "--disable-gconf",
+          "--enable-dconf",
+          "--enable-introspection",
+          "--disable-vala",
+          "--disable-schema-compile",
+          "--with-sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk"
+        ]
+      }
+    }
+  ]
+}

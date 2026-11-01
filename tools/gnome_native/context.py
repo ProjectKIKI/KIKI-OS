@@ -82,6 +82,10 @@ def package(name, version, dest, deps, source=None, license='LGPL-3.0-or-later',
                     run([tools/'patchelf','--set-rpath',kept,p])
         ki2build.create_package(SimpleNamespace(arch='x86_64'),recipe,dest,output,ki2build.stable_hash(dict(recipe=recipe.digest, source=source)),{})
     subprocess.run(['cp','-a',str(dest)+'/.',str(sdk)],check=True)
+    if name=='readline':
+        # A reused SDK must not let ldconfig prefer an old install backup.
+        from ki2readlinepayload import prepare
+        prepare(sdk)
     record_path=work/'output-records.json'
     import fcntl
     with (work/'output-records.lock').open('a') as lock:

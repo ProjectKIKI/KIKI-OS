@@ -1,0 +1,1 @@
+<?xml version="1.0"?><cpe-list xmlns="http://cpe.mitre.org/dictionary/2.0"><cpe-item name="cpe:/o:kiki:kiki:0.1"><title xml:lang="en-US">KIKI OS 0.1</title><check system="http://oval.mitre.org/XMLSchema/oval-definitions-5" href="kiki-desktop-oval.xml">oval:org.kiki:def:100</check></cpe-item></cpe-list>

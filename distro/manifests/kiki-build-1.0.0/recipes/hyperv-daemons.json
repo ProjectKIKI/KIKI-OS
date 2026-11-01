@@ -1,0 +1,30 @@
+{
+  "recipes": [
+    {
+      "name": "hyperv-daemons",
+      "version": "6.1.187",
+      "release": "2",
+      "summary": "KIKI native desktop hyperv-daemons",
+      "license": "GPL-2.0-only",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-build-v1-guests-20261031/hyperv-stage"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "iproute2",
+          "busybox"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

@@ -580,7 +580,7 @@ recipes:
 
   - name: readline
     version: "8.3"
-    release: 3
+    release: 5
     summary: GNU command line editing library
     license: GPL-3.0-or-later
     tier: base
@@ -597,15 +597,17 @@ recipes:
       system: gnu
       sysroot_exclude: [glibc]
       configure:
-        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --libdir=/usr/lib --disable-static --enable-shared --with-curses --with-shared-termcap-library=-ltinfo
+        - cd "${KI2_SOURCE_DIR}" && ./configure --prefix=/usr --libdir=/usr/lib --disable-static --enable-shared --with-curses --with-shared-termcap-library
         - sed -i 's# -Wl,-rpath,$(libdir)##g' "${KI2_SOURCE_DIR}/shlib/Makefile"
+      inputs: [tools/ki2readlinepayload.py]
       compile:
-        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}"
+        - make -C "${KI2_SOURCE_DIR}" -j"${KI2_JOBS}" SHLIB_LIBS=-lncursesw
       install:
-        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" install
+        - make -C "${KI2_SOURCE_DIR}" DESTDIR="${KI2_DESTDIR}" SHLIB_LIBS=-lncursesw install
+        - python3 "${KI2_REPO_ROOT}/tools/ki2readlinepayload.py" --root "${KI2_DESTDIR}"
       env:
-        bash_cv_termcap_lib: libtinfo
-        CPPFLAGS: "${KI2_SYSROOT_CPPFLAGS}"
+        bash_cv_termcap_lib: libncursesw
+        CPPFLAGS: "${KI2_SYSROOT_CPPFLAGS} -I${KI2_SYSROOT}/usr/include/ncursesw"
         CFLAGS: "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
         LDFLAGS: "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
 

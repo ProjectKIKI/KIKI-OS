@@ -1,0 +1,29 @@
+{
+  "recipes": [
+    {
+      "name": "qemu-guest-agent",
+      "version": "11.1.3",
+      "release": "1",
+      "summary": "KIKI native desktop qemu-guest-agent",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-build-v1-guests-20261031/qga-stage"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "glib"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

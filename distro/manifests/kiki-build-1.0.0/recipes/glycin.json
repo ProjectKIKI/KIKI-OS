@@ -1,0 +1,51 @@
+{
+  "recipes": [
+    {
+      "name": "glycin",
+      "version": "2.1.5",
+      "release": "3",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/glycin/2.1/glycin-2.1.5.tar.xz",
+        "sha256": "6c09757ee906330a60b6705753aa56bca007ad219b95e6e3537510d41bc341c8"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "bubblewrap",
+          "cairo",
+          "fontconfig",
+          "glib",
+          "glibc",
+          "lcms2",
+          "libgcc",
+          "librsvg",
+          "libseccomp"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dlibglycin=true",
+          "-Dlibglycin-gtk4=false",
+          "-Dglycin-thumbnailer=false",
+          "-Dglycin-loaders=true",
+          "-Dloaders=glycin-image-rs,glycin-svg",
+          "-Dtests=false",
+          "-Dintrospection=true",
+          "-Dvapi=false",
+          "-Dlto=false"
+        ]
+      }
+    }
+  ]
+}

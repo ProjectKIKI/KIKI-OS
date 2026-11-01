@@ -1,0 +1,71 @@
+{
+  "recipes": [
+    {
+      "name": "gnome-shell",
+      "version": "50.4",
+      "release": "6",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-shell/50/gnome-shell-50.4.tar.xz",
+        "sha256": "c531939539db316a41aef23670370abd1330d3254f84bcb0f9f4dae5d6e362cf"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "adwaita-icon-theme",
+          "at-spi2-core",
+          "cairo",
+          "evolution-data-server",
+          "gcr",
+          "gdk-pixbuf",
+          "gdm",
+          "geoclue",
+          "gjs",
+          "glib",
+          "glibc",
+          "gnome-autoar",
+          "gnome-bluetooth",
+          "gnome-desktop",
+          "gnome-settings-daemon-schemas",
+          "graphene",
+          "gsettings-desktop-schemas",
+          "gtk",
+          "ibus",
+          "json-glib",
+          "kiki-desktop-fonts",
+          "libgweather",
+          "libical",
+          "librsvg",
+          "libsoup",
+          "libsystemd",
+          "libxml2",
+          "mutter",
+          "pango",
+          "polkit",
+          "pulseaudio",
+          "upower"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dnetworkmanager=false",
+          "-Dportal_helper=false",
+          "-Dcamera_monitor=false",
+          "-Dsystemd=true",
+          "-Dman=false",
+          "-Dtests=false"
+        ]
+      }
+    }
+  ]
+}

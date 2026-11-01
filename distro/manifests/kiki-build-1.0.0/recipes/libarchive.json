@@ -1,0 +1,51 @@
+{
+  "recipes": [
+    {
+      "name": "libarchive",
+      "version": "3.8.1",
+      "release": "3",
+      "summary": "Native GNOME desktop dependency",
+      "license": "BSD-2-Clause",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libarchive/libarchive/releases/download/v3.8.1/libarchive-3.8.1.tar.xz",
+        "sha256": "19f917d42d530f98815ac824d90c7eaf648e9d9a50e4f309c812457ffa5496b5"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "acl",
+          "attr",
+          "glibc",
+          "openssl",
+          "xz",
+          "zlib",
+          "zstd"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static",
+          "--without-bz2lib",
+          "--without-lz4",
+          "--without-nettle",
+          "--with-openssl",
+          "--without-expat",
+          "--without-xml2",
+          "--with-sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk"
+        ]
+      }
+    }
+  ]
+}

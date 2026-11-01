@@ -25,6 +25,8 @@ __pycache__/
 /artifacts/
 /x86_64/
 /cmd/kiki-installer-gtk/kiki-installer-gtk
+/cmd/kiki-admin/kiki-admin
+/cmd/kiki-admin/ui-test
 *.ki2
 *.iso
 *.vhdx

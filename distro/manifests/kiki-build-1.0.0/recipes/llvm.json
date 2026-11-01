@@ -1,0 +1,87 @@
+{
+  "recipes": [
+    {
+      "name": "llvm",
+      "version": "21.1.8",
+      "release": "2",
+      "summary": "Native LLVM X86 runtime for Mesa llvmpipe",
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/llvm-project-21.1.8.src.tar.xz",
+        "sha256": "4633a23617fa31a3ea51242586ea7fb1da7140e426bd62fc164261fe036aa142"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libstdcxx",
+          "libgcc",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "configure_options": [
+          "-G",
+          "Ninja",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_INSTALL_PREFIX=/usr",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_SYSTEM_NAME=Linux",
+          "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+          "-DCMAKE_C_COMPILER=/usr/bin/gcc",
+          "-DCMAKE_CXX_COMPILER=/usr/bin/g++",
+          "-DCMAKE_FIND_ROOT_PATH=/home/tang/kiki-build/mesa-native-20261017/sdk",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY",
+          "-DZLIB_INCLUDE_DIR=/home/tang/kiki-build/mesa-native-20261017/sdk/usr/include",
+          "-DZLIB_LIBRARY_RELEASE=/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/libz.so",
+          "-DCMAKE_C_FLAGS=--sysroot=/home/tang/kiki-build/mesa-native-20261017/sdk",
+          "-DCMAKE_CXX_FLAGS=--sysroot=/home/tang/kiki-build/mesa-native-20261017/sdk",
+          "-DCMAKE_C_FLAGS_RELEASE=-O2 -DNDEBUG",
+          "-DCMAKE_CXX_FLAGS_RELEASE=-O2 -DNDEBUG",
+          "-DCMAKE_EXE_LINKER_FLAGS=-B/home/tang/kiki-build/mesa-native-20261017/host-tools/bin/ --sysroot=/home/tang/kiki-build/mesa-native-20261017/sdk -B/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64/ -B/home/tang/kiki-build/mesa-native-20261017/sdk/lib64/ -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64 -L/home/tang/kiki-build/mesa-native-20261017/sdk/lib -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/lib -L/home/tang/kiki-build/mesa-native-20261017/sdk/lib64 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/lib64 -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/pulseaudio -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/pulseaudio -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/mutter-18 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/mutter-18 -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/gnome-shell -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/gnome-shell -Wl,-z,relro,-z,now",
+          "-DCMAKE_SHARED_LINKER_FLAGS=-B/home/tang/kiki-build/mesa-native-20261017/host-tools/bin/ --sysroot=/home/tang/kiki-build/mesa-native-20261017/sdk -B/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64/ -B/home/tang/kiki-build/mesa-native-20261017/sdk/lib64/ -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64 -L/home/tang/kiki-build/mesa-native-20261017/sdk/lib -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/lib -L/home/tang/kiki-build/mesa-native-20261017/sdk/lib64 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/lib64 -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/pulseaudio -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/pulseaudio -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/mutter-18 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/mutter-18 -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/gnome-shell -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/gnome-shell -Wl,-z,relro,-z,now",
+          "-U",
+          "CXX_SUPPORTS_CUSTOM_LINKER",
+          "-DLLVM_USE_LINKER=lld",
+          "-DPython3_EXECUTABLE=/home/tang/kiki-build/mesa-native-20261017/venv/bin/python",
+          "-DLLVM_TABLEGEN=/home/tang/kiki-build/mesa-native-20261017/host-tools/bin/llvm-tblgen",
+          "-DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-unknown-linux-gnu",
+          "-DLLVM_TARGETS_TO_BUILD=X86",
+          "-DLLVM_BUILD_LLVM_DYLIB=ON",
+          "-DLLVM_LINK_LLVM_DYLIB=ON",
+          "-DLLVM_DYLIB_COMPONENTS=all",
+          "-DLLVM_INCLUDE_TESTS=OFF",
+          "-DLLVM_INCLUDE_BENCHMARKS=OFF",
+          "-DLLVM_INCLUDE_EXAMPLES=OFF",
+          "-DLLVM_INCLUDE_DOCS=OFF",
+          "-DLLVM_BUILD_TOOLS=OFF",
+          "-DLLVM_BUILD_UTILS=OFF",
+          "-DLLVM_ENABLE_PROJECTS=",
+          "-DLLVM_ENABLE_RUNTIMES=",
+          "-DLLVM_ENABLE_TERMINFO=OFF",
+          "-DLLVM_ENABLE_LIBEDIT=OFF",
+          "-DLLVM_ENABLE_LIBXML2=OFF",
+          "-DLLVM_ENABLE_ZSTD=OFF",
+          "-DLLVM_ENABLE_ZLIB=FORCE_ON",
+          "-DLLVM_ENABLE_FFI=OFF",
+          "-DLLVM_ENABLE_RTTI=ON",
+          "-DLLVM_ENABLE_ASSERTIONS=OFF",
+          "-DLLVM_ENABLE_BACKTRACES=OFF",
+          "-DLLVM_ENABLE_DUMP=OFF",
+          "-DLLVM_PARALLEL_LINK_JOBS=1"
+        ]
+      }
+    }
+  ]
+}

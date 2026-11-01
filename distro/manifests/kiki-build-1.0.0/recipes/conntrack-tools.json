@@ -1,0 +1,61 @@
+{
+  "recipes": [
+    {
+      "name": "conntrack-tools",
+      "version": "1.4.9",
+      "release": "3",
+      "summary": "Connection tracking tools for Kubernetes networking",
+      "license": "GPL-2.0-or-later",
+      "tier": "network",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.netfilter.org/projects/conntrack-tools/files/conntrack-tools-1.4.9.tar.xz",
+        "file": "conntrack-tools-1.4.9.tar.xz",
+        "sha256": "c15afe488a8d408c9d6d61e97dbd19f3c591942f62c13df6453a961ca4231cae"
+      },
+      "dependencies": {
+        "build": [
+          "libmnl",
+          "libnfnetlink",
+          "libnetfilter-conntrack"
+        ],
+        "runtime": [
+          "glibc",
+          "libmnl",
+          "libnfnetlink",
+          "libnetfilter-conntrack"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure_options": [
+          "--disable-cthelper",
+          "--disable-cttimeout"
+        ],
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --disable-cthelper --disable-cttimeout"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}/extensions\" -j\"${KI2_JOBS}\"",
+          "make -C \"${KI2_SOURCE_DIR}/src\" conntrack -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "install -Dm755 \"${KI2_SOURCE_DIR}/src/conntrack\" \"${KI2_DESTDIR}/usr/sbin/conntrack\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/conntrack.8\" \"${KI2_DESTDIR}/usr/share/man/man8/conntrack.8\""
+        ],
+        "env": {
+          "ac_cv_header_rpc_rpc_msg_h": "yes",
+          "CPPFLAGS": "${KI2_SYSROOT_CPPFLAGS}",
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

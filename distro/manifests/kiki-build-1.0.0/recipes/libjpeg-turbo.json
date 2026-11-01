@@ -1,0 +1,58 @@
+{
+  "recipes": [
+    {
+      "name": "libjpeg-turbo",
+      "version": "3.2.0",
+      "release": "2",
+      "summary": "SIMD accelerated JPEG codec and TurboJPEG API",
+      "license": "IJG AND BSD-3-Clause",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz",
+        "file": "libjpeg-turbo-3.2.0.tar.gz",
+        "sha256": "6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "nasm"
+        ],
+        "runtime": [
+          "glibc",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "inputs": [
+          "distro/scripts/ki2-target-nasm",
+          "distro/scripts/ki2-target-run"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-nasm\" \"${KI2_BUILD_DIR}/target-nasm\"",
+          "cmake -S \"${KI2_SOURCE_DIR}\" -B \"${KI2_BUILD_DIR}/jpeg\" -G Ninja -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=x86_64 -DCMAKE_SYSROOT=\"${KI2_SYSROOT}\" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_SKIP_RPATH=ON -DCMAKE_CROSSCOMPILING_EMULATOR=\"/bin/sh;${KI2_REPO_ROOT}/distro/scripts/ki2-target-run\" -DCMAKE_ASM_NASM_COMPILER=\"${KI2_BUILD_DIR}/target-nasm\" -DENABLE_SHARED=ON -DENABLE_STATIC=OFF -DWITH_SIMD=ON -DREQUIRE_SIMD=ON -DWITH_TURBOJPEG=ON -DWITH_TOOLS=ON -DWITH_TESTS=ON -DWITH_SYSTEM_ZLIB=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON"
+        ],
+        "compile": [
+          "cmake --build \"${KI2_BUILD_DIR}/jpeg\" --parallel \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" cmake --install \"${KI2_BUILD_DIR}/jpeg\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/LICENSE.md\" \"${KI2_DESTDIR}/usr/share/licenses/libjpeg-turbo/LICENSE.md\"",
+          "install -m644 \"${KI2_SOURCE_DIR}/README.ijg\" \"${KI2_DESTDIR}/usr/share/licenses/libjpeg-turbo/README.ijg\"",
+          "install -m644 \"${KI2_SOURCE_DIR}/src/spng/LICENSE\" \"${KI2_DESTDIR}/usr/share/licenses/libjpeg-turbo/libspng-LICENSE\"",
+          "install -m644 \"${KI2_SOURCE_DIR}/src/spng/libpng-LICENSE.txt\" \"${KI2_DESTDIR}/usr/share/licenses/libjpeg-turbo/libpng-LICENSE.txt\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libjpeg.so\" \"${KI2_DESTDIR}/usr/lib/libturbojpeg.so\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "KI2_SYSROOT_LIBRARY_PATH": "${KI2_BUILD_DIR}/jpeg:${KI2_BUILD_DIR}/jpeg/sharedlib:${KI2_SYSROOT_LIBRARY_PATH}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

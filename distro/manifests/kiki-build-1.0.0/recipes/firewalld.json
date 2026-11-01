@@ -1,0 +1,75 @@
+{
+  "recipes": [
+    {
+      "name": "firewalld",
+      "version": "2.5.1",
+      "release": "11",
+      "summary": "Optional dynamic firewall manager package",
+      "license": "GPL-2.0-or-later",
+      "tier": "network",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/firewalld/firewalld/releases/download/v2.5.1/firewalld-2.5.1.tar.bz2",
+        "file": "firewalld-2.5.1.tar.bz2",
+        "sha256": "50fd01cf0b696a1cb7ca722e972d6173b0c5aa6ab13892b00842ae52172b081e"
+      },
+      "dependencies": {
+        "build": [
+          "glib"
+        ],
+        "runtime": [
+          "dbus",
+          "glib",
+          "gobject-introspection",
+          "nftables",
+          "python",
+          "python3-dbus",
+          "python3-gobject",
+          "systemd"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "skip_sysroot": true,
+        "configure_options": [
+          "--disable-docs",
+          "--disable-nls",
+          "--disable-schemas-compile",
+          "--disable-sysconfig",
+          "--with-systemd-unitdir=/usr/lib/systemd/system"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/intltool-minimal\" \"${KI2_BUILD_DIR}/firewalld-tools/intltool-merge\" && ln -sf intltool-merge \"${KI2_BUILD_DIR}/firewalld-tools/intltool-update\" && ln -sf intltool-merge \"${KI2_BUILD_DIR}/firewalld-tools/intltool-extract\"",
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-docs --disable-nls --disable-schemas-compile --disable-sysconfig --with-systemd-unitdir=/usr/lib/systemd/system --with-iptables=/usr/sbin/iptables --with-ip6tables=/usr/sbin/ip6tables --with-ebtables=/usr/sbin/ebtables --without-ipset PYTHON=/usr/bin/python3"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}/config\" -j\"${KI2_JOBS}\"",
+          "make -C \"${KI2_SOURCE_DIR}/src\" SUBDIRS=icons -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}/config\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "make -C \"${KI2_SOURCE_DIR}/doc\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "make -C \"${KI2_SOURCE_DIR}/shell-completion\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "make -C \"${KI2_SOURCE_DIR}/src\" SUBDIRS=icons DESTDIR=\"${KI2_DESTDIR}\" pythondir=/usr/lib/python3.12/site-packages pkgpythondir=/usr/lib/python3.12/site-packages/firewall install",
+          "find \"${KI2_DESTDIR}/usr/bin\" -maxdepth 1 -type f \\( -name 'firewall-applet' -o -name 'firewall-config' \\) -delete",
+          "find \"${KI2_DESTDIR}/usr/share\" -type f \\( -name 'firewall-applet*' -o -name 'firewall-config.desktop' -o -name 'org.firewalld.firewall-config.metainfo.xml' -o -name 'org.fedoraproject.FirewallConfig.gschema.xml' -o -name 'firewall-config.glade' -o -name 'gtk3_*.py' \\) -delete",
+          "find \"${KI2_DESTDIR}/etc/xdg\" -type f -name 'firewall-applet.desktop' -delete",
+          "find \"${KI2_DESTDIR}\" -name '*.pyc' -delete",
+          "find \"${KI2_DESTDIR}\" -depth -type d -name '__pycache__' -empty -delete"
+        ],
+        "env": {
+          "GLIB_COMPILE_SCHEMAS": "/bin/true",
+          "PATH": "${KI2_BUILD_DIR}/firewalld-tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        },
+        "stub": {
+          "directories": [
+            "/etc/firewalld"
+          ]
+        }
+      }
+    }
+  ]
+}

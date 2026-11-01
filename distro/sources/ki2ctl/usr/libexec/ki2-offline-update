@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+stage=/var/lib/ki2/offline-update
+test "$(readlink /system-update)" = "$stage"
+if /usr/bin/python3 "$stage/ki2ctl" offline-apply; then
+    /usr/bin/systemctl --no-block reboot
+else
+    # Keep the failed request for diagnosis, but do not trap subsequent boots in an update loop.
+    if test -L /system-update && test "$(readlink /system-update)" = "$stage"; then
+        unlink /system-update
+    fi
+    exit 1
+fi

@@ -1,0 +1,29 @@
+{
+  "recipes": [
+    {
+      "name": "kiki-vm-tools",
+      "version": "0.1.0",
+      "release": "1",
+      "summary": "KIKI native desktop kiki-vm-tools",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/mnt/e/dev/KIKI-OS/distro/sources/kiki-vm-tools"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "python",
+          "systemd"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "recipes": [
+    {
+      "name": "mutter",
+      "version": "50.4",
+      "release": "5",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/mutter/50/mutter-50.4.tar.xz",
+        "sha256": "273d33c875abcb4b6cbea3f4ec045d18155fbc510c3521fc7e47926371310988"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "at-spi2-core",
+          "cairo",
+          "colord",
+          "fribidi",
+          "glib",
+          "glibc",
+          "glycin",
+          "gnome-desktop",
+          "graphene",
+          "gsettings-desktop-schemas",
+          "gtk",
+          "harfbuzz",
+          "mesa",
+          "lcms2",
+          "libdisplay-info",
+          "libdrm",
+          "libei",
+          "libglvnd",
+          "libgudev",
+          "libinput",
+          "libsystemd",
+          "libxkbcommon",
+          "pango",
+          "pixman",
+          "python3-argcomplete",
+          "systemd",
+          "wayland"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dxwayland=false",
+          "-Dopengl=false",
+          "-Dgles2=true",
+          "-Degl=true",
+          "-Dnative_backend=true",
+          "-Dlogind=true",
+          "-Dudev=true",
+          "-Dremote_desktop=false",
+          "-Dlibwacom=false",
+          "-Dsound_player=false",
+          "-Dstartup_notification=false",
+          "-Dprofiler=false",
+          "-Dtests=disabled",
+          "-Dcogl_tests=false",
+          "-Dclutter_tests=false",
+          "-Dmutter_tests=false",
+          "-Dinstalled_tests=false",
+          "-Ddocs=false",
+          "-Ddevkit=disabled",
+          "-Dbash_completion=false"
+        ]
+      }
+    }
+  ]
+}

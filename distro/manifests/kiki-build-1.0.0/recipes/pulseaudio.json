@@ -1,0 +1,55 @@
+{
+  "recipes": [
+    {
+      "name": "pulseaudio",
+      "version": "17.0",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-17.0.tar.xz",
+        "sha256": "053794d6671a3e397d849e478a80b82a63cb9d8ca296bd35b73317bb5ceb87b5"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "dbus",
+          "glib",
+          "glibc",
+          "libsndfile",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Ddaemon=false",
+          "-Dclient=true",
+          "-Ddoxygen=false",
+          "-Dman=false",
+          "-Dtests=false",
+          "-Ddatabase=simple",
+          "-Dbluez5=disabled",
+          "-Dgstreamer=disabled",
+          "-Dgtk=disabled",
+          "-Dasyncns=disabled",
+          "-Davahi=disabled",
+          "-Dorc=disabled",
+          "-Dfftw=disabled",
+          "-Djack=disabled",
+          "-Dglib=enabled",
+          "-Dbashcompletiondir=no",
+          "-Dzshcompletiondir=no"
+        ]
+      }
+    }
+  ]
+}

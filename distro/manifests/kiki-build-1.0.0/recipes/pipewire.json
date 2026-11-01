@@ -1,0 +1,29 @@
+{
+  "recipes": [
+    {
+      "name": "pipewire",
+      "version": "1.4.9",
+      "release": "1",
+      "summary": "KIKI native desktop pipewire",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-gnome-native-apps-20261028/pipewire/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

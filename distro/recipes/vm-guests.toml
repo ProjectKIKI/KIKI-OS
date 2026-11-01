@@ -1,0 +1,61 @@
+[[recipe]]
+name = "kiki-vm-tools"
+version = "0.1.0"
+release = 1
+summary = "Read-only KIKI VM integration diagnostics"
+license = "GPL-3.0-or-later"
+tier = "virtualization"
+architectures = ["all"]
+[recipe.source]
+type = "local"
+path = "distro/sources/kiki-vm-tools"
+[recipe.dependencies]
+runtime = ["python", "systemd"]
+build = []
+[recipe.build]
+system = "copy"
+skip_sysroot = true
+
+[[recipe]]
+name = "qemu-guest-agent"
+version = "11.1.3"
+release = 1
+summary = "QEMU guest agent for KVM virtio channels"
+license = "GPL-2.0-or-later"
+tier = "virtualization"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://download.qemu.org/qemu-11.1.3.tar.xz"
+sha256 = "5a8289c7940dc77d3873c81a6c29ba3afe1446fc9d36e77fa1658cdbecb84b22"
+[recipe.dependencies]
+runtime = ["glibc", "glib"]
+build = ["glib"]
+[recipe.build]
+system = "custom"
+configure = []
+compile = ["./configure --prefix=/usr --target-list= --without-default-features --enable-guest-agent --disable-tools --disable-docs --disable-download --disable-rust", "ninja -C build qga/qemu-ga"]
+install = ["install -Dm755 build/qga/qemu-ga ${KI2_DESTDIR}/usr/bin/qemu-ga", "cp -a ${KI2_REPO_ROOT}/distro/sources/qemu-guest-agent/. ${KI2_DESTDIR}/"]
+inputs = ["distro/sources/qemu-guest-agent"]
+
+[[recipe]]
+name = "hyperv-daemons"
+version = "6.1.187"
+release = 2
+summary = "Linux Hyper-V KVP, VSS and optional file-copy integration"
+license = "GPL-2.0-only"
+tier = "virtualization"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.1.187.tar.xz"
+sha256 = "1b6e798aeaa708ca670a426ad5a6c86dc2237b8e59e8822876976c383873642b"
+[recipe.dependencies]
+runtime = ["glibc", "iproute2", "busybox"]
+build = []
+[recipe.build]
+system = "custom"
+configure = []
+compile = ["for name in hv_kvp_daemon hv_vss_daemon hv_fcopy_daemon; do ${CC:-cc} ${CFLAGS} -D_GNU_SOURCE tools/hv/$name.c -o tools/hv/$name ${LDFLAGS}; done"]
+install = ["mkdir -p ${KI2_DESTDIR}/usr/sbin", "for name in hv_kvp_daemon hv_vss_daemon hv_fcopy_daemon; do install -m755 tools/hv/$name ${KI2_DESTDIR}/usr/sbin/$name; done", "cp -a ${KI2_REPO_ROOT}/distro/sources/hyperv-daemons/. ${KI2_DESTDIR}/"]
+inputs = ["distro/sources/hyperv-daemons"]

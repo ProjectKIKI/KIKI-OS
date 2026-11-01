@@ -1,0 +1,33 @@
+{
+  "recipes": [
+    {
+      "name": "kiki-installer-tui",
+      "version": "0.1.0",
+      "release": "26",
+      "summary": "Go-based KIKI installer TUI with execution and progress reporting",
+      "license": "GPL-3.0-or-later",
+      "tier": "kiki",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "cmd/kiki-installer-tui"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": []
+      },
+      "build": {
+        "system": "go",
+        "configure": [],
+        "compile": [
+          "cd ${KI2_SOURCE_DIR} && GO111MODULE=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o kiki-installer-tui ."
+        ],
+        "install": [
+          "mkdir -p ${KI2_DESTDIR}/usr/bin && cp ${KI2_SOURCE_DIR}/kiki-installer-tui ${KI2_DESTDIR}/usr/bin/kiki-installer-tui"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "recipes": [
+    {
+      "name": "cairo",
+      "version": "1.18.4",
+      "release": "2",
+      "summary": "Native 2D graphics with image, document, and FreeType backends",
+      "license": "LGPL-2.1-only OR MPL-1.1",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://cairographics.org/releases/cairo-1.18.4.tar.xz",
+        "file": "cairo-1.18.4.tar.xz",
+        "sha256": "445ed8208a6e4823de1226a74ca319d3600e83f6369f99b14265006599c32ccb"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "fontconfig",
+          "freetype",
+          "glib",
+          "glibc",
+          "libpng",
+          "pixman",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "inputs": [
+          "distro/specs/graphics-cross.ini",
+          "distro/scripts/ki2-target-pkg-config",
+          "distro/scripts/ki2-target-run"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "install -m644 \"${KI2_REPO_ROOT}/distro/specs/graphics-cross.ini\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "sed -i -e \"s|@BUILD@|${KI2_BUILD_DIR}|g\" -e \"s|@REPO@|${KI2_REPO_ROOT}|g\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "meson setup \"${KI2_BUILD_DIR}/cairo\" \"${KI2_SOURCE_DIR}\" --cross-file \"${KI2_BUILD_DIR}/cross.ini\" --prefix=/usr --libdir=lib --buildtype=release --wrap-mode=nofallback -Ddefault_library=shared -Dfontconfig=enabled -Dfreetype=enabled -Dpng=enabled -Dzlib=enabled -Dglib=enabled -Dxlib=disabled -Dxcb=disabled -Dlzo=disabled -Dspectre=disabled -Dsymbol-lookup=disabled -Dtests=disabled -Dgtk_doc=false"
+        ],
+        "compile": [
+          "meson compile -C \"${KI2_BUILD_DIR}/cairo\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" meson install -C \"${KI2_BUILD_DIR}/cairo\"",
+          "install -d \"${KI2_DESTDIR}/usr/share/licenses/cairo\"",
+          "install -m644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_SOURCE_DIR}/COPYING-LGPL-2.1\" \"${KI2_SOURCE_DIR}/COPYING-MPL-1.1\" \"${KI2_DESTDIR}/usr/share/licenses/cairo/\"",
+          "cp -a \"${KI2_SOURCE_DIR}/util\" \"${KI2_DESTDIR}/usr/share/licenses/cairo/util-source-notices\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libcairo.so.2\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

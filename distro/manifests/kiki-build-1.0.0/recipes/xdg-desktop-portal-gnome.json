@@ -1,0 +1,33 @@
+{
+  "recipes": [
+    {
+      "name": "xdg-desktop-portal-gnome",
+      "version": "50.0",
+      "release": "1",
+      "summary": "KIKI native desktop xdg-desktop-portal-gnome",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-gnome-native-apps-20261028/xdg-desktop-portal-gnome/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "libadwaita",
+          "glib",
+          "gnome-desktop",
+          "gsettings-desktop-schemas",
+          "xdg-desktop-portal"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

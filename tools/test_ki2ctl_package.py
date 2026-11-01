@@ -22,6 +22,13 @@ class Ki2CtlPackageTests(unittest.TestCase):
             member = archive.getmember("rootfs/usr/bin/ki2ctl")
             self.assertEqual(member.mode, 0o755)
             self.assertEqual((member.uid, member.gid), (0, 0))
+            for executable in ['ki2-offline-update','ki2-kernel-recovery']:
+                self.assertEqual(archive.getmember('rootfs/usr/libexec/'+executable).mode,0o755)
+            default=json.load(archive.extractfile('rootfs/etc/ki2/repos.d/default.repo'))
+            self.assertEqual(default['name'],'default')
+            self.assertTrue(default['url'].startswith('https://'))
+            public=archive.extractfile('rootfs'+default['verify_key']).read()
+            self.assertTrue(public.startswith(b'-----BEGIN PUBLIC KEY-----'))
             source = archive.extractfile(member).read()
         self.assertEqual(source, (repo / "distro/sources/ki2ctl/usr/bin/ki2ctl").read_bytes())
         with tempfile.TemporaryDirectory(prefix="kiki-packaged-cli-") as tmp:

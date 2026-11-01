@@ -1,0 +1,46 @@
+{
+  "recipes": [
+    {
+      "name": "python-setuptools",
+      "version": "84.0.0",
+      "release": "2",
+      "summary": "Python packaging bootstrap and distutils compatibility runtime",
+      "license": "MIT",
+      "tier": "runtime",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://files.pythonhosted.org/packages/6d/44/f5da03a8ef95d369145c5bb53050e7877c9f3d312e128605fd9504829143/setuptools-84.0.0.tar.gz",
+        "file": "setuptools-84.0.0.tar.gz",
+        "sha256": "f4695c21257f0d9b537ec2692c941d02ee143b7cc1276941349a546573b2ef73"
+      },
+      "dependencies": {
+        "build": [
+          "python"
+        ],
+        "runtime": [
+          "python"
+        ]
+      },
+      "build": {
+        "system": "python",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "install": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3\" \"${KI2_BUILD_DIR}/target-python3\"",
+          "cd \"${KI2_SOURCE_DIR}\" && \"${KI2_BUILD_DIR}/target-python3\" setup.py install --root=\"${KI2_DESTDIR}\" --prefix=/usr --single-version-externally-managed --record=\"${KI2_BUILD_DIR}/setuptools-files.txt\"",
+          "find \"${KI2_DESTDIR}/usr/lib/python3.12\" -type f -name '*.pyc' -delete",
+          "find \"${KI2_DESTDIR}/usr/lib/python3.12\" -depth -type d -name '__pycache__' -empty -delete",
+          "find \"${KI2_DESTDIR}\" -type f -name '*.exe' -delete"
+        ],
+        "env": {
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "PYTHONHASHSEED": "0"
+        }
+      }
+    }
+  ]
+}

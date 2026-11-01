@@ -1,0 +1,47 @@
+{
+  "recipes": [
+    {
+      "name": "pcre2",
+      "version": "10.46",
+      "release": "1",
+      "summary": "Perl-compatible regular expression library for GLib",
+      "license": "BSD-3-Clause",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.46/pcre2-10.46.tar.bz2",
+        "file": "pcre2-10.46.tar.bz2",
+        "sha256": "15fbc5aba6beee0b17aecb04602ae39432393aba1ebd8e39b7cabf7db883299f"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --disable-static --enable-shared --enable-pcre2-8 --disable-pcre2-16 --disable-pcre2-32 --enable-unicode --enable-jit"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "find \"${KI2_DESTDIR}/usr/lib\" -name '*.la' -delete"
+        ],
+        "env": {
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "-Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

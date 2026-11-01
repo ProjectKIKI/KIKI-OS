@@ -1,0 +1,35 @@
+{
+  "recipes": [
+    {
+      "name": "NetworkManager",
+      "version": "1.58.0",
+      "release": "1",
+      "summary": "KIKI native desktop NetworkManager",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-gnome-native-apps-20261028/NetworkManager/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "libsystemd",
+          "polkit",
+          "libndp",
+          "gnutls",
+          "libpsl",
+          "curl",
+          "readline"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

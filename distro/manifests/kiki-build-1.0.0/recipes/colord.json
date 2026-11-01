@@ -1,0 +1,47 @@
+{
+  "recipes": [
+    {
+      "name": "colord",
+      "version": "1.4.8",
+      "release": "3",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/hughsie/colord/archive/e3ee294acdc53d7f191e1090631d75f471e59d82.tar.gz",
+        "sha256": "39cbb7898c8c8f758ef9548bce271f66e6fa2a4033d440575c55e10cb7423924"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "lcms2",
+          "libgudev",
+          "libgusb",
+          "polkit",
+          "systemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Ddaemon=false",
+          "-Dargyllcms_sensor=false",
+          "-Dbash_completion=false",
+          "-Dman=false",
+          "-Ddocs=false",
+          "-Dtests=false",
+          "-Dvapi=false"
+        ]
+      }
+    }
+  ]
+}

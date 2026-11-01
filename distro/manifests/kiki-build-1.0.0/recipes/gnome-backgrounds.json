@@ -1,0 +1,26 @@
+{
+  "recipes": [
+    {
+      "name": "gnome-backgrounds",
+      "version": "50.0",
+      "release": "2",
+      "summary": "KIKI native desktop gnome-backgrounds",
+      "license": "LicenseRef-GNOME-backgrounds",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-gnome-native-apps-20261028/gnome-backgrounds/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": []
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

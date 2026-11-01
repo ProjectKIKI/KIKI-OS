@@ -1,0 +1,48 @@
+{
+  "recipes": [
+    {
+      "name": "sudo",
+      "version": "1.9.15p5",
+      "release": "2",
+      "summary": "Privilege escalation tool for delegated administration",
+      "license": "ISC",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.sudo.ws/dist/sudo-1.9.15p5.tar.gz",
+        "sha256": "558d10b9a1991fb3b9fa7fa7b07ec4405b7aefb5b3cb0b0871dbc81e3a88e558"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "libxcrypt",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--sysconfdir=/etc",
+          "--with-rundir=/run/sudo",
+          "--disable-log-server",
+          "--disable-openssl",
+          "--without-pam",
+          "--without-ldap"
+        ],
+        "configure": [
+          "cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --sysconfdir=/etc --with-rundir=/run/sudo --disable-log-server --disable-openssl --without-pam --without-ldap"
+        ],
+        "compile": [
+          "make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"
+        ],
+        "install": [
+          "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} INSTALL_OWNER= install"
+        ]
+      }
+    }
+  ]
+}

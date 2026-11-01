@@ -2,14 +2,19 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / 'distro/sources/ki2ctl/usr/share/ki2/package-groups.json'
 
 
-def load(path=CATALOG):
-    data = json.loads(Path(path).read_text(encoding='utf-8'))
+def catalog_path():
+    return Path(os.environ.get('KI2_PACKAGE_GROUPS_FILE') or CATALOG)
+
+
+def load(path=None):
+    data = json.loads(Path(path if path is not None else catalog_path()).read_text(encoding='utf-8'))
     if data.get('schema') != 'ki2-package-groups-v1':
         raise ValueError('Unsupported installer catalogue')
     for section in ('groups', 'profiles'):
@@ -50,9 +55,11 @@ def expand(data, selected):
 
 def media_catalog(index, data=None):
     import ki2media
-    data = data or load()
+    explicit = data is not None
+    data = data if explicit else load()
     entries = {p['name']: p for p in index['packages']}
-    result = dict(schema='kiki-installer-media-v1', catalog_sha256=hashlib.sha256(CATALOG.read_bytes()).hexdigest())
+    content = (json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2)+'\n').encode('utf-8') if explicit else catalog_path().read_bytes()
+    result = dict(schema='kiki-installer-media-v1', catalog_sha256=hashlib.sha256(content).hexdigest())
     for section in ('profiles', 'groups'):
         result[section] = []
         for item in data[section]:

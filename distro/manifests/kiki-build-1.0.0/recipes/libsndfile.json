@@ -1,0 +1,53 @@
+{
+  "recipes": [
+    {
+      "name": "libsndfile",
+      "version": "1.2.2",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libsndfile/libsndfile/releases/download/1.2.2/libsndfile-1.2.2.tar.xz",
+        "sha256": "3799ca9924d3125038880367bf1468e53a1b7e3686a934f098b7e1d286cdb80e"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "configure_options": [
+          "-DCMAKE_SYSTEM_NAME=Linux",
+          "-DCMAKE_SYSROOT=/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY",
+          "-DCMAKE_CROSSCOMPILING_EMULATOR=/bin/sh;/mnt/e/dev/KIKI-OS/dist/ki2/stage3-6.1.187-gnome50-candidate-20261017/inputs/distro/scripts/ki2-target-run",
+          "-DCMAKE_INSTALL_PREFIX=/usr",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_SKIP_RPATH=ON",
+          "-DBUILD_SHARED_LIBS=ON",
+          "-DBUILD_TESTING=OFF",
+          "-DBUILD_PROGRAMS=OFF",
+          "-DBUILD_EXAMPLES=OFF",
+          "-DENABLE_EXTERNAL_LIBS=OFF",
+          "-DENABLE_MPEG=OFF",
+          "-DINSTALL_MANPAGES=OFF",
+          "-DENABLE_CPACK=OFF"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "recipes": [
+    {
+      "name": "iso-codes",
+      "version": "4.18.0",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://salsa.debian.org/iso-codes-team/iso-codes/-/archive/v4.18.0/iso-codes-v4.18.0.tar.gz",
+        "sha256": "511f67bf4b51aa77f17c45adbff533242b50f1e370fe49a5706b6341902fac87"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": []
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu"
+        ]
+      }
+    }
+  ]
+}

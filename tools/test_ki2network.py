@@ -31,6 +31,19 @@ class NetworkManagerTargetTests(unittest.TestCase):
         self.assertEqual(data['ipv4']['method'],'disabled')
         self.assertEqual(data['ipv6']['method'],'disabled')
 
+    def test_tui_default_interface_globs_use_nm_match(self):
+        data=configparser.ConfigParser(interpolation=None)
+        data.read_string(ki2network.render(interface='en* eth*'))
+        self.assertEqual(data['match']['interface-name'],'en*;eth*;')
+        self.assertNotIn('interface-name',data['connection'])
+        self.assertEqual(data['ipv4']['method'],'auto')
+
+    def test_explicit_mac_takes_precedence_over_patterns(self):
+        data=configparser.ConfigParser(interpolation=None)
+        data.read_string(ki2network.render(interface='en* eth*',mac='00:15:5d:01:03:55'))
+        self.assertNotIn('match',data)
+        self.assertEqual(data['ethernet']['mac-address'],'00:15:5d:01:03:55')
+
     def test_ipv6_ra_can_be_disabled(self):
         self.assertEqual(self.parse(ipv6=False)['ipv6']['method'],'disabled')
 
@@ -45,7 +58,7 @@ class NetworkManagerTargetTests(unittest.TestCase):
             self.assertIn('NTP=time.example.test',(root/'etc/systemd/timesyncd.conf.d/20-kiki-network.conf').read_text())
 
     def test_rejects_invalid_values_before_writing(self):
-        for options in [dict(interface='eth0\n[ipv4]'),dict(interface='eth0',dns='not-an-ip'),
+        for options in [dict(interface='eth0\n[ipv4]'),dict(interface='en*\neth*'),dict(interface='eth0;*'),dict(interface=''),dict(interface='eth0',dns='not-an-ip'),
                         dict(interface='eth0',mac='bad'),dict(interface='eth0',mode='static',address='::1/64')]:
             with self.subTest(options=options),self.assertRaises(ValueError):ki2network.render(**options)
 

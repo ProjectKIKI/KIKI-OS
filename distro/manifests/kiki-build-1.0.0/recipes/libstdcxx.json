@@ -1,0 +1,53 @@
+{
+  "recipes": [
+    {
+      "name": "libstdcxx",
+      "version": "11.5.0",
+      "release": "2",
+      "summary": "GNU C++ standard library runtime built for KIKI OS",
+      "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/gcc/gcc-11.5.0/gcc-11.5.0.tar.xz",
+        "file": "gcc-11.5.0.tar.xz",
+        "sha256": "a6e21868ead545cf87f0c01f84276e4b5281d672098591c1c896241f09363478"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "prepare": [
+          "ln -sf gthr-posix.h \"${KI2_SOURCE_DIR}/libgcc/gthr-default.h\""
+        ],
+        "configure": [
+          "cd \"${KI2_BUILD_DIR}\" && \"${KI2_SOURCE_DIR}/libstdc++-v3/configure\" --prefix=/usr --libdir=/usr/lib --disable-multilib --disable-nls --disable-libstdcxx-pch --enable-libstdcxx-threads=yes --enable-shared --disable-static",
+          "sed -i 's/-lgcc_s/-lgcc -lgcc_eh/g' \"${KI2_BUILD_DIR}/libtool\""
+        ],
+        "compile": [
+          "make -C \"${KI2_BUILD_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "install -Dm755 \"${KI2_BUILD_DIR}/src/.libs/libstdc++.so.6.0.29\" \"${KI2_DESTDIR}/usr/lib/libstdc++.so.6.0.29\"",
+          "ln -s libstdc++.so.6.0.29 \"${KI2_DESTDIR}/usr/lib/libstdc++.so.6\"",
+          "ln -s libstdc++.so.6 \"${KI2_DESTDIR}/usr/lib/libstdc++.so\""
+        ],
+        "env": {
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "CXXFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "-Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

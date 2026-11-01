@@ -1,0 +1,31 @@
+{
+  "recipes": [
+    {
+      "name": "gweather-locations",
+      "version": "2026.2",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gweather-locations/2026/gweather-locations-2026.2.tar.xz",
+        "sha256": "e7570a3661e0a752a06387b2032585cf588fc56770b1f9f39f1a55d17b2835fe"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": []
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": []
+      }
+    }
+  ]
+}

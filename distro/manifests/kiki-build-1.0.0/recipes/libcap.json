@@ -1,0 +1,30 @@
+{
+  "recipes": [
+    {
+      "name": "libcap",
+      "version": "2.70",
+      "release": "1",
+      "summary": "POSIX capabilities library",
+      "license": "BSD-3-Clause OR GPL-2.0-only",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.70.tar.xz",
+        "sha256": "23a6ef8aadaf1e3e875f633bb2d116cfef8952dba7bc7c569b13458e1952b30f"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "attr"
+        ]
+      },
+      "build": {
+        "system": "make"
+      }
+    }
+  ]
+}

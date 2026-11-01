@@ -1,0 +1,78 @@
+{
+  "recipes": [
+    {
+      "name": "libgudev",
+      "version": "238",
+      "release": "3",
+      "summary": "GObject device discovery library and introspection data for GNOME",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libgudev/238/libgudev-238.tar.xz",
+        "file": "libgudev-238.tar.xz",
+        "sha256": "61266ab1afc9d73dbc60a8b2af73e99d2fdff47d99544d085760e4fa667b5dd1"
+      },
+      "dependencies": {
+        "build": [
+          "glib",
+          "gobject-introspection",
+          "systemd",
+          "linux-headers"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "gobject-introspection",
+          "systemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "sysroot_exclude": [],
+        "configure_options": [
+          "-Dintrospection=enabled",
+          "-Dgtk_doc=false",
+          "-Dtests=disabled",
+          "-Dvapi=disabled"
+        ],
+        "inputs": [
+          "distro/specs/graphics-cross.ini",
+          "distro/scripts/ki2-target-pkg-config",
+          "distro/scripts/ki2-target-run",
+          "distro/scripts/ki2-target-python3",
+          "distro/scripts/ki2-target-g-ir-scanner",
+          "distro/scripts/ki2-target-g-ir-compiler"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3\" \"${KI2_BUILD_DIR}/target-python3\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-scanner\" \"${KI2_BUILD_DIR}/tools/g-ir-scanner\"",
+          "sed -i \"1c #!/usr/bin/env ${KI2_BUILD_DIR}/target-python3\" \"${KI2_SYSROOT}/usr/bin/g-ir-scanner\"",
+          "install -m755 \"${KI2_SYSROOT}/usr/bin/g-ir-compiler\" \"${KI2_BUILD_DIR}/g-ir-compiler.real\"",
+          "install -m755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-compiler\" \"${KI2_SYSROOT}/usr/bin/g-ir-compiler\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "install -m644 \"${KI2_REPO_ROOT}/distro/specs/graphics-cross.ini\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "sed -i -e \"s|@BUILD@|${KI2_BUILD_DIR}|g\" -e \"s|@REPO@|${KI2_REPO_ROOT}|g\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "PATH=\"${KI2_BUILD_DIR}/tools:$PATH\" meson setup \"${KI2_BUILD_DIR}/gudev\" \"${KI2_SOURCE_DIR}\" --cross-file \"${KI2_BUILD_DIR}/cross.ini\" --prefix=/usr --libdir=lib --buildtype=release --wrap-mode=nofallback -Dintrospection=enabled -Dgtk_doc=false -Dtests=disabled -Dvapi=disabled"
+        ],
+        "compile": [
+          "meson compile -C \"${KI2_BUILD_DIR}/gudev\" -j \"${KI2_JOBS}\"",
+          "meson test -C \"${KI2_BUILD_DIR}/gudev\" --print-errorlogs --no-rebuild"
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" meson install -C \"${KI2_BUILD_DIR}/gudev\""
+        ],
+        "env": {
+          "KI2_USE_TARGET_LOADER": "1",
+          "GI_CROSS_LAUNCHER": "/bin/sh ${KI2_REPO_ROOT}/distro/scripts/ki2-target-run",
+          "KI2_SYSROOT_LIBRARY_PATH": "${KI2_BUILD_DIR}/gudev/gudev:${KI2_SYSROOT_LIBRARY_PATH}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

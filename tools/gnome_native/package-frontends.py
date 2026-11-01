@@ -48,12 +48,10 @@ for name,dest in roots.items():
     records[name]=dict(file=str(output),sha256=ki2build.file_sha256(output),release=recipe.release)
     if name=='kiki-installer-gtk':ki2bootiso.verify_installer_display_name(output)
 dest=a.work/'desktop-defaults-dest'
-shutil.copytree(repo/'distro/sources/kiki-desktop-defaults',dest,symlinks=True,dirs_exist_ok=True)
-wants=dest/'usr/lib/systemd/user/graphical-session-pre.target.wants';wants.mkdir(parents=True,exist_ok=True)
-link=wants/'xdg-user-dirs.service'
-if not link.is_symlink():link.symlink_to('../xdg-user-dirs.service')
-assert a.os.readlink(link)=='../xdg-user-dirs.service'
-a.package('kiki-desktop-defaults','0.1.0',dest,['gnome-settings-daemon','gnome-control-center','nautilus','gnome-console','gnome-backgrounds','xdg-desktop-portal-gnome','xdg-user-dirs','ibus-hangul','gsettings-desktop-schemas'],license='GPL-3.0-or-later',release='4')
+from ki2desktopdefaults import stage
+stage(repo/'distro/sources/kiki-desktop-defaults',dest)
+defaults=ki2build.load_recipes(repo/'distro/recipes')['kiki-desktop-defaults']
+a.package(defaults.name,defaults.version,dest,defaults.dependencies['runtime'],license=defaults.license,release=defaults.release)
 # Use the native GNOME keyboard panel for the engine's setup action.
 baseline=repo/'dist/ki2/desktop-installer-20261027'
 record=next(r for r in json.loads((baseline/'repo/index.x86_64.json').read_text())['packages'] if r['name']=='ibus-hangul')

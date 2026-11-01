@@ -1,0 +1,50 @@
+{
+  "recipes": [
+    {
+      "name": "duktape",
+      "version": "2.7.0",
+      "release": "1",
+      "summary": "Embedded JavaScript engine for authorization rules",
+      "license": "MIT",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://duktape.org/duktape-2.7.0.tar.xz",
+        "file": "duktape-2.7.0.tar.xz",
+        "sha256": "90f8d2fa8b5567c6899830ddef2c03f3c27960b11aca222fa17aa7ac613c2890"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "custom",
+        "compile": [
+          "cc $CFLAGS -shared -fPIC $LDFLAGS -Wl,-soname,libduktape.so.207 -Wl,-z,defs -o \"${KI2_BUILD_DIR}/libduktape.so.207.20700\" \"${KI2_SOURCE_DIR}/src/duktape.c\" -lm",
+          "make -C \"${KI2_SOURCE_DIR}\" -f Makefile.sharedlibrary INSTALL_PREFIX=/usr LIBDIR=/lib duktape.pc"
+        ],
+        "install": [
+          "install -Dm755 \"${KI2_BUILD_DIR}/libduktape.so.207.20700\" \"${KI2_DESTDIR}/usr/lib/libduktape.so.207.20700\"",
+          "ln -s libduktape.so.207.20700 \"${KI2_DESTDIR}/usr/lib/libduktape.so.207\"",
+          "ln -s libduktape.so.207.20700 \"${KI2_DESTDIR}/usr/lib/libduktape.so\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/src/duktape.h\" \"${KI2_DESTDIR}/usr/include/duktape.h\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/src/duk_config.h\" \"${KI2_DESTDIR}/usr/include/duk_config.h\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/duktape.pc\" \"${KI2_DESTDIR}/usr/lib/pkgconfig/duktape.pc\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/LICENSE.txt\" \"${KI2_DESTDIR}/usr/share/licenses/duktape/LICENSE.txt\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libduktape.so.207\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -Os -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

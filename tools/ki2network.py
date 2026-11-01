@@ -9,7 +9,11 @@ import uuid
 def render(*, interface, mac='', mode='dhcp', address='', gateway='', dns='', ipv6=True):
     if mode not in ('dhcp', 'static', 'disabled'):
         raise ValueError('unsupported network mode')
-    if not re.fullmatch(r'[A-Za-z0-9_.:-]{1,15}', interface):
+    # InstallPlan accepts networkd-style whitespace-separated interface globs.
+    # Preserve that selection with NetworkManager's match setting as well.
+    patterns=interface.split()
+    if (any(c in interface for c in '\r\n\x00') or not 1<=len(patterns)<=8 or
+            not all(re.fullmatch(r'[A-Za-z0-9_.:*?-]{1,15}',p) for p in patterns)):
         raise ValueError('invalid network interface')
     if mac and not re.fullmatch(r'(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}', mac):
         raise ValueError('invalid network MAC address')
@@ -23,7 +27,11 @@ def render(*, interface, mac='', mode='dhcp', address='', gateway='', dns='', ip
     lines=['[connection]','id=KIKI Wired',
            'uuid='+str(uuid.uuid5(uuid.NAMESPACE_URL,'kiki-wired:'+mac.lower() if mac else 'kiki-wired:'+interface)),
            'type=ethernet','autoconnect='+str(active).lower()]
-    if not mac:lines.append('interface-name='+interface)
+    if not mac:
+        if len(patterns)==1 and not any(c in patterns[0] for c in '*?'):
+            lines.append('interface-name='+patterns[0])
+        else:
+            lines+=['','[match]','interface-name='+';'.join(patterns)+';']
     lines+=['','[ethernet]']
     if mac:lines.append('mac-address='+mac.lower())
     lines+=['','[ipv4]','method='+dict(dhcp='auto',static='manual',disabled='disabled')[mode]]

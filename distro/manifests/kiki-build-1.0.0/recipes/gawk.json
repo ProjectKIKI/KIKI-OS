@@ -1,0 +1,28 @@
+{
+  "recipes": [
+    {
+      "name": "gawk",
+      "version": "5.3.0",
+      "release": "3",
+      "summary": "KIKI native desktop gawk",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-desktop-apps-20261027/ownership-gawk"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

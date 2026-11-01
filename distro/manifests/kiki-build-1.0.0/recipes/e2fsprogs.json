@@ -1,0 +1,30 @@
+{
+  "recipes": [
+    {
+      "name": "e2fsprogs",
+      "version": "1.47.1",
+      "release": "2",
+      "summary": "Ext2/3/4 filesystem utilities",
+      "license": "GPL-2.0-only AND LGPL-2.0-or-later",
+      "tier": "storage",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://mirrors.edge.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v1.47.1/e2fsprogs-1.47.1.tar.xz",
+        "sha256": "5a33dc047fd47284bca4bb10c13cfe7896377ae3d01cb81a05d406025d99e0d1"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "util-linux"
+        ]
+      },
+      "build": {
+        "system": "gnu"
+      }
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "recipes": [
+    {
+      "name": "geocode-glib",
+      "version": "3.26.4",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/geocode-glib/3.26/geocode-glib-3.26.4.tar.xz",
+        "sha256": "2d9a6826d158470449a173871221596da0f83ebdcff98b90c7049089056a37aa"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "json-glib",
+          "libsoup"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dsoup2=false",
+          "-Denable-gtk-doc=false",
+          "-Denable-installed-tests=false",
+          "-Denable-introspection=true"
+        ]
+      }
+    }
+  ]
+}

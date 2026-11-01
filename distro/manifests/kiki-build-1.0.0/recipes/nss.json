@@ -1,0 +1,52 @@
+{
+  "recipes": [
+    {
+      "name": "nss",
+      "version": "3.112",
+      "release": "2",
+      "summary": "Native Mozilla support library for GNOME",
+      "license": "MPL-2.0",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://archive.mozilla.org/pub/firefox/releases/140.1.0esr/source/firefox-140.1.0esr.source.tar.xz",
+        "sha256": "d15c65d790e0c371b5c95332141b1bdeb29fefc27f852d22a5f542b6d1bc1922"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "nspr",
+          "sqlite",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "BUILD_OPT=1",
+          "USE_64=1",
+          "NSS_ENABLE_WERROR=0",
+          "NSS_DISABLE_GTESTS=1",
+          "NSS_USE_SYSTEM_SQLITE=1",
+          "USE_SYSTEM_ZLIB=1",
+          "ZLIB_LIBS=-lz",
+          "NSPR_INCLUDE_DIR=/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/include/nspr",
+          "NSPR_LIB_DIR=/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib",
+          "SQLITE_INCLUDE_DIR=/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/include",
+          "SQLITE_LIB_DIR=/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib",
+          "NSINSTALL=/home/tang/kiki-build/gnome50-session-20261017/desktop-build/nspr/build/config/nsinstall",
+          "CC=gcc --sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 --sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk -B/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64/ -B/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64/ -L/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib -L/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64 -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64 -L/home/tang/kiki-build/gnome50-session-20261017/sdk/lib -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/lib -L/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64 -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64 -Wl,-z,relro,-z,now",
+          "CXX=g++ --sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 --sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk -B/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64/ -B/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64/ -L/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib -L/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64 -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64 -L/home/tang/kiki-build/gnome50-session-20261017/sdk/lib -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/lib -L/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64 -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64 -Wl,-z,relro,-z,now",
+          "HOST_CC=gcc",
+          "HOST_CXX=g++"
+        ]
+      }
+    }
+  ]
+}

@@ -5,6 +5,7 @@ from unittest.mock import patch
 import tempfile
 import ki2build
 import ki2bootiso
+import ki2iso_preserved
 from pathlib import Path
 try:
     import tomllib
@@ -12,6 +13,18 @@ except ModuleNotFoundError:
     import tomli as tomllib
 
 class IndependentKernelPinTests(unittest.TestCase):
+    def test_preserved_backend_uses_verified_snapshot_kernel(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'linux-new.ki2').write_bytes(b'new kernel')
+            original=unittest.mock.Mock(return_value=root/'vmlinuz')
+            guard=ki2iso_preserved.kernel_guard(original,'linux-new.ki2','expected',lambda p:'expected',lambda p:{'name':'linux','errors':[]})
+            self.assertEqual(guard(root,root,root,pinned_filename='linux-old.ki2'),root/'vmlinuz')
+            original.assert_called_once_with(root,root,root,pinned_filename='linux-new.ki2')
+            original.reset_mock()
+            bad=ki2iso_preserved.kernel_guard(original,'linux-new.ki2','expected',lambda p:'tampered',lambda p:{'name':'linux','errors':[]})
+            with self.assertRaisesRegex(ValueError,'SHA mismatch'):bad(root,root,root)
+            original.assert_not_called()
+
     def test_missing_pinned_package_never_falls_back(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

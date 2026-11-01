@@ -1,0 +1,27 @@
+[[recipe]]
+name = "kiki-admin"
+version = "0.1.0"
+release = 6
+summary = "Native GNOME administrator for KIKI system health, KI2 and recovery"
+license = "GPL-3.0-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+
+[recipe.source]
+type = "local"
+path = "cmd/kiki-admin"
+inputs = ["distro/sources/kiki-admin"]
+
+[recipe.dependencies]
+build = ["pkgconf", "libadwaita", "json-glib", "linux-headers"]
+runtime = ["libadwaita", "json-glib", "ki2ctl", "python", "systemd", "util-linux", "polkit", "hicolor-icon-theme"]
+
+[recipe.build]
+system = "custom"
+configure = []
+compile = ['make -C "${KI2_SOURCE_DIR}" CC=cc CFLAGS="--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -Wall -Wextra -Werror -fstack-protector-strong" LDFLAGS="--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"']
+install = [
+  'install -Dm755 "${KI2_SOURCE_DIR}/kiki-admin" "${KI2_DESTDIR}/usr/bin/kiki-admin"',
+  'cp -a "${KI2_REPO_ROOT}/distro/sources/kiki-admin/." "${KI2_DESTDIR}/"',
+  'chmod 755 "${KI2_DESTDIR}/usr/bin/kiki-adminctl" "${KI2_DESTDIR}/usr/libexec/kiki-admin-helper" "${KI2_DESTDIR}/usr/libexec/kiki-admin-backend.py"',
+]

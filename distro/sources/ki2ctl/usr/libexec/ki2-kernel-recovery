@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Preserve the installed KIKI ESP kernel and add a verified GRUB recovery entry."""
+import argparse
+import contextlib
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import struct
+import subprocess
+import uuid
+import zlib
+
+BEGIN='# KIKI VERIFIED RECOVERY BEGIN'
+END='# KIKI VERIFIED RECOVERY END'
+
+def sha(path):
+    h=hashlib.sha256()
+    with path.open('rb') as f:
+        for b in iter(lambda:f.read(1024*1024),b''):h.update(b)
+    return h.hexdigest()
+
+def atomic(path,data):
+    temporary=path.with_name('.'+path.name+'.'+uuid.uuid4().hex)
+    with temporary.open('wb') as out:out.write(data);out.flush();os.fsync(out.fileno())
+    temporary.replace(path)
+
+def prepare(esp,root_device):
+    if not re.fullmatch(r'/dev/[A-Za-z0-9/_=.-]+',root_device):raise ValueError('unsupported root device')
+    boot=esp/'boot';config=boot/'grub/kiki-installed.cfg'
+    if not config.is_file() or not (esp/'EFI/BOOT/BOOTX64.EFI').is_file():raise ValueError('not an installed KIKI ESP')
+    files={name:sha(boot/name) for name in ['vmlinuz-kiki','initramfs-kiki.img']}
+    identifier=hashlib.sha256(json.dumps(files,sort_keys=True).encode()).hexdigest()[:16]
+    target=boot/'ki2-recovery'/identifier;target.mkdir(parents=True,exist_ok=True)
+    for name,h in files.items():
+        p=target/name
+        if p.exists() and sha(p)!=h:raise ValueError('existing recovery bytes changed')
+        if not p.exists():atomic(p,(boot/name).read_bytes())
+    before=config.read_text()
+    if not (target/'original.cfg').exists():atomic(target/'original.cfg',before.encode())
+    clean=re.sub(re.escape(BEGIN)+r'.*?'+re.escape(END)+r'\n?', '',before,flags=re.S)
+    entry=f"\n{BEGIN}\nmenuentry 'KIKI OS previous kernel (verified)' --id kiki-recovery {{\n    linux /boot/ki2-recovery/{identifier}/vmlinuz-kiki console=tty0 loglevel=4 root={root_device} rw init=/init kiki.boot=installed kiki.recovery={identifier}\n    initrd /boot/ki2-recovery/{identifier}/initramfs-kiki.img\n}}\n{END}\n"
+    manifest={'schema':'ki2-kernel-recovery-v1','id':identifier,'root_device':root_device,'files':files}
+    atomic(target/'manifest.json',(json.dumps(manifest,indent=2)+'\n').encode())
+    atomic(config,(clean+entry).encode());atomic(boot/'ki2-recovery/current.json',(json.dumps(manifest)+'\n').encode())
+    os.sync();return manifest
+
+def check(esp):
+    manifest=json.loads((esp/'boot/ki2-recovery/current.json').read_text())
+    identifier=manifest['id']
+    if not re.fullmatch('[a-f0-9]{16}',identifier):raise ValueError('invalid recovery ID')
+    for name,h in manifest['files'].items():
+        if name not in {'vmlinuz-kiki','initramfs-kiki.img'} or sha(esp/'boot/ki2-recovery'/identifier/name)!=h:raise ValueError('recovery checksum mismatch')
+    text=(esp/'boot/grub/kiki-installed.cfg').read_text()
+    if '--id kiki-recovery' not in text or 'kiki.recovery='+identifier not in text:raise ValueError('recovery boot entry missing')
+    return manifest
+
+def select(esp,recovery):
+    manifest=check(esp);path=esp/'boot/grub/kiki-installed.cfg';text=path.read_text()
+    text,count=re.subn(r'^set default=.*$',"set default='kiki-recovery'" if recovery else 'set default=0',text,count=1,flags=re.M)
+    if count!=1:raise ValueError('GRUB default entry unavailable')
+    atomic(path,text.encode());os.sync();return manifest
+
+def gpt_esp_numbers(disk,sector_size):
+    if sector_size not in {512,4096}:raise ValueError('unsupported disk sector size')
+    with Path(disk).open('rb') as stream:
+        stream.seek(sector_size);header=bytearray(stream.read(sector_size))
+        if header[:8]!=b'EFI PART':raise ValueError('installed root disk must use GPT')
+        size=struct.unpack_from('<I',header,12)[0];crc=struct.unpack_from('<I',header,16)[0]
+        if not 92<=size<=sector_size:raise ValueError('invalid GPT header size')
+        struct.pack_into('<I',header,16,0)
+        if zlib.crc32(header[:size])!=crc:raise ValueError('GPT header checksum mismatch')
+        lba,count,entry_size,array_crc=struct.unpack_from('<QIII',header,72)
+        if not 1<=count<=4096 or not 128<=entry_size<=4096 or count*entry_size>16*1024*1024:raise ValueError('invalid GPT partition bounds')
+        stream.seek(lba*sector_size);entries=stream.read(count*entry_size)
+        if len(entries)!=count*entry_size or zlib.crc32(entries)!=array_crc:raise ValueError('GPT partition checksum mismatch')
+    esp=uuid.UUID('c12a7328-f81f-11d2-ba4b-00a0c93ec93b').bytes_le
+    return [i+1 for i in range(count) if entries[i*entry_size:i*entry_size+16]==esp]
+
+
+@contextlib.contextmanager
+def mounted_esp(explicit=None):
+    if explicit:yield Path(explicit);return
+    match=re.search(r'(?:^| )root=(/dev/[^ ]+)',Path('/proc/cmdline').read_text())
+    if not match:raise ValueError('installed root partition is not identified')
+    device=Path(match[1]).resolve();part=Path('/sys/class/block')/device.name
+    if not (part/'partition').is_file():raise ValueError('root must be a disk partition')
+    parent=part.resolve().parent;sector_size=int((parent/'queue/logical_block_size').read_text())
+    numbers=gpt_esp_numbers(Path('/dev')/parent.name,sector_size)
+    choices=[p for p in parent.iterdir() if (p/'partition').is_file() and int((p/'partition').read_text()) in numbers]
+    if len(choices)!=1:raise ValueError('one ESP on the root disk is required')
+    esp_device=Path('/dev')/choices[0].name;stat=esp_device.stat();identity=str(os.major(stat.st_rdev))+':'+str(os.minor(stat.st_rdev))
+    for line in Path('/proc/self/mountinfo').read_text().splitlines():
+        fields=line.split()
+        if fields[2]==identity:
+            yield Path(re.sub(r'\\([0-7]{3})',lambda m:chr(int(m[1],8)),fields[4]));return
+    folder=Path('/run/ki2-recovery-esp');folder.mkdir(mode=0o700,exist_ok=True)
+    subprocess.run(['mount','-t','vfat','-o','rw,nosuid,nodev,noexec',str(esp_device),str(folder)],check=True)
+    try:yield folder
+    finally:subprocess.run(['umount',str(folder)],check=True)
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action',choices=['prepare','check','select-recovery','select-primary','commit'])
+    parser.add_argument('--esp-root',type=Path);parser.add_argument('--root-device')
+    args=parser.parse_args()
+    if os.geteuid()!=0:raise SystemExit('root is required')
+    with mounted_esp(args.esp_root) as esp:
+        if args.action=='prepare':
+            root=args.root_device or re.search(r'(?:^| )root=(/dev/[^ ]+)',Path('/proc/cmdline').read_text()).group(1)
+            result=prepare(esp,root)
+        elif args.action=='check':result=check(esp)
+        elif args.action.startswith('select-'):result=select(esp,args.action=='select-recovery')
+        else:
+            result=check(esp)
+            # Keep the previous ESP files and menu entry until the new kernel has booted successfully.
+            for name in ['vmlinuz-kiki','initramfs-kiki.img']:atomic(esp/'boot'/name,Path('/boot',name).read_bytes())
+            os.sync()
+        print(json.dumps(result))
+
+if __name__=='__main__':main()

@@ -1,0 +1,17 @@
+{
+  "kiki-installer-gtk": {
+    "file": "/tmp/kiki-gnome-native-apps-20261028/packages/kiki-installer-gtk-0.1.0-28.x86_64.ki2",
+    "sha256": "efdcbea8d944cdece14d4000237bde0e51c6b2ed091858b86da23452ba7c7814",
+    "release": "28"
+  },
+  "kiki-installer-tui": {
+    "file": "/tmp/kiki-gnome-native-apps-20261028/packages/kiki-installer-tui-0.1.0-26.x86_64.ki2",
+    "sha256": "7313f9e173ef1bc9aec02b6da5e76eedd688923061641326ad671a6f96f882fa",
+    "release": "26"
+  },
+  "ki2ctl": {
+    "file": "/tmp/kiki-gnome-native-apps-20261028/packages/ki2ctl-0.1.0-37.x86_64.ki2",
+    "sha256": "c61fe5ce809a03e58a6cb4460845e22a4600ed79fad67a36917f92fd72093b69",
+    "release": "37"
+  }
+}

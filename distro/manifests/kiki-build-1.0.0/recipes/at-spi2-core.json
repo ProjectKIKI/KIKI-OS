@@ -1,0 +1,44 @@
+{
+  "recipes": [
+    {
+      "name": "at-spi2-core",
+      "version": "2.60.6",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/at-spi2-core/2.60/at-spi2-core-2.60.6.tar.xz",
+        "sha256": "a89b64a8b217a8042bdf0e35cbfab629ceee35640dba75df578afde9aa789d57"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "dbus",
+          "glib",
+          "glibc",
+          "libsystemd",
+          "libxml2",
+          "systemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dx11=disabled",
+          "-Ddocs=false",
+          "-Dintrospection=enabled",
+          "-Ddefault_bus=dbus-daemon",
+          "-Dgtk2_atk_adaptor=false"
+        ]
+      }
+    }
+  ]
+}

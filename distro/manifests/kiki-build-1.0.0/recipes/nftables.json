@@ -1,0 +1,88 @@
+{
+  "recipes": [
+    {
+      "name": "nftables",
+      "version": "1.1.6",
+      "release": "5",
+      "summary": "nft userspace firewall package",
+      "license": "GPL-2.0-only",
+      "tier": "network",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.netfilter.org/projects/nftables/files/nftables-1.1.6.tar.xz",
+        "file": "nftables-1.1.6.tar.xz",
+        "sha256": "372931bda8556b310636a2f9020adc710f9bab66f47efe0ce90bff800ac2530c"
+      },
+      "dependencies": {
+        "build": [
+          "gmp",
+          "jansson",
+          "readline",
+          "libmnl",
+          "libnftnl",
+          "iptables"
+        ],
+        "runtime": [
+          "glibc",
+          "gmp",
+          "jansson",
+          "readline",
+          "libmnl",
+          "libnftnl",
+          "iptables"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure_options": [
+          "--disable-debug",
+          "--with-cli=readline",
+          "--with-json",
+          "--with-xtables"
+        ],
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --sbindir=/usr/sbin --sysconfdir=/etc --disable-debug --with-cli=readline --with-json --with-xtables --with-unitdir=/usr/lib/systemd/system"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/py/src/__init__.py\" \"${KI2_DESTDIR}/usr/lib/python3.12/site-packages/nftables/__init__.py\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/py/src/nftables.py\" \"${KI2_DESTDIR}/usr/lib/python3.12/site-packages/nftables/nftables.py\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/py/src/schema.json\" \"${KI2_DESTDIR}/usr/lib/python3.12/site-packages/nftables/schema.json\"",
+          "find \"${KI2_DESTDIR}/usr/lib\" -name '*.la' -delete"
+        ],
+        "env": {
+          "CPPFLAGS": "${KI2_SYSROOT_CPPFLAGS}",
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        },
+        "stub": {
+          "services": [
+            {
+              "name": "nftables.service",
+              "description": "nftables firewall rules",
+              "exec_start": "/usr/sbin/nft -f /etc/nftables.conf"
+            }
+          ],
+          "files": [
+            {
+              "path": "/etc/nftables.conf",
+              "lines": [
+                "# KIKI Stage 3 nftables baseline.",
+                "flush ruleset"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

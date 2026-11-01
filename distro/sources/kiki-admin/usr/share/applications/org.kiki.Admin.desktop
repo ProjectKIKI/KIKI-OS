@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=KIKI Administrator
+Name[ko]=KIKI 관리자
+Comment=System health, KI2 packages, diagnostics and recovery
+Comment[ko]=시스템 상태, KI2 패키지, 진단 및 복구
+Exec=kiki-admin
+Icon=org.kiki.Admin
+Terminal=false
+Categories=System;Settings;
+Keywords=KI2;packages;logs;services;패키지;로그;복구;
+StartupNotify=true

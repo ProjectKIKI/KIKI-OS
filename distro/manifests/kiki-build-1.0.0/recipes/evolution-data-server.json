@@ -1,0 +1,84 @@
+{
+  "recipes": [
+    {
+      "name": "evolution-data-server",
+      "version": "3.60.2",
+      "release": "4",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/evolution-data-server/3.60/evolution-data-server-3.60.2.tar.xz",
+        "sha256": "2084dbdac396371b365d504c1ff45866ba8dca2f1252e5da1d3d9c33abdc1286"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "icu",
+          "json-glib",
+          "libgcc",
+          "libical",
+          "libsecret",
+          "libsoup",
+          "libstdcxx",
+          "libxml2",
+          "nspr",
+          "nss",
+          "sqlite",
+          "util-linux",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "configure_options": [
+          "-DCMAKE_SYSTEM_NAME=Linux",
+          "-DCMAKE_SYSROOT=/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY",
+          "-DCMAKE_CROSSCOMPILING_EMULATOR=/bin/sh;/mnt/e/dev/KIKI-OS/dist/ki2/stage3-6.1.187-gnome50-candidate-20261017/inputs/distro/scripts/ki2-target-run",
+          "-DCMAKE_INSTALL_PREFIX=/usr",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_SKIP_RPATH=ON",
+          "-DLIB_INSTALL_DIR=/usr/lib",
+          "-DCMAKE_SKIP_RPATH=OFF",
+          "-DCMAKE_INSTALL_RPATH=/usr/lib/evolution-data-server",
+          "-DSYSCONF_INSTALL_DIR=/etc",
+          "-DENABLE_GTK=OFF",
+          "-DENABLE_GTK4=OFF",
+          "-DENABLE_GOA=OFF",
+          "-DENABLE_UOA=OFF",
+          "-DENABLE_OAUTH2_WEBKITGTK=OFF",
+          "-DENABLE_OAUTH2_WEBKITGTK4=OFF",
+          "-DENABLE_GOOGLE=OFF",
+          "-DENABLE_GOOGLE_AUTH=OFF",
+          "-DENABLE_WEATHER=OFF",
+          "-DENABLE_CANBERRA=OFF",
+          "-DWITH_LIBDB=OFF",
+          "-DWITH_OPENLDAP=OFF",
+          "-DWITH_KRB5=OFF",
+          "-DENABLE_VALA_BINDINGS=OFF",
+          "-DENABLE_GTK_DOC=OFF",
+          "-DENABLE_INTROSPECTION=ON",
+          "-DENABLE_TESTS=OFF",
+          "-DENABLE_INSTALLED_TESTS=OFF",
+          "-DENABLE_EXAMPLES=OFF",
+          "-DENABLE_PHONENUMBER=OFF",
+          "-DENABLE_SMIME=ON"
+        ]
+      }
+    }
+  ]
+}

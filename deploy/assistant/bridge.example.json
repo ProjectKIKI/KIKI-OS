@@ -1,0 +1,7 @@
+{
+  "server_host": "external.terminal-lab.kr",
+  "server_port": 41816,
+  "server_user": "lab",
+  "server_key": "C:/Users/YOUR_USER/.ssh/terminal-lab.pem",
+  "server_known_hosts": "C:/Users/YOUR_USER/.ssh/known_hosts"
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=KIKI desktop input firewall
+After=local-fs.target nftables.service
+Before=sshd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/sbin/nft --check --file /etc/kiki/desktop-firewall.nft
+ExecStart=/usr/sbin/nft --file /etc/kiki/desktop-firewall.nft
+ExecReload=/usr/sbin/nft --file /etc/kiki/desktop-firewall.nft
+
+[Install]
+WantedBy=multi-user.target

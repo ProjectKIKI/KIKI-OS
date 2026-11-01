@@ -1,0 +1,39 @@
+{
+  "recipes": [
+    {
+      "name": "glibc",
+      "version": "2.39",
+      "release": "1",
+      "summary": "GNU C library",
+      "license": "LGPL-2.1-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/libc/glibc-2.39.tar.xz",
+        "sha256": "f77bd47cf8170c57365ae7bf86696c118adb3b120d3259c64c502d3dc1e2d926"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": []
+      },
+      "build": {
+        "system": "gnu",
+        "configure": [
+          "mkdir -p ${KI2_BUILD_DIR}/glibc",
+          "cd ${KI2_BUILD_DIR}/glibc && ${KI2_SOURCE_DIR}/configure --prefix=/usr --host=${KI2_TARGET_TRIPLE} --build=${KI2_BUILD_TRIPLE} --enable-kernel=5.15 --with-headers=${KI2_SYSROOT}/usr/include"
+        ],
+        "compile": [
+          "make -C ${KI2_BUILD_DIR}/glibc -j${KI2_JOBS}"
+        ],
+        "install": [
+          "make -C ${KI2_BUILD_DIR}/glibc DESTDIR=${KI2_DESTDIR} install"
+        ]
+      }
+    }
+  ]
+}

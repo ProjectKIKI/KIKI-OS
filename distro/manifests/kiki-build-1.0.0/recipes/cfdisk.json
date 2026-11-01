@@ -1,0 +1,29 @@
+{
+  "recipes": [
+    {
+      "name": "cfdisk",
+      "version": "2.40.2",
+      "release": "1",
+      "summary": "Convenience package for the util-linux cfdisk partition editor",
+      "license": "GPL-2.0-or-later",
+      "tier": "storage",
+      "architectures": [
+        "all"
+      ],
+      "source": {
+        "type": "local",
+        "path": "distro/sources/cfdisk"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "util-linux",
+          "ncurses"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

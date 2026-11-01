@@ -1,0 +1,69 @@
+{
+  "recipes": [
+    {
+      "name": "dbus",
+      "version": "1.14.10",
+      "release": "9",
+      "summary": "System message bus",
+      "license": "AFL-2.1 OR GPL-2.0-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://dbus.freedesktop.org/releases/dbus/dbus-1.14.10.tar.xz",
+        "sha256": "ba1f21d2bd9d339da2d4aa8780c09df32fea87998b73da24f49ab9df1e36a50f"
+      },
+      "dependencies": {
+        "build": [
+          "expat"
+        ],
+        "runtime": [
+          "expat",
+          "glibc",
+          "libsystemd",
+          "systemd"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc",
+          "systemd"
+        ],
+        "configure_options": [
+          "--sysconfdir=/etc",
+          "--localstatedir=/var",
+          "--runstatedir=/run",
+          "--with-system-socket=/run/dbus/system_bus_socket",
+          "--disable-static",
+          "--enable-systemd",
+          "--with-systemdsystemunitdir=no",
+          "--with-systemduserunitdir=no"
+        ],
+        "configure": [
+          "find ${KI2_SYSROOT}/usr/lib -type f -name '*.la' -delete",
+          "cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --runstatedir=/run --with-system-socket=/run/dbus/system_bus_socket --disable-static --enable-systemd --with-systemdsystemunitdir=no --with-systemduserunitdir=no",
+          "sed -i 's/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=\"\"/' ${KI2_SOURCE_DIR}/libtool"
+        ],
+        "compile": [
+          "make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"
+        ],
+        "install": [
+          "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
+          "find ${KI2_DESTDIR}/usr/lib -name '*.la' -delete",
+          "find ${KI2_DESTDIR}/usr/bin ${KI2_DESTDIR}/usr/lib ${KI2_DESTDIR}/usr/libexec -type f -exec sh -c 'for binary do file \"${binary}\" | grep -q ELF && strip --strip-unneeded \"${binary}\" || true; done' sh {} +"
+        ],
+        "env": {
+          "CPPFLAGS": "${KI2_SYSROOT_CPPFLAGS}",
+          "CFLAGS": "${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=${KI2_WORK}=/usr/src/dbus -fdebug-prefix-map=${KI2_WORK}=/usr/src/dbus -ffile-prefix-map=${KI2_SYSROOT}=/usr -fdebug-prefix-map=${KI2_SYSROOT}=/usr",
+          "LDFLAGS": "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now",
+          "TMPDIR": "/tmp",
+          "SYSTEMD_CFLAGS": "-I/usr/include",
+          "SYSTEMD_LIBS": "-lsystemd"
+        }
+      }
+    }
+  ]
+}

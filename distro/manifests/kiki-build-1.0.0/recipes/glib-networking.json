@@ -1,0 +1,44 @@
+{
+  "recipes": [
+    {
+      "name": "glib-networking",
+      "version": "2.80.1",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/glib-networking/2.80/glib-networking-2.80.1.tar.xz",
+        "sha256": "b80e2874157cd55071f1b6710fa0b911d5ac5de106a9ee2a4c9c7bee61782f8e"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "ca-certificates",
+          "glib",
+          "glibc",
+          "gnutls",
+          "gsettings-desktop-schemas"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dgnutls=enabled",
+          "-Dopenssl=disabled",
+          "-Dlibproxy=disabled",
+          "-Denvironment_proxy=enabled",
+          "-Dgnome_proxy=enabled",
+          "-Dinstalled_tests=false"
+        ]
+      }
+    }
+  ]
+}

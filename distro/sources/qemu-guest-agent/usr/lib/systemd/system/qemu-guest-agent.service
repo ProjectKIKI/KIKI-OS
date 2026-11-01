@@ -1,0 +1,15 @@
+[Unit]
+Description=QEMU Guest Agent
+ConditionVirtualization=kvm
+ConditionPathExists=/dev/virtio-ports/org.qemu.guest_agent.0
+After=dev-virtio\x2dports-org.qemu.guest_agent.0.device
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/qemu-ga --config=/etc/qemu/qemu-ga.conf
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

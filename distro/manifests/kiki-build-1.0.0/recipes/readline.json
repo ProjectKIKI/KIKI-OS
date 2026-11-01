@@ -1,0 +1,56 @@
+{
+  "recipes": [
+    {
+      "name": "readline",
+      "version": "8.3",
+      "release": "5",
+      "summary": "GNU command line editing library",
+      "license": "GPL-3.0-or-later",
+      "tier": "base",
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz",
+        "file": "readline-8.3.tar.gz",
+        "sha256": "fe5383204467828cd495ee8d1d3c037a7eba1389c22bc6a041f627976f9061cc"
+      },
+      "dependencies": {
+        "build": [
+          "ncurses"
+        ],
+        "runtime": [
+          "glibc",
+          "ncurses"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --libdir=/usr/lib --disable-static --enable-shared --with-curses --with-shared-termcap-library",
+          "sed -i 's# -Wl,-rpath,$(libdir)##g' \"${KI2_SOURCE_DIR}/shlib/Makefile\""
+        ],
+        "inputs": [
+          "tools/ki2readlinepayload.py"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j\"${KI2_JOBS}\" SHLIB_LIBS=-lncursesw"
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" SHLIB_LIBS=-lncursesw install",
+          "python3 \"${KI2_REPO_ROOT}/tools/ki2readlinepayload.py\" --root \"${KI2_DESTDIR}\""
+        ],
+        "env": {
+          "bash_cv_termcap_lib": "libncursesw",
+          "CPPFLAGS": "${KI2_SYSROOT_CPPFLAGS} -I${KI2_SYSROOT}/usr/include/ncursesw",
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      },
+      "architectures": [
+        "x86_64"
+      ]
+    }
+  ]
+}

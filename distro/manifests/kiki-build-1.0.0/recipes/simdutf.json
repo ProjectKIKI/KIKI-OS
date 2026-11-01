@@ -1,0 +1,29 @@
+{
+  "recipes": [
+    {
+      "name": "simdutf",
+      "version": "9.0.0",
+      "release": "1",
+      "summary": "KIKI native desktop simdutf",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-desktop-apps-20261027/simdutf/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "libstdcxx"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

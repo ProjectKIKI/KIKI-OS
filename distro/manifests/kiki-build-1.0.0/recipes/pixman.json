@@ -1,0 +1,56 @@
+{
+  "recipes": [
+    {
+      "name": "pixman",
+      "version": "0.46.4",
+      "release": "1",
+      "summary": "CPU pixel compositing library for Cairo",
+      "license": "MIT",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://cairographics.org/releases/pixman-0.46.4.tar.xz",
+        "file": "pixman-0.46.4.tar.xz",
+        "sha256": "a098c33924754ad43f981b740f6d576c70f9ed1006e12221b1845431ebce1239"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "libpng"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "inputs": [
+          "distro/specs/graphics-cross.ini",
+          "distro/scripts/ki2-target-pkg-config",
+          "distro/scripts/ki2-target-run"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "install -m644 \"${KI2_REPO_ROOT}/distro/specs/graphics-cross.ini\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "sed -i -e \"s|@BUILD@|${KI2_BUILD_DIR}|g\" -e \"s|@REPO@|${KI2_REPO_ROOT}|g\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "meson setup \"${KI2_BUILD_DIR}/pixman\" \"${KI2_SOURCE_DIR}\" --cross-file \"${KI2_BUILD_DIR}/cross.ini\" --prefix=/usr --libdir=lib --buildtype=release --wrap-mode=nofallback -Ddefault_library=shared -Dtests=enabled -Dlibpng=enabled -Dgtk=disabled -Ddemos=disabled -Dopenmp=disabled"
+        ],
+        "compile": [
+          "meson compile -C \"${KI2_BUILD_DIR}/pixman\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" meson install -C \"${KI2_BUILD_DIR}/pixman\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_DESTDIR}/usr/share/licenses/pixman/COPYING\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libpixman-1.so.0\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

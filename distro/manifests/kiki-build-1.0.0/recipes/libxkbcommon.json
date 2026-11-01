@@ -1,0 +1,73 @@
+{
+  "recipes": [
+    {
+      "name": "libxkbcommon",
+      "version": "1.13.2",
+      "release": "2",
+      "summary": "Keyboard mapping library with X11, Wayland tools and layout registry",
+      "license": "MIT",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/xkbcommon/libxkbcommon/archive/refs/tags/xkbcommon-1.13.2.tar.gz",
+        "file": "libxkbcommon-1.13.2.tar.gz",
+        "sha256": "acc4d5f7c3cbba5f9f8d08d8bdbeede84ecede46792f47929aa9321873385528"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "wayland-protocols",
+          "python"
+        ],
+        "runtime": [
+          "glibc",
+          "libxcb",
+          "libxml2",
+          "wayland",
+          "xkeyboard-config"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "inputs": [
+          "distro/specs/graphics-cross.ini",
+          "distro/scripts/ki2-target-pkg-config",
+          "distro/scripts/ki2-target-python3",
+          "distro/scripts/ki2-target-run",
+          "distro/scripts/ki2-target-wayland-scanner",
+          "distro/patches/libxkbcommon/0001-target-legacy-keymap-path.patch",
+          "distro/patches/libxkbcommon/0002-python-test-exe-wrapper.patch"
+        ],
+        "configure": [
+          "patch -d \"${KI2_SOURCE_DIR}\" -p1 < \"${KI2_REPO_ROOT}/distro/patches/libxkbcommon/0001-target-legacy-keymap-path.patch\"",
+          "patch -d \"${KI2_SOURCE_DIR}\" -p1 < \"${KI2_REPO_ROOT}/distro/patches/libxkbcommon/0002-python-test-exe-wrapper.patch\"",
+          "install -m755 \"${KI2_SYSROOT}/usr/bin/wayland-scanner\" \"${KI2_BUILD_DIR}/wayland-scanner.real\"",
+          "install -m755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-wayland-scanner\" \"${KI2_SYSROOT}/usr/bin/wayland-scanner\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "install -m644 \"${KI2_REPO_ROOT}/distro/specs/graphics-cross.ini\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "sed -i -e \"s|@BUILD@|${KI2_BUILD_DIR}|g\" -e \"s|@REPO@|${KI2_REPO_ROOT}|g\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "meson setup \"${KI2_BUILD_DIR}/xkbcommon\" \"${KI2_SOURCE_DIR}\" --cross-file \"${KI2_BUILD_DIR}/cross.ini\" --prefix=/usr --libdir=lib --libexecdir=libexec --sysconfdir=/etc --buildtype=release --wrap-mode=nofallback -Ddefault_library=shared -Denable-tools=true -Denable-x11=true -Denable-wayland=true -Denable-xkbregistry=true -Denable-docs=false -Dxkb-config-root=/usr/share/xkeyboard-config-2 -Dxkb-config-versioned-extensions-path=/usr/share/xkeyboard-config-2.d -Dxkb-config-unversioned-extensions-path=/usr/share/xkeyboard-config.d -Dxkb-config-extra-path=/etc/xkb -Dx-locale-root=/usr/share/X11/locale -Dbash-completion-path=/usr/share/bash-completion/completions"
+        ],
+        "compile": [
+          "meson compile -C \"${KI2_BUILD_DIR}/xkbcommon\" -j \"${KI2_JOBS}\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3\" \"${KI2_BUILD_DIR}/test-tools/python3\"",
+          "PATH=\"${KI2_BUILD_DIR}/test-tools:$PATH\" KI2_USE_TARGET_LOADER=1 MESON_EXE_WRAPPER=\"/bin/sh ${KI2_REPO_ROOT}/distro/scripts/ki2-target-run\" meson test -C \"${KI2_BUILD_DIR}/xkbcommon\" --no-rebuild --print-errorlogs --num-processes \"${KI2_JOBS}\" --no-suite x11"
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" meson install -C \"${KI2_BUILD_DIR}/xkbcommon\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/LICENSE\" \"${KI2_DESTDIR}/usr/share/licenses/libxkbcommon/LICENSE\"",
+          "test -s \"${KI2_DESTDIR}/usr/lib/libxkbcommon-x11.so.0\" && test -s \"${KI2_DESTDIR}/usr/lib/libxkbregistry.so.0\"",
+          "readelf -d \"${KI2_DESTDIR}\"/usr/lib/libxkb*.so > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "KI2_SYSROOT_LIBRARY_PATH": "${KI2_BUILD_DIR}/xkbcommon:${KI2_SYSROOT_LIBRARY_PATH}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

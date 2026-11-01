@@ -1,0 +1,62 @@
+{
+  "recipes": [
+    {
+      "name": "wayland",
+      "version": "1.26.0",
+      "release": "2",
+      "summary": "Wayland client/server libraries and validating protocol scanner",
+      "license": "MIT",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.26.0/downloads/wayland-1.26.0.tar.xz",
+        "file": "wayland-1.26.0.tar.xz",
+        "sha256": "64176eaa46e4969903e286f8e5ef8331affc17fdf03ac9b58381d2b23162b7a3"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "expat",
+          "glibc",
+          "libffi",
+          "libxml2"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "inputs": [
+          "distro/specs/harfbuzz-cross.ini",
+          "distro/scripts/ki2-target-pkg-config",
+          "distro/scripts/ki2-target-run",
+          "distro/patches/wayland/0001-use-runnable-target-scanner.patch"
+        ],
+        "configure": [
+          "patch -d \"${KI2_SOURCE_DIR}\" -p1 < \"${KI2_REPO_ROOT}/distro/patches/wayland/0001-use-runnable-target-scanner.patch\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "install -m644 \"${KI2_REPO_ROOT}/distro/specs/harfbuzz-cross.ini\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "sed -i -e \"s|@BUILD@|${KI2_BUILD_DIR}|g\" -e \"s|@REPO@|${KI2_REPO_ROOT}|g\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "meson setup \"${KI2_BUILD_DIR}/wayland\" \"${KI2_SOURCE_DIR}\" --cross-file \"${KI2_BUILD_DIR}/cross.ini\" --prefix=/usr --libdir=lib --buildtype=release --wrap-mode=nofallback -Ddefault_library=shared -Dlibraries=true -Dscanner=true -Ddtd_validation=true -Ddocumentation=false -Dtests=true"
+        ],
+        "compile": [
+          "meson compile -C \"${KI2_BUILD_DIR}/wayland\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" meson install -C \"${KI2_BUILD_DIR}/wayland\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_DESTDIR}/usr/share/licenses/wayland/COPYING\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/bin/wayland-scanner\" \"${KI2_DESTDIR}/usr/lib/libwayland-client.so.0\" \"${KI2_DESTDIR}/usr/lib/libwayland-server.so.0\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "KI2_SYSROOT_LIBRARY_PATH": "${KI2_BUILD_DIR}/wayland/src:${KI2_BUILD_DIR}/wayland/cursor:${KI2_BUILD_DIR}/wayland/egl:${KI2_SYSROOT_LIBRARY_PATH}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "CXXFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

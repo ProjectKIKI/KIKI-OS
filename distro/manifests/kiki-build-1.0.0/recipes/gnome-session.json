@@ -1,0 +1,41 @@
+{
+  "recipes": [
+    {
+      "name": "gnome-session",
+      "version": "50.1",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-session/50/gnome-session-50.1.tar.xz",
+        "sha256": "6289b6afa44d3e4c999ce5761ff8b2c10ba309f55f9425f2b13f98208c81f6fb"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "gnome-desktop",
+          "gnome-shell",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Ddocbook=false",
+          "-Dman=false",
+          "-Dsystemduserunitdir=/usr/lib/systemd/user"
+        ]
+      }
+    }
+  ]
+}

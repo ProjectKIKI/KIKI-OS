@@ -1,0 +1,4301 @@
+{
+  "recipes": [
+    {
+      "name": "ModemManager",
+      "version": "1.24.2",
+      "release": "1",
+      "summary": "KIKI native desktop ModemManager",
+      "license": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/linux-mobile-broadband/ModemManager/tar.gz/f2b9ab1ad78d322f32134a444b5b54c6e8160e19",
+        "sha256": "e452846f4ff5173f4cd086b1ed5882d2c201f25b4e5f1c3f1b3b17f77085e190"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "libgudev",
+          "libsystemd",
+          "polkit"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "NetworkManager",
+      "version": "1.58.0",
+      "release": "1",
+      "summary": "KIKI native desktop NetworkManager",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/NetworkManager/NetworkManager/tar.gz/61302aac7f2e7411f3b42159544926484eacd37e",
+        "sha256": "6b3d460abf6aab1d018510ae0a22d15f468785aadeba127a85fa7a31acc41603"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "libsystemd",
+          "polkit",
+          "libndp",
+          "gnutls",
+          "libpsl",
+          "curl",
+          "readline"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "accountsservice",
+      "version": "26.27.3",
+      "release": "4",
+      "summary": "KIKI native desktop accountsservice",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/accountsservice/accountsservice/-/archive/4e254d9624cc48224c9920b9509df0b144f7be0c/accountsservice-4e254d9624cc48224c9920b9509df0b144f7be0c.tar.gz",
+        "sha256": "2e3fc9e87eafc7c63e48ef3692af62e287790f373314bac1f5bb0981df5c0195"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "dbus",
+          "glib",
+          "glibc",
+          "json-c",
+          "libsystemd",
+          "libxcrypt",
+          "polkit"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "adwaita-icon-theme",
+      "version": "50.0",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-3.0-or-later OR CC-BY-SA-3.0",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/adwaita-icon-theme/50/adwaita-icon-theme-50.0.tar.xz",
+        "sha256": "fac6e0401fca714780561a081b8f7e27c3bc1db34ebda4da175081f26b24d460"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": []
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": []
+      }
+    },
+    {
+      "name": "alsa-lib",
+      "version": "1.2.14",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.14.tar.bz2",
+        "sha256": "be9c88a0b3604367dd74167a2b754a35e142f670292ae47a2fdef27a2ee97a32"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static",
+          "--disable-python"
+        ]
+      }
+    },
+    {
+      "name": "appstream",
+      "version": "1.1.6",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.freedesktop.org/software/appstream/releases/AppStream-1.1.6.tar.xz",
+        "sha256": "e298929f39729e84a70f6be6941f3e7f3fc2ee3c83cb3ea1b1b5b280a8fe3a24"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "curl",
+          "glib",
+          "glibc",
+          "libfyaml",
+          "libxml2",
+          "libxmlb",
+          "zstd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dstemming=false",
+          "-Dsystemd=false",
+          "-Dqt=false",
+          "-Dcompose=false",
+          "-Dbash-completion=false",
+          "-Dgir=true",
+          "-Dtools=false",
+          "-Dsvg-support=false",
+          "-Ddocs=false",
+          "-Dapidocs=false",
+          "-Dinstall-docs=false",
+          "-Dman=false",
+          "-Ddisplay-detection=none"
+        ]
+      }
+    },
+    {
+      "name": "at-spi2-core",
+      "version": "2.60.6",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/at-spi2-core/2.60/at-spi2-core-2.60.6.tar.xz",
+        "sha256": "a89b64a8b217a8042bdf0e35cbfab629ceee35640dba75df578afde9aa789d57"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "dbus",
+          "glib",
+          "glibc",
+          "libsystemd",
+          "libxml2",
+          "systemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dx11=disabled",
+          "-Ddocs=false",
+          "-Dintrospection=enabled",
+          "-Ddefault_bus=dbus-daemon",
+          "-Dgtk2_atk_adaptor=false"
+        ]
+      }
+    },
+    {
+      "name": "bubblewrap",
+      "version": "0.13.1",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/containers/bubblewrap/releases/download/v0.13.1/bubblewrap-0.13.1.tar.xz",
+        "sha256": "0e85c8702248b8dd64144f594147553650cdd0e4c951690345faace79c217c4d"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc",
+          "libcap"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dman=disabled",
+          "-Dselinux=disabled",
+          "-Dtests=false",
+          "-Dbash_completion=disabled",
+          "-Dzsh_completion=disabled"
+        ]
+      }
+    },
+    {
+      "name": "bzip2",
+      "version": "1.0.8",
+      "release": "1",
+      "summary": "Native bzip2 library for Python bz2",
+      "license": "bzip2-1.0.6",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+        "sha256": "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "custom"
+      }
+    },
+    {
+      "name": "colord",
+      "version": "1.4.8",
+      "release": "3",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/hughsie/colord/archive/e3ee294acdc53d7f191e1090631d75f471e59d82.tar.gz",
+        "sha256": "39cbb7898c8c8f758ef9548bce271f66e6fa2a4033d440575c55e10cb7423924"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "lcms2",
+          "libgudev",
+          "libgusb",
+          "polkit",
+          "systemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Ddaemon=false",
+          "-Dargyllcms_sensor=false",
+          "-Dbash_completion=false",
+          "-Dman=false",
+          "-Ddocs=false",
+          "-Dtests=false",
+          "-Dvapi=false"
+        ]
+      }
+    },
+    {
+      "name": "colord-gtk",
+      "version": "0.3.1",
+      "release": "1",
+      "summary": "KIKI native desktop colord-gtk",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/hughsie/colord-gtk/tar.gz/b5a0ca3c512277842011757d9ce2efbfd6a8d888",
+        "sha256": "a3b82f78ded427739b84624b719bae3620b4bf8cc6871e83c3171638dfa3ff95"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "glib",
+          "colord",
+          "lcms2"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "cracklib",
+      "version": "2.10.3",
+      "release": "1",
+      "summary": "KIKI native desktop cracklib",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/cracklib/cracklib/tar.gz/e73d5db1789d198b5f9ec44b68b9c775c3e6c042",
+        "sha256": "af6b5916ec3bb9155af9c43331fef298e93e02f9d5daa5f4071c4cf9206732ba"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "cups-base",
+      "version": "2.4.12",
+      "release": "1",
+      "summary": "KIKI native desktop cups-base",
+      "license": "Apache-2.0",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/OpenPrinting/cups/tar.gz/0b0425d34739c30ea1979472b023501bc8357fa8",
+        "sha256": "2468fd0d0c71a09591b57d46f9ae50445d0f50f60aef2dcf76fb3ae557cf9d2f"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "openssl",
+          "zlib",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "evolution-data-server",
+      "version": "3.60.2",
+      "release": "4",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/evolution-data-server/3.60/evolution-data-server-3.60.2.tar.xz",
+        "sha256": "2084dbdac396371b365d504c1ff45866ba8dca2f1252e5da1d3d9c33abdc1286"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "icu",
+          "json-glib",
+          "libgcc",
+          "libical",
+          "libsecret",
+          "libsoup",
+          "libstdcxx",
+          "libxml2",
+          "nspr",
+          "nss",
+          "sqlite",
+          "util-linux",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "configure_options": [
+          "-DCMAKE_SYSTEM_NAME=Linux",
+          "-DCMAKE_SYSROOT=/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY",
+          "-DCMAKE_CROSSCOMPILING_EMULATOR=/bin/sh;/mnt/e/dev/KIKI-OS/dist/ki2/stage3-6.1.187-gnome50-candidate-20261017/inputs/distro/scripts/ki2-target-run",
+          "-DCMAKE_INSTALL_PREFIX=/usr",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_SKIP_RPATH=ON",
+          "-DLIB_INSTALL_DIR=/usr/lib",
+          "-DCMAKE_SKIP_RPATH=OFF",
+          "-DCMAKE_INSTALL_RPATH=/usr/lib/evolution-data-server",
+          "-DSYSCONF_INSTALL_DIR=/etc",
+          "-DENABLE_GTK=OFF",
+          "-DENABLE_GTK4=OFF",
+          "-DENABLE_GOA=OFF",
+          "-DENABLE_UOA=OFF",
+          "-DENABLE_OAUTH2_WEBKITGTK=OFF",
+          "-DENABLE_OAUTH2_WEBKITGTK4=OFF",
+          "-DENABLE_GOOGLE=OFF",
+          "-DENABLE_GOOGLE_AUTH=OFF",
+          "-DENABLE_WEATHER=OFF",
+          "-DENABLE_CANBERRA=OFF",
+          "-DWITH_LIBDB=OFF",
+          "-DWITH_OPENLDAP=OFF",
+          "-DWITH_KRB5=OFF",
+          "-DENABLE_VALA_BINDINGS=OFF",
+          "-DENABLE_GTK_DOC=OFF",
+          "-DENABLE_INTROSPECTION=ON",
+          "-DENABLE_TESTS=OFF",
+          "-DENABLE_INSTALLED_TESTS=OFF",
+          "-DENABLE_EXAMPLES=OFF",
+          "-DENABLE_PHONENUMBER=OFF",
+          "-DENABLE_SMIME=ON"
+        ]
+      }
+    },
+    {
+      "name": "fast-float",
+      "version": "8.2.10",
+      "release": "1",
+      "summary": "KIKI native desktop fast-float",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/fastfloat/fast_float/tar.gz/34164f547b7df3f5d794ff67e9f885c36819ebfc",
+        "sha256": "b319e4b8c0a6f49453783745656e6c3890c7c3bf79e2ec52b3366d52352d80a8"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": []
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "fmt",
+      "version": "11.2.0",
+      "release": "1",
+      "summary": "KIKI native desktop fmt",
+      "license": "MIT OR Apache-2.0",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/fmtlib/fmt/tar.gz/refs/tags/11.2.0",
+        "sha256": "bc23066d87ab3168f27cef3e97d545fa63314f5c79df5ea444d41d56f962c6af"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "libstdcxx"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "fuse3",
+      "version": "3.18.2",
+      "release": "2",
+      "summary": "KIKI native desktop fuse3",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/libfuse/libfuse/tar.gz/033844748010a3b8265bf1c90b9ae8ffe4cd9ca7",
+        "sha256": "5aeef2f7c616bb0fa03322d034d415b793a2c95a0ba5a9f83125d6dec7259c9f"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "util-linux"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "gcr",
+      "version": "4.4.0.1",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gcr/4.4/gcr-4.4.0.1.tar.xz",
+        "sha256": "0c3c341e49f9f4f2532a4884509804190a0c2663e6120360bb298c5d174a8098"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "gtk",
+          "libgcrypt",
+          "libsystemd",
+          "p11-kit",
+          "pango"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dvapi=false",
+          "-Dgtk_doc=false",
+          "-Dintrospection=true",
+          "-Dgtk4=true",
+          "-Dssh_agent=false",
+          "-Dsystemd=enabled",
+          "-Dgpg_path=/usr/bin/gpg"
+        ]
+      }
+    },
+    {
+      "name": "gdk-pixbuf",
+      "version": "2.44.7",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gdk-pixbuf/2.44/gdk-pixbuf-2.44.7.tar.xz",
+        "sha256": "172f80e3626ec31520a970400f1a3694e04718f6c2cd2885f75250fb5a6995a4"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "libjpeg-turbo",
+          "libpng",
+          "shared-mime-info"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Ddocumentation=false",
+          "-Dman=false",
+          "-Dintrospection=enabled",
+          "-Dtests=false",
+          "-Dinstalled_tests=false",
+          "-Dthumbnailer=disabled",
+          "-Dglycin=disabled",
+          "-Dpng=enabled",
+          "-Djpeg=enabled",
+          "-Dtiff=disabled",
+          "-Dgif=enabled",
+          "-Dbuiltin_loaders=png,jpeg,gif,bmp,ico"
+        ]
+      }
+    },
+    {
+      "name": "gdm",
+      "version": "50.2",
+      "release": "4",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gdm/50/gdm-50.2.tar.xz",
+        "sha256": "8a4679e47cddfe8b0a1bd9d3836042deb68fb3e1b0e7e62dfd0631dc5b6fc541"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "accountsservice",
+          "at-spi2-core",
+          "dconf",
+          "glib",
+          "glibc",
+          "json-glib",
+          "kiki-pam-config",
+          "libgudev",
+          "libsystemd",
+          "linux-pam",
+          "polkit"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dx11-support=false",
+          "-Ddefault-pam-config=none",
+          "-Dsplit-authentication=false",
+          "-Dlibaudit=disabled",
+          "-Dplymouth=disabled",
+          "-Dselinux=disabled",
+          "-Dsystemdsystemunitdir=/usr/lib/systemd/system",
+          "-Dsystemduserunitdir=/usr/lib/systemd/user",
+          "-Dworking-dir=/var/lib/gdm",
+          "-Dinitial-vt=1"
+        ]
+      }
+    },
+    {
+      "name": "geoclue",
+      "version": "2.8.0",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/geoclue/geoclue/-/archive/2.8.0/geoclue-2.8.0.tar.gz",
+        "sha256": "8d1804b3d9d51c2a17af67c882ff5f9169724e248d39ccc3cfa8dba5d9323be7"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Denable-backend=false",
+          "-Dlibgeoclue=true",
+          "-Dintrospection=true",
+          "-Dvapi=false",
+          "-Dgtk-doc=false",
+          "-Ddemo-agent=false",
+          "-Dwifi-source=false",
+          "-D3g-source=false",
+          "-Dcdma-source=false",
+          "-Dmodem-gps-source=false",
+          "-Dnmea-source=false",
+          "-Dip-source=false",
+          "-Dcompass=false"
+        ]
+      }
+    },
+    {
+      "name": "geocode-glib",
+      "version": "3.26.4",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/geocode-glib/3.26/geocode-glib-3.26.4.tar.xz",
+        "sha256": "2d9a6826d158470449a173871221596da0f83ebdcff98b90c7049089056a37aa"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "json-glib",
+          "libsoup"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dsoup2=false",
+          "-Denable-gtk-doc=false",
+          "-Denable-installed-tests=false",
+          "-Denable-introspection=true"
+        ]
+      }
+    },
+    {
+      "name": "gjs",
+      "version": "1.88.1",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT OR LGPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gjs/1.88/gjs-1.88.1.tar.xz",
+        "sha256": "767bab80e665d672cb00563c25f0b392a9ec8c2996ed1d4454c698b4c2f0a3d9"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "cairo",
+          "glib",
+          "glibc",
+          "gobject-introspection",
+          "libffi",
+          "libstdcxx",
+          "mozjs"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dinstalled_tests=false",
+          "-Dprofiler=disabled",
+          "-Dreadline=disabled",
+          "-Dskip_gtk_tests=true",
+          "-Dskip_dbus_tests=true"
+        ]
+      }
+    },
+    {
+      "name": "glib-networking",
+      "version": "2.80.1",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/glib-networking/2.80/glib-networking-2.80.1.tar.xz",
+        "sha256": "b80e2874157cd55071f1b6710fa0b911d5ac5de106a9ee2a4c9c7bee61782f8e"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "ca-certificates",
+          "glib",
+          "glibc",
+          "gnutls",
+          "gsettings-desktop-schemas"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dgnutls=enabled",
+          "-Dopenssl=disabled",
+          "-Dlibproxy=disabled",
+          "-Denvironment_proxy=enabled",
+          "-Dgnome_proxy=enabled",
+          "-Dinstalled_tests=false"
+        ]
+      }
+    },
+    {
+      "name": "glibc-locales",
+      "version": "2.39",
+      "release": "1",
+      "summary": "KIKI English and Korean UTF-8 locales",
+      "license": "LGPL-2.1-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/libc/glibc-2.39.tar.xz",
+        "sha256": "f77bd47cf8170c57365ae7bf86696c118adb3b120d3259c64c502d3dc1e2d926"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "glycin",
+      "version": "2.1.5",
+      "release": "3",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/glycin/2.1/glycin-2.1.5.tar.xz",
+        "sha256": "6c09757ee906330a60b6705753aa56bca007ad219b95e6e3537510d41bc341c8"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "bubblewrap",
+          "cairo",
+          "fontconfig",
+          "glib",
+          "glibc",
+          "lcms2",
+          "libgcc",
+          "librsvg",
+          "libseccomp"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dlibglycin=true",
+          "-Dlibglycin-gtk4=false",
+          "-Dglycin-thumbnailer=false",
+          "-Dglycin-loaders=true",
+          "-Dloaders=glycin-image-rs,glycin-svg",
+          "-Dtests=false",
+          "-Dintrospection=true",
+          "-Dvapi=false",
+          "-Dlto=false"
+        ]
+      }
+    },
+    {
+      "name": "glycin-gtk4",
+      "version": "2.1.5",
+      "release": "1",
+      "summary": "KIKI native desktop glycin-gtk4",
+      "license": "LGPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/glycin/2.1/glycin-2.1.5.tar.xz",
+        "sha256": "6c09757ee906330a60b6705753aa56bca007ad219b95e6e3537510d41bc341c8"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glycin",
+          "gtk",
+          "glib",
+          "libgcc"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "gnome-autoar",
+      "version": "0.4.5",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-autoar/0.4/gnome-autoar-0.4.5.tar.xz",
+        "sha256": "838c5306fc38bfaa2f23abe24262f4bf15771e3303fb5dcb74f5b9c7a615dabe"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "libarchive"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dgtk=false",
+          "-Dtests=false",
+          "-Dintrospection=enabled",
+          "-Dvapi=false"
+        ]
+      }
+    },
+    {
+      "name": "gnome-bluetooth",
+      "version": "47.2",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-bluetooth/47/gnome-bluetooth-47.2.tar.xz",
+        "sha256": "41f20e6d6176b72590af63552b232d83f2fffdd77ecfaa5eaf32c5a4a86fad64"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "gsound",
+          "gtk",
+          "libadwaita",
+          "libnotify",
+          "systemd",
+          "upower"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dsendto=false",
+          "-Dgtk_doc=false",
+          "-Dintrospection=true"
+        ]
+      }
+    },
+    {
+      "name": "gnome-console",
+      "version": "50.0",
+      "release": "1",
+      "summary": "KIKI native desktop gnome-console",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-console/50/gnome-console-50.0.tar.xz",
+        "sha256": "e4950207f0547e6a6c0f18eebfcf6e1a10461eab0f2fae0aae512b1044c7ac6e"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "glib",
+          "libadwaita",
+          "vte",
+          "libgtop",
+          "nautilus"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "gnome-control-center",
+      "version": "50.4",
+      "release": "2",
+      "summary": "KIKI native desktop gnome-control-center",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-control-center/50/gnome-control-center-50.4.tar.xz",
+        "sha256": "5856c73999bedf45e74f73bac3d61e2b5ec1689f8bcf1943737baeee8204fb11"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "glib",
+          "libadwaita",
+          "gnome-desktop",
+          "gnome-settings-daemon",
+          "gsettings-desktop-schemas",
+          "gnome-online-accounts",
+          "cups-base",
+          "NetworkManager",
+          "libnma",
+          "ModemManager",
+          "libwacom",
+          "pwquality",
+          "colord-gtk",
+          "colord",
+          "libgtop",
+          "udisks2",
+          "smbclient",
+          "krb5",
+          "pulseaudio",
+          "upower",
+          "polkit",
+          "accountsservice",
+          "ibus",
+          "libgudev",
+          "gcr",
+          "libxml2",
+          "json-glib",
+          "libsecret",
+          "gsound",
+          "gnome-bluetooth",
+          "wayland",
+          "libepoxy",
+          "libxcrypt"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "gnome-desktop",
+      "version": "44.5",
+      "release": "3",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-desktop/44/gnome-desktop-44.5.tar.xz",
+        "sha256": "20e0995a6e3a03e8c1026c5a27bc3f45e69ffcc392ad743dcab6107a541d232f"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "bubblewrap",
+          "cairo",
+          "fontconfig",
+          "gdk-pixbuf",
+          "glib",
+          "glibc",
+          "gsettings-desktop-schemas",
+          "gtk",
+          "iso-codes",
+          "libseccomp",
+          "libsystemd",
+          "libxkbcommon",
+          "systemd",
+          "xkeyboard-config"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dlegacy_library=false",
+          "-Dbuild_gtk4=true",
+          "-Ddesktop_docs=false",
+          "-Ddebug_tools=false",
+          "-Dgtk_doc=false",
+          "-Dinstalled_tests=false",
+          "-Dintrospection=true",
+          "-Dsystemd=enabled",
+          "-Dudev=enabled"
+        ]
+      }
+    },
+    {
+      "name": "gnome-online-accounts",
+      "version": "3.58.1",
+      "release": "1",
+      "summary": "KIKI native desktop gnome-online-accounts",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-online-accounts/3.58/gnome-online-accounts-3.58.1.tar.xz",
+        "sha256": "9ec1900cc51409c2067c07c828c10be06fe3bf68d2999bb72d7d5ed325ed9bbc"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "glib",
+          "gcr",
+          "libsecret",
+          "libsoup",
+          "librest",
+          "json-glib"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "gnome-session",
+      "version": "50.1",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-session/50/gnome-session-50.1.tar.xz",
+        "sha256": "6289b6afa44d3e4c999ce5761ff8b2c10ba309f55f9425f2b13f98208c81f6fb"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "gnome-desktop",
+          "gnome-shell",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Ddocbook=false",
+          "-Dman=false",
+          "-Dsystemduserunitdir=/usr/lib/systemd/user"
+        ]
+      }
+    },
+    {
+      "name": "gnome-settings-daemon",
+      "version": "50.1",
+      "release": "2",
+      "summary": "KIKI native desktop gnome-settings-daemon",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-settings-daemon/50/gnome-settings-daemon-50.1.tar.xz",
+        "sha256": "dd2c9730914f0ececa0229dd8a8c2940a57ddeb0802434558d4b164d79cfe05c"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "gnome-settings-daemon-schemas",
+          "gnome-desktop",
+          "geocode-glib",
+          "libgweather",
+          "libcanberra",
+          "geoclue",
+          "libnotify",
+          "pulseaudio",
+          "polkit",
+          "upower",
+          "libsystemd",
+          "libgudev",
+          "alsa-lib"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "gnome-settings-daemon-schemas",
+      "version": "50.1",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-settings-daemon/50/gnome-settings-daemon-50.1.tar.xz",
+        "sha256": "dd2c9730914f0ececa0229dd8a8c2940a57ddeb0802434558d4b164d79cfe05c"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "gsettings-desktop-schemas"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": []
+      }
+    },
+    {
+      "name": "gnome-shell",
+      "version": "50.4",
+      "release": "6",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-shell/50/gnome-shell-50.4.tar.xz",
+        "sha256": "c531939539db316a41aef23670370abd1330d3254f84bcb0f9f4dae5d6e362cf"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "adwaita-icon-theme",
+          "at-spi2-core",
+          "cairo",
+          "evolution-data-server",
+          "gcr",
+          "gdk-pixbuf",
+          "gdm",
+          "geoclue",
+          "gjs",
+          "glib",
+          "glibc",
+          "gnome-autoar",
+          "gnome-bluetooth",
+          "gnome-desktop",
+          "gnome-settings-daemon-schemas",
+          "graphene",
+          "gsettings-desktop-schemas",
+          "gtk",
+          "ibus",
+          "json-glib",
+          "kiki-desktop-fonts",
+          "libgweather",
+          "libical",
+          "librsvg",
+          "libsoup",
+          "libsystemd",
+          "libxml2",
+          "mutter",
+          "pango",
+          "polkit",
+          "pulseaudio",
+          "upower"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dnetworkmanager=false",
+          "-Dportal_helper=false",
+          "-Dcamera_monitor=false",
+          "-Dsystemd=true",
+          "-Dman=false",
+          "-Dtests=false"
+        ]
+      }
+    },
+    {
+      "name": "gsound",
+      "version": "1.0.3",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gsound/1.0/gsound-1.0.3.tar.xz",
+        "sha256": "ca2d039e1ebd148647017a7f548862350bc9af01986d39f10cfdc8e95f07881a"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "libcanberra"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dgtk_doc=false",
+          "-Dintrospection=true",
+          "-Denable_vala=false"
+        ]
+      }
+    },
+    {
+      "name": "gstreamer",
+      "version": "1.26.11",
+      "release": "1",
+      "summary": "KIKI native desktop gstreamer",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/GStreamer/gstreamer/tar.gz/e6ee9e63e033b9c8e343ba0bdfa7590ef81449ee",
+        "sha256": "d7825e0aff730294f87c426b7f1b485579f56d7ec5a3ed98c1248d5388757ef8"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "glibc",
+          "zlib",
+          "libatomic"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "gtk",
+      "version": "4.22.4",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gtk/4.22/gtk-4.22.4.tar.xz",
+        "sha256": "51bd9f60c7d23a665a556c7364c21fb2e4e282566b3e7e092455e8f910330893"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "adwaita-icon-theme",
+          "at-spi2-core",
+          "cairo",
+          "fontconfig",
+          "fribidi",
+          "gdk-pixbuf",
+          "glib",
+          "glibc",
+          "glycin",
+          "graphene",
+          "harfbuzz",
+          "hicolor-icon-theme",
+          "kiki-desktop-fonts",
+          "libepoxy",
+          "libjpeg-turbo",
+          "libpng",
+          "libtiff",
+          "libxkbcommon",
+          "pango",
+          "wayland"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dx11-backend=false",
+          "-Dwayland-backend=true",
+          "-Dbroadway-backend=false",
+          "-Dvulkan=disabled",
+          "-Dmedia-gstreamer=disabled",
+          "-Dprint-cups=disabled",
+          "-Ddocumentation=false",
+          "-Dman-pages=false",
+          "-Dbuild-demos=false",
+          "-Dbuild-examples=false",
+          "-Dbuild-tests=false",
+          "-Dbuild-testsuite=false",
+          "-Dintrospection=enabled"
+        ]
+      }
+    },
+    {
+      "name": "gtk+-3",
+      "version": "3.24.52",
+      "release": "1",
+      "summary": "KIKI native desktop gtk+-3",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gtk/3.24/gtk-3.24.52.tar.xz",
+        "sha256": "80931fa472a77b9a164f6740e3c0b444fac6770054632d35a7ff9d679e5e7b9f"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "pango",
+          "cairo",
+          "gdk-pixbuf",
+          "at-spi2-core",
+          "libepoxy",
+          "wayland",
+          "libxkbcommon",
+          "fontconfig"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "gweather-locations",
+      "version": "2026.2",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gweather-locations/2026/gweather-locations-2026.2.tar.xz",
+        "sha256": "e7570a3661e0a752a06387b2032585cf588fc56770b1f9f39f1a55d17b2835fe"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": []
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": []
+      }
+    },
+    {
+      "name": "hicolor-icon-theme",
+      "version": "0.18",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://icon-theme.freedesktop.org/releases/hicolor-icon-theme-0.18.tar.xz",
+        "sha256": "db0e50a80aa3bf64bb45cbca5cf9f75efd9348cf2ac690b907435238c3cf81d7"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": []
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": []
+      }
+    },
+    {
+      "name": "ibus",
+      "version": "1.5.32",
+      "release": "3",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/ibus/ibus/releases/download/1.5.32/ibus-1.5.32.tar.gz",
+        "sha256": "b24f41ae38b236b254c09f1a8f53c2354b69b0789e89cea888d0494b09d15d67"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "cairo",
+          "dbus",
+          "dconf",
+          "gdk-pixbuf",
+          "glib",
+          "glibc",
+          "graphene",
+          "gtk",
+          "harfbuzz",
+          "libxkbcommon",
+          "pango",
+          "python",
+          "wayland"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static",
+          "--disable-gtk2",
+          "--disable-gtk3",
+          "--enable-gtk4",
+          "--disable-xim",
+          "--enable-wayland",
+          "--disable-setup",
+          "--disable-ui",
+          "--disable-tests",
+          "--disable-appindicator",
+          "--enable-memconf",
+          "--enable-engine",
+          "--disable-glibtest",
+          "--disable-python2",
+          "--disable-emoji-dict",
+          "--disable-unicode-dict",
+          "--disable-gtk-doc",
+          "--disable-libnotify",
+          "--disable-gconf",
+          "--enable-dconf",
+          "--enable-introspection",
+          "--disable-vala",
+          "--disable-schema-compile",
+          "--with-sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk"
+        ]
+      }
+    },
+    {
+      "name": "ibus-hangul",
+      "version": "1.5.5",
+      "release": "2",
+      "summary": "KIKI native desktop ibus-hangul",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libhangul/ibus-hangul/releases/download/1.5.5/ibus-hangul-1.5.5.tar.xz",
+        "sha256": "a5aac88286cd18960229860e3e1a778978a7aeaa484ad9acfa48284b87fdc3bb"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "ibus",
+          "libhangul",
+          "glib"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "icu",
+      "version": "76.1",
+      "release": "2",
+      "summary": "Native Unicode support for GNOME",
+      "license": "Unicode-3.0",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/unicode-org/icu/releases/download/release-76-1/icu4c-76_1-src.tgz",
+        "sha256": "dfacb46bfe4747410472ce3e1144bf28a102feeaa4e3875bac9b4c6cf30f4f3e"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libgcc",
+          "libstdcxx"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--with-cross-build=/home/tang/kiki-build/gnome50-session-20261017/desktop-build/icu/host",
+          "--disable-tests",
+          "--disable-samples",
+          "--disable-icuio",
+          "--with-data-packaging=archive"
+        ]
+      }
+    },
+    {
+      "name": "iso-codes",
+      "version": "4.18.0",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://salsa.debian.org/iso-codes-team/iso-codes/-/archive/v4.18.0/iso-codes-v4.18.0.tar.gz",
+        "sha256": "511f67bf4b51aa77f17c45adbff533242b50f1e370fe49a5706b6341902fac87"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": []
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu"
+        ]
+      }
+    },
+    {
+      "name": "json-c",
+      "version": "0.18",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "MIT",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://s3.amazonaws.com/json-c_releases/releases/json-c-0.18.tar.gz",
+        "sha256": "876ab046479166b869afc6896d288183bbc0e5843f141200c677b3e8dfb11724"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "configure_options": [
+          "-DCMAKE_SYSTEM_NAME=Linux",
+          "-DCMAKE_SYSROOT=/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_INSTALL_PREFIX=/usr",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_SKIP_RPATH=ON",
+          "-DBUILD_SHARED_LIBS=ON",
+          "-DBUILD_STATIC_LIBS=OFF",
+          "-DBUILD_TESTING=OFF",
+          "-DDISABLE_WERROR=ON"
+        ]
+      }
+    },
+    {
+      "name": "kiki-desktop-fonts",
+      "version": "0.1.0",
+      "release": "1",
+      "summary": "Preserved desktop fonts including Korean coverage",
+      "license": "LicenseRef-KIKI-Preserved-Fonts",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "bootstrap",
+        "url": "https://github.com/notofonts/noto-cjk",
+        "sha256": "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "fontconfig"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "kiki-gdm-integration",
+      "version": "0.1.0",
+      "release": "5",
+      "summary": "KIKI GDM Wayland password-login integration",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "tools/ki2gdmstage.py"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gdm",
+          "kiki-pam-config",
+          "polkit",
+          "systemd",
+          "shadow",
+          "glibc-locales",
+          "glib",
+          "glib-networking",
+          "gdk-pixbuf",
+          "librsvg",
+          "shared-mime-info",
+          "gtk",
+          "fontconfig"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "kiki-gnome-desktop",
+      "version": "0.1.0",
+      "release": "5",
+      "summary": "KIKI native desktop kiki-gnome-desktop",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "tools/gnome_native/build-media.py"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gnome-shell",
+          "gnome-session",
+          "gdm",
+          "kiki-gdm-integration",
+          "kiki-session-integration",
+          "glibc-locales",
+          "python3-argcomplete",
+          "librsvg",
+          "gnome-settings-daemon-schemas",
+          "adwaita-icon-theme",
+          "hicolor-icon-theme",
+          "kiki-desktop-fonts",
+          "mesa",
+          "kiki-desktop-defaults",
+          "gnome-control-center",
+          "nautilus",
+          "gnome-console"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "kiki-pam-config",
+      "version": "0.1.0",
+      "release": "3",
+      "summary": "KIKI native login and user-session integration",
+      "license": "GPL-3.0-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "tools/ki2sessionstage.py"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "linux-pam"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "kiki-session-integration",
+      "version": "0.1.0",
+      "release": "1",
+      "summary": "KIKI native login and user-session integration",
+      "license": "GPL-3.0-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "tools/ki2sessionstage.py"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "systemd",
+          "shadow",
+          "dbus",
+          "python",
+          "kiki-pam-config"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "krb5",
+      "version": "1.22.2",
+      "release": "2",
+      "summary": "KIKI native desktop krb5",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://kerberos.org/dist/krb5/1.22/krb5-1.22.2.tar.gz",
+        "sha256": "3243ffbc8ea4d4ac22ddc7dd2a1dc54c57874c40648b60ff97009763554eaf13"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "e2fsprogs",
+          "openssl",
+          "libcom-err"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "lcms2",
+      "version": "2.19.1",
+      "release": "1",
+      "summary": "Native ICC color management library",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/mm2/Little-CMS/releases/download/lcms2.19.1/lcms2-2.19.1.tar.gz",
+        "sha256": "bfc54f7bab59fbc921012014a8032e4cba4abd46db47d46b76416a8c0b2815c8"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--disable-static",
+          "--without-jpeg",
+          "--without-tiff"
+        ]
+      }
+    },
+    {
+      "name": "libadwaita",
+      "version": "1.9.3",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libadwaita/1.9/libadwaita-1.9.3.tar.xz",
+        "sha256": "fc59b37028fe0126308e7b805d2f6e4e80227080a1797715e5e6286b8111e723"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "appstream",
+          "fribidi",
+          "glib",
+          "glibc",
+          "graphene",
+          "gtk",
+          "pango"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dintrospection=enabled",
+          "-Dvapi=false",
+          "-Ddocumentation=false",
+          "-Dtests=false",
+          "-Dexamples=false"
+        ]
+      }
+    },
+    {
+      "name": "libarchive",
+      "version": "3.8.1",
+      "release": "3",
+      "summary": "Native GNOME desktop dependency",
+      "license": "BSD-2-Clause",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libarchive/libarchive/releases/download/v3.8.1/libarchive-3.8.1.tar.xz",
+        "sha256": "19f917d42d530f98815ac824d90c7eaf648e9d9a50e4f309c812457ffa5496b5"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "acl",
+          "attr",
+          "glibc",
+          "openssl",
+          "xz",
+          "zlib",
+          "zstd"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static",
+          "--without-bz2lib",
+          "--without-lz4",
+          "--without-nettle",
+          "--with-openssl",
+          "--without-expat",
+          "--without-xml2",
+          "--with-sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk"
+        ]
+      }
+    },
+    {
+      "name": "libatomic",
+      "version": "11.5.0",
+      "release": "2",
+      "summary": "KIKI native desktop libatomic",
+      "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/gcc/gcc-11.5.0/gcc-11.5.0.tar.xz",
+        "sha256": "a6e21868ead545cf87f0c01f84276e4b5281d672098591c1c896241f09363478"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "libcanberra",
+      "version": "0.30",
+      "release": "2",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://0pointer.de/lennart/projects/libcanberra/libcanberra-0.30.tar.xz",
+        "sha256": "c2b671e67e0c288a69fc33dc1b6f1b534d07882c2aceed37004bf48c601afa72"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libtool",
+          "libvorbis",
+          "pulseaudio",
+          "alsa-lib"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static",
+          "--disable-gtk",
+          "--disable-gtk3",
+          "--disable-gtk-doc",
+          "--disable-oss",
+          "--disable-gstreamer",
+          "--enable-alsa",
+          "--enable-pulse",
+          "--disable-udev",
+          "--with-sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk"
+        ]
+      }
+    },
+    {
+      "name": "libcom-err",
+      "version": "1.47.1",
+      "release": "1",
+      "summary": "KIKI native desktop libcom-err",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://mirrors.edge.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v1.47.1/e2fsprogs-1.47.1.tar.xz",
+        "sha256": "5a33dc047fd47284bca4bb10c13cfe7896377ae3d01cb81a05d406025d99e0d1"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "libdisplay-info",
+      "version": "0.4.0",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/c67a3e9bedb05ab61c7443704a1a107e76254595/libdisplay-info-c67a3e9bedb05ab61c7443704a1a107e76254595.tar.gz",
+        "sha256": "34f2109f3ba5a56f4e12062210261c98214f32b5568684311aa029da518bf2fd"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": []
+      }
+    },
+    {
+      "name": "libdrm",
+      "version": "2.4.128",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://dri.freedesktop.org/libdrm/libdrm-2.4.128.tar.xz",
+        "sha256": "3bb35db8700c2a0b569f2c6729a53f5495786856b310854c8de57782a22bddac"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dintel=disabled",
+          "-Dtests=false",
+          "-Dman-pages=disabled",
+          "-Dvalgrind=disabled"
+        ]
+      }
+    },
+    {
+      "name": "libei",
+      "version": "1.5.0",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/libinput/libei/-/archive/1.5.0/libei-1.5.0.tar.gz",
+        "sha256": "7687c3bbcff89ff331c5db72e0a5cce6bcae382e3c238d6f7019a6bc71d88e43"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc",
+          "libevdev",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dtests=disabled",
+          "-Ddocumentation=[]",
+          "-Dliboeffis=disabled",
+          "-Dlibei=enabled",
+          "-Dlibeis=enabled",
+          "-Dsd-bus-provider=libsystemd"
+        ]
+      }
+    },
+    {
+      "name": "libepoxy",
+      "version": "1.5.10",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libepoxy/1.5/libepoxy-1.5.10.tar.xz",
+        "sha256": "072cda4b59dd098bba8c2363a6247299db1fa89411dc221c8b81b8ee8192e623"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc",
+          "libglvnd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Ddocs=false",
+          "-Dtests=false",
+          "-Dx11=false",
+          "-Dglx=no",
+          "-Degl=yes"
+        ]
+      }
+    },
+    {
+      "name": "libevdev",
+      "version": "1.13.4",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.freedesktop.org/software/libevdev/libevdev-1.13.4.tar.xz",
+        "sha256": "f00ab8d42ad8b905296fab67e13b871f1a424839331516642100f82ad88127cd"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dtests=disabled",
+          "-Dtools=enabled",
+          "-Ddocumentation=disabled"
+        ]
+      }
+    },
+    {
+      "name": "libfyaml",
+      "version": "0.9.6",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "MIT",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/pantoniou/libfyaml/releases/download/v0.9.6/libfyaml-0.9.6.tar.gz",
+        "sha256": "a59cc3331e2eb903ec36933ad52a45888041cac31e44f553a00511131242c483"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static",
+          "--disable-testsuite"
+        ]
+      }
+    },
+    {
+      "name": "libglvnd",
+      "version": "1.7.0",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/glvnd/libglvnd/-/archive/v1.7.0/libglvnd-v1.7.0.tar.gz",
+        "sha256": "2b6e15b06aafb4c0b6e2348124808cbd9b291c647299eaaba2e3202f51ff2f3d"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dx11=disabled",
+          "-Dglx=disabled",
+          "-Degl=true",
+          "-Dgles1=true",
+          "-Dgles2=true",
+          "-Dheaders=true"
+        ]
+      }
+    },
+    {
+      "name": "libgtop",
+      "version": "2.41.3",
+      "release": "2",
+      "summary": "KIKI native desktop libgtop",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libgtop/2.41/libgtop-2.41.3.tar.xz",
+        "sha256": "775676df958e2ea2452f7568f28b2ea581063d312773dd5c0b7624c1b9b2da8c"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "libgusb",
+      "version": "0.4.9",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/hughsie/libgusb/archive/refs/tags/0.4.9.tar.gz",
+        "sha256": "aa1242a308183d4ca6c2e8c9e3f2e345370b94308ef2d4b6e9c10d5ff6d7763e"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "json-glib",
+          "libusb"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dtests=false",
+          "-Dvapi=false",
+          "-Ddocs=false",
+          "-Dintrospection=true",
+          "-Dumockdev=disabled"
+        ]
+      }
+    },
+    {
+      "name": "libgweather",
+      "version": "4.6.0",
+      "release": "4",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libgweather/4.6/libgweather-4.6.0.tar.xz",
+        "sha256": "7f5d0e8c9685ef2ff46c2f3a57cae48d7bf3540b2d83921f889ef28e6a876788"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "geocode-glib",
+          "glib",
+          "glibc",
+          "gweather-locations",
+          "json-glib",
+          "libsoup",
+          "libxml2",
+          "tzdata"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Denable_vala=false",
+          "-Dgtk_doc=false",
+          "-Dintrospection=true",
+          "-Dtests=false"
+        ]
+      }
+    },
+    {
+      "name": "libhangul",
+      "version": "0.2.0",
+      "release": "1",
+      "summary": "KIKI native desktop libhangul",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libhangul/libhangul/releases/download/libhangul-0.2.0/libhangul-0.2.0.tar.gz",
+        "sha256": "ea04e6a0cf4840a2a3b5641c1761068c78691036db839d0838f4e7a6553a5120"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "libical",
+      "version": "3.0.20",
+      "release": "2",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-only OR MPL-2.0",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libical/libical/releases/download/v3.0.20/libical-3.0.20.tar.gz",
+        "sha256": "e73de92f5a6ce84c1b00306446b290a2b08cdf0a80988eca0a2c9d5c3510b4c2"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "icu",
+          "libxml2",
+          "tzdata"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "configure_options": [
+          "-DCMAKE_SYSTEM_NAME=Linux",
+          "-DCMAKE_SYSROOT=/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY",
+          "-DCMAKE_CROSSCOMPILING_EMULATOR=/bin/sh;/mnt/e/dev/KIKI-OS/dist/ki2/stage3-6.1.187-gnome50-candidate-20261017/inputs/distro/scripts/ki2-target-run",
+          "-DCMAKE_INSTALL_PREFIX=/usr",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_SKIP_RPATH=ON",
+          "-DSHARED_ONLY=ON",
+          "-DWITH_CXX_BINDINGS=OFF",
+          "-DICAL_GLIB=ON",
+          "-DGOBJECT_INTROSPECTION=ON",
+          "-DICAL_BUILD_DOCS=OFF",
+          "-DICAL_GLIB_VAPI=OFF",
+          "-DLIBICAL_BUILD_TESTING=OFF",
+          "-DUSE_BUILTIN_TZDATA=OFF"
+        ]
+      }
+    },
+    {
+      "name": "libinput",
+      "version": "1.30.0",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/libinput/libinput/-/archive/1.30.0/libinput-1.30.0.tar.gz",
+        "sha256": "fcce701746b8f5ee57c6724e963496d2223a9639856c6d1b811cff38e6dd4465"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc",
+          "systemd",
+          "libevdev"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dlibwacom=false",
+          "-Dmtdev=false",
+          "-Ddebug-gui=false",
+          "-Dtests=false",
+          "-Dinstall-tests=false",
+          "-Ddocumentation=false",
+          "-Dzshcompletiondir=no",
+          "-Dlua-plugins=disabled",
+          "-Dinternal-event-debugging=false"
+        ]
+      }
+    },
+    {
+      "name": "libndp",
+      "version": "1.9",
+      "release": "1",
+      "summary": "KIKI native desktop libndp",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/jpirko/libndp/tar.gz/2730638bf88984b09531813974f9bd14e1a50165",
+        "sha256": "7ae3819067cf63ea2a524509699897a4397671c4b113e9a133a5e1ff0d0954a0"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "libnma",
+      "version": "1.10.6",
+      "release": "1",
+      "summary": "KIKI native desktop libnma",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libnma/1.10/libnma-1.10.6.tar.xz",
+        "sha256": "53a6fb2b190ad37c5986caed3e98bede7c3c602399ee4f93c8fc054303d76dab"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "gtk+-3",
+          "glib",
+          "NetworkManager",
+          "gnutls"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "libnotify",
+      "version": "0.8.8",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libnotify/0.8/libnotify-0.8.8.tar.xz",
+        "sha256": "23420ef619dc2cb5aebad613f4823a2fa41c07e5a1d05628d40f6ec4b35bfddd"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "gdk-pixbuf",
+          "glib",
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dgtk_doc=false",
+          "-Ddocbook_docs=disabled",
+          "-Dman=false",
+          "-Dtests=false",
+          "-Dintrospection=enabled"
+        ]
+      }
+    },
+    {
+      "name": "libogg",
+      "version": "1.3.5",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "BSD-3-Clause",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.xz",
+        "sha256": "c4d91be36fc8e54deae7575241e03f4211eb102afb3fc0775fbbc1b740016705"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static"
+        ]
+      }
+    },
+    {
+      "name": "libportal",
+      "version": "0.9.1",
+      "release": "1",
+      "summary": "KIKI native desktop libportal",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/flatpak/libportal/releases/download/0.9.1/libportal-0.9.1.tar.xz",
+        "sha256": "de801ee349ed3c255a9af3c01b1a401fab5b3fc1c35eb2fd7dfb35d4b8194d7f"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "glib"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "libpsl",
+      "version": "0.21.5",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "MIT",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/rockdaboot/libpsl/releases/download/0.21.5/libpsl-0.21.5.tar.gz",
+        "sha256": "1dcc9ceae8b128f3c0b3f654decd0e1e891afc6ff81098f227ef260449dae208"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libidn2",
+          "libunistring"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static",
+          "--disable-gtk-doc",
+          "--disable-man"
+        ]
+      }
+    },
+    {
+      "name": "librest",
+      "version": "0.10.2",
+      "release": "1",
+      "summary": "KIKI native desktop librest",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/librest/0.10/librest-0.10.2.tar.xz",
+        "sha256": "7b6cb912bb3a22cfa7dcf005925dcb62883024db0c09099486e7d6851185c9b8"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "libsoup",
+          "libxml2"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "librsvg",
+      "version": "2.62.3",
+      "release": "3",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/librsvg/2.62/librsvg-2.62.3.tar.xz",
+        "sha256": "7eb449b2722a768021356f66dfee3202c229b54ed4e6a70ce40c090e97ff16f2"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "cairo",
+          "gdk-pixbuf",
+          "glib",
+          "glibc",
+          "libgcc",
+          "libxml2",
+          "pango"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Ddocs=disabled",
+          "-Dintrospection=enabled",
+          "-Dpixbuf=enabled",
+          "-Dpixbuf-loader=enabled",
+          "-Drsvg-convert=disabled",
+          "-Dvala=disabled",
+          "-Dtests=false",
+          "-Davif=disabled",
+          "-Dtriplet=x86_64-unknown-linux-gnu"
+        ]
+      }
+    },
+    {
+      "name": "libsecret",
+      "version": "0.21.7",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.7.tar.xz",
+        "sha256": "6b452e4750590a2b5617adc40026f28d2f4903de15f1250e1d1c40bfd68ed55e"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "libgcrypt"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dvapi=false",
+          "-Dgtk_doc=false",
+          "-Dmanpage=false",
+          "-Dintrospection=true",
+          "-Dbash_completion=disabled",
+          "-Dtpm2=false"
+        ]
+      }
+    },
+    {
+      "name": "libsndfile",
+      "version": "1.2.2",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libsndfile/libsndfile/releases/download/1.2.2/libsndfile-1.2.2.tar.xz",
+        "sha256": "3799ca9924d3125038880367bf1468e53a1b7e3686a934f098b7e1d286cdb80e"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "configure_options": [
+          "-DCMAKE_SYSTEM_NAME=Linux",
+          "-DCMAKE_SYSROOT=/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY",
+          "-DCMAKE_CROSSCOMPILING_EMULATOR=/bin/sh;/mnt/e/dev/KIKI-OS/dist/ki2/stage3-6.1.187-gnome50-candidate-20261017/inputs/distro/scripts/ki2-target-run",
+          "-DCMAKE_INSTALL_PREFIX=/usr",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_SKIP_RPATH=ON",
+          "-DBUILD_SHARED_LIBS=ON",
+          "-DBUILD_TESTING=OFF",
+          "-DBUILD_PROGRAMS=OFF",
+          "-DBUILD_EXAMPLES=OFF",
+          "-DENABLE_EXTERNAL_LIBS=OFF",
+          "-DENABLE_MPEG=OFF",
+          "-DINSTALL_MANPAGES=OFF",
+          "-DENABLE_CPACK=OFF"
+        ]
+      }
+    },
+    {
+      "name": "libsoup",
+      "version": "3.6.6",
+      "release": "3",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libsoup/3.6/libsoup-3.6.6.tar.xz",
+        "sha256": "51ed0ae06f9d5a40f401ff459e2e5f652f9a510b7730e1359ee66d14d4872740"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glib-networking",
+          "glibc",
+          "libpsl",
+          "nghttp2",
+          "sqlite",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dintrospection=enabled",
+          "-Dvapi=disabled",
+          "-Ddocs=disabled",
+          "-Dtests=false",
+          "-Dsysprof=disabled",
+          "-Dgssapi=disabled",
+          "-Dntlm=disabled",
+          "-Dbrotli=disabled",
+          "-Dtls_check=false"
+        ]
+      }
+    },
+    {
+      "name": "libsystemd",
+      "version": "255.7",
+      "release": "6",
+      "summary": "Native systemd client library and development files",
+      "license": "LGPL-2.1-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/systemd/systemd-stable/archive/refs/tags/v255.7.tar.gz",
+        "sha256": "da29f2490c192ca743511098b1d15e385b1b5e7744979661dc30514c1ac61f0e"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "libcap",
+          "xz",
+          "zstd"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "libtiff",
+      "version": "4.7.2",
+      "release": "2",
+      "summary": "Native TIFF image library",
+      "license": "libtiff",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.osgeo.org/libtiff/tiff-4.7.2.tar.xz",
+        "sha256": "4996f0c4f93094719b1ca5c6279b20e588773ba8a247533e486416fb662ddb88"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libgcc",
+          "libjpeg-turbo",
+          "libstdcxx",
+          "xz",
+          "zlib",
+          "zstd"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "configure_options": [
+          "-DCMAKE_SYSTEM_NAME=Linux",
+          "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+          "-DCMAKE_SYSROOT=/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_INSTALL_PREFIX=/usr",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_SKIP_RPATH=ON",
+          "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
+          "-DBUILD_SHARED_LIBS=ON",
+          "-Dtiff-tests=OFF",
+          "-Dtiff-tools=ON",
+          "-Dtiff-contrib=OFF",
+          "-Dtiff-docs=OFF",
+          "-Dlibdeflate=OFF",
+          "-Dwebp=OFF",
+          "-Djbig=OFF",
+          "-Dlerc=OFF",
+          "-Dlzma=ON",
+          "-Dzstd=ON",
+          "-Djpeg=ON",
+          "-Dzlib=ON",
+          "-Dopengl=OFF"
+        ]
+      }
+    },
+    {
+      "name": "libtool",
+      "version": "2.4.7",
+      "release": "2",
+      "summary": "KIKI native desktop libtool",
+      "license": "GPL-2.0-or-later WITH Libtool-exception",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/libtool/libtool-2.4.7.tar.xz",
+        "sha256": "4f7f217f057ce655ff22559ad221a0fd8ef84ad1fc5fcb6990cecc333aa1635d"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "libvorbis",
+      "version": "1.3.7",
+      "release": "2",
+      "summary": "Native GNOME desktop dependency",
+      "license": "BSD-3-Clause",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.xz",
+        "sha256": "b33cc4934322bcbf6efcbacf49e3ca01aadbea4114ec9589d1b1e9d20f72954b"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libogg"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static",
+          "--disable-docs"
+        ]
+      }
+    },
+    {
+      "name": "libwacom",
+      "version": "2.19.1",
+      "release": "1",
+      "summary": "KIKI native desktop libwacom",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/linuxwacom/libwacom/tar.gz/8d904ebbbf879adacb8d59f7dde06eee2ed6ee80",
+        "sha256": "ccb2b462ce910c9c71e09a687ab01bb744376856cd98cc1f08167078deb10578"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "libevdev",
+          "libgudev"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "libxmlb",
+      "version": "0.3.24",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/hughsie/libxmlb/releases/download/0.3.24/libxmlb-0.3.24.tar.xz",
+        "sha256": "ded52667aac942bb1ff4d1e977e8274a9432d99033d86918feb82ade82b8e001"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "xz",
+          "zstd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dgtkdoc=false",
+          "-Dintrospection=true",
+          "-Dtests=false",
+          "-Dcli=true",
+          "-Dlzma=enabled",
+          "-Dzstd=enabled"
+        ]
+      }
+    },
+    {
+      "name": "llvm",
+      "version": "21.1.8",
+      "release": "2",
+      "summary": "Native LLVM X86 runtime for Mesa llvmpipe",
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/llvm-project-21.1.8.src.tar.xz",
+        "sha256": "4633a23617fa31a3ea51242586ea7fb1da7140e426bd62fc164261fe036aa142"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libstdcxx",
+          "libgcc",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "configure_options": [
+          "-G",
+          "Ninja",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_INSTALL_PREFIX=/usr",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_SYSTEM_NAME=Linux",
+          "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+          "-DCMAKE_C_COMPILER=/usr/bin/gcc",
+          "-DCMAKE_CXX_COMPILER=/usr/bin/g++",
+          "-DCMAKE_FIND_ROOT_PATH=/home/tang/kiki-build/mesa-native-20261017/sdk",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY",
+          "-DZLIB_INCLUDE_DIR=/home/tang/kiki-build/mesa-native-20261017/sdk/usr/include",
+          "-DZLIB_LIBRARY_RELEASE=/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/libz.so",
+          "-DCMAKE_C_FLAGS=--sysroot=/home/tang/kiki-build/mesa-native-20261017/sdk",
+          "-DCMAKE_CXX_FLAGS=--sysroot=/home/tang/kiki-build/mesa-native-20261017/sdk",
+          "-DCMAKE_C_FLAGS_RELEASE=-O2 -DNDEBUG",
+          "-DCMAKE_CXX_FLAGS_RELEASE=-O2 -DNDEBUG",
+          "-DCMAKE_EXE_LINKER_FLAGS=-B/home/tang/kiki-build/mesa-native-20261017/host-tools/bin/ --sysroot=/home/tang/kiki-build/mesa-native-20261017/sdk -B/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64/ -B/home/tang/kiki-build/mesa-native-20261017/sdk/lib64/ -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64 -L/home/tang/kiki-build/mesa-native-20261017/sdk/lib -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/lib -L/home/tang/kiki-build/mesa-native-20261017/sdk/lib64 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/lib64 -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/pulseaudio -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/pulseaudio -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/mutter-18 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/mutter-18 -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/gnome-shell -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/gnome-shell -Wl,-z,relro,-z,now",
+          "-DCMAKE_SHARED_LINKER_FLAGS=-B/home/tang/kiki-build/mesa-native-20261017/host-tools/bin/ --sysroot=/home/tang/kiki-build/mesa-native-20261017/sdk -B/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64/ -B/home/tang/kiki-build/mesa-native-20261017/sdk/lib64/ -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib64 -L/home/tang/kiki-build/mesa-native-20261017/sdk/lib -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/lib -L/home/tang/kiki-build/mesa-native-20261017/sdk/lib64 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/lib64 -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/pulseaudio -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/pulseaudio -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/mutter-18 -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/mutter-18 -L/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/gnome-shell -Wl,-rpath-link,/home/tang/kiki-build/mesa-native-20261017/sdk/usr/lib/gnome-shell -Wl,-z,relro,-z,now",
+          "-U",
+          "CXX_SUPPORTS_CUSTOM_LINKER",
+          "-DLLVM_USE_LINKER=lld",
+          "-DPython3_EXECUTABLE=/home/tang/kiki-build/mesa-native-20261017/venv/bin/python",
+          "-DLLVM_TABLEGEN=/home/tang/kiki-build/mesa-native-20261017/host-tools/bin/llvm-tblgen",
+          "-DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-unknown-linux-gnu",
+          "-DLLVM_TARGETS_TO_BUILD=X86",
+          "-DLLVM_BUILD_LLVM_DYLIB=ON",
+          "-DLLVM_LINK_LLVM_DYLIB=ON",
+          "-DLLVM_DYLIB_COMPONENTS=all",
+          "-DLLVM_INCLUDE_TESTS=OFF",
+          "-DLLVM_INCLUDE_BENCHMARKS=OFF",
+          "-DLLVM_INCLUDE_EXAMPLES=OFF",
+          "-DLLVM_INCLUDE_DOCS=OFF",
+          "-DLLVM_BUILD_TOOLS=OFF",
+          "-DLLVM_BUILD_UTILS=OFF",
+          "-DLLVM_ENABLE_PROJECTS=",
+          "-DLLVM_ENABLE_RUNTIMES=",
+          "-DLLVM_ENABLE_TERMINFO=OFF",
+          "-DLLVM_ENABLE_LIBEDIT=OFF",
+          "-DLLVM_ENABLE_LIBXML2=OFF",
+          "-DLLVM_ENABLE_ZSTD=OFF",
+          "-DLLVM_ENABLE_ZLIB=FORCE_ON",
+          "-DLLVM_ENABLE_FFI=OFF",
+          "-DLLVM_ENABLE_RTTI=ON",
+          "-DLLVM_ENABLE_ASSERTIONS=OFF",
+          "-DLLVM_ENABLE_BACKTRACES=OFF",
+          "-DLLVM_ENABLE_DUMP=OFF",
+          "-DLLVM_PARALLEL_LINK_JOBS=1"
+        ]
+      }
+    },
+    {
+      "name": "localsearch",
+      "version": "3.11.1",
+      "release": "1",
+      "summary": "KIKI native desktop localsearch",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/localsearch/3.11/localsearch-3.11.1.tar.xz",
+        "sha256": "7b39a6c28a8acf2b172f15b2fb5ee7c7a3764c447c2f4a14caa239b7ebe61942"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "tinysparql",
+          "libseccomp",
+          "upower",
+          "icu",
+          "libxml2",
+          "zlib",
+          "libjpeg-turbo",
+          "libpng",
+          "libtiff"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "lz4",
+      "version": "1.10.0",
+      "release": "1",
+      "summary": "KIKI native desktop lz4",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz",
+        "sha256": "537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "mesa",
+      "version": "25.2.7",
+      "release": "1",
+      "summary": "Native Mesa EGL GBM Wayland llvmpipe and softpipe",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://archive.mesa3d.org/mesa-25.2.7.tar.xz",
+        "sha256": "b40232a642011820211aab5a9cdf754e106b0bce15044bc4496b0ac9615892ad"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "llvm",
+          "libglvnd",
+          "libdrm",
+          "wayland",
+          "wayland-protocols"
+        ],
+        "runtime": [
+          "glibc",
+          "libstdcxx",
+          "libgcc",
+          "zlib",
+          "zstd",
+          "expat",
+          "libdrm",
+          "libglvnd",
+          "wayland",
+          "systemd",
+          "llvm"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=lib",
+          "--sysconfdir=/etc",
+          "--buildtype=release",
+          "--wrap-mode=nodownload",
+          "-Dplatforms=wayland",
+          "-Degl-native-platform=wayland",
+          "-Dgallium-drivers=llvmpipe,softpipe,svga,virgl",
+          "-Dvulkan-drivers=[]",
+          "-Dglx=disabled",
+          "-Degl=enabled",
+          "-Dgbm=enabled",
+          "-Dglvnd=enabled",
+          "-Dgles1=disabled",
+          "-Dgles2=enabled",
+          "-Dopengl=true",
+          "-Dllvm=enabled",
+          "-Dshared-llvm=enabled",
+          "-Dgallium-va=disabled",
+          "-Dgallium-vdpau=disabled",
+          "-Dvalgrind=disabled",
+          "-Dbuild-tests=false",
+          "-Dmicrosoft-clc=disabled",
+          "-Dxmlconfig=enabled",
+          "-Dlibunwind=disabled"
+        ]
+      }
+    },
+    {
+      "name": "mozjs",
+      "version": "140.1.0",
+      "release": "1",
+      "summary": "Native SpiderMonkey JavaScript engine for GNOME 50",
+      "license": "MPL-2.0 AND Unicode-3.0",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://archive.mozilla.org/pub/firefox/releases/140.1.0esr/source/firefox-140.1.0esr.source.tar.xz",
+        "sha256": "d15c65d790e0c371b5c95332141b1bdeb29fefc27f852d22a5f542b6d1bc1922"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libstdcxx",
+          "libgcc",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "make"
+      }
+    },
+    {
+      "name": "mutter",
+      "version": "50.4",
+      "release": "5",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/mutter/50/mutter-50.4.tar.xz",
+        "sha256": "273d33c875abcb4b6cbea3f4ec045d18155fbc510c3521fc7e47926371310988"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "at-spi2-core",
+          "cairo",
+          "colord",
+          "fribidi",
+          "glib",
+          "glibc",
+          "glycin",
+          "gnome-desktop",
+          "graphene",
+          "gsettings-desktop-schemas",
+          "gtk",
+          "harfbuzz",
+          "mesa",
+          "lcms2",
+          "libdisplay-info",
+          "libdrm",
+          "libei",
+          "libglvnd",
+          "libgudev",
+          "libinput",
+          "libsystemd",
+          "libxkbcommon",
+          "pango",
+          "pixman",
+          "python3-argcomplete",
+          "systemd",
+          "wayland"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dxwayland=false",
+          "-Dopengl=false",
+          "-Dgles2=true",
+          "-Degl=true",
+          "-Dnative_backend=true",
+          "-Dlogind=true",
+          "-Dudev=true",
+          "-Dremote_desktop=false",
+          "-Dlibwacom=false",
+          "-Dsound_player=false",
+          "-Dstartup_notification=false",
+          "-Dprofiler=false",
+          "-Dtests=disabled",
+          "-Dcogl_tests=false",
+          "-Dclutter_tests=false",
+          "-Dmutter_tests=false",
+          "-Dinstalled_tests=false",
+          "-Ddocs=false",
+          "-Ddevkit=disabled",
+          "-Dbash_completion=false"
+        ]
+      }
+    },
+    {
+      "name": "nautilus",
+      "version": "50.2.2",
+      "release": "3",
+      "summary": "KIKI native desktop nautilus",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/nautilus/50/nautilus-50.2.2.tar.xz",
+        "sha256": "e1e285efddf42ed30dda5b29f7f8d242dab4bc1409a9054863b367bad4b34d5a"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "glib",
+          "libadwaita",
+          "libportal",
+          "tinysparql",
+          "gnome-autoar",
+          "gnome-desktop",
+          "glycin",
+          "glycin-gtk4",
+          "icu",
+          "gsettings-desktop-schemas",
+          "localsearch"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "nghttp2",
+      "version": "1.64.0",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "MIT",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/nghttp2/nghttp2/releases/download/v1.64.0/nghttp2-1.64.0.tar.xz",
+        "sha256": "88bb94c9e4fd1c499967f83dece36a78122af7d5fb40da2019c56b9ccc6eb9dd"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--enable-lib-only",
+          "--disable-static",
+          "--disable-examples",
+          "--disable-app",
+          "--disable-hpack-tools"
+        ]
+      }
+    },
+    {
+      "name": "nspr",
+      "version": "4.36",
+      "release": "1",
+      "summary": "Native Mozilla support library for GNOME",
+      "license": "MPL-2.0",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://archive.mozilla.org/pub/firefox/releases/140.1.0esr/source/firefox-140.1.0esr.source.tar.xz",
+        "sha256": "d15c65d790e0c371b5c95332141b1bdeb29fefc27f852d22a5f542b6d1bc1922"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--includedir=/usr/include/nspr",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--enable-64bit",
+          "--disable-debug",
+          "--enable-optimize"
+        ]
+      }
+    },
+    {
+      "name": "nss",
+      "version": "3.112",
+      "release": "2",
+      "summary": "Native Mozilla support library for GNOME",
+      "license": "MPL-2.0",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://archive.mozilla.org/pub/firefox/releases/140.1.0esr/source/firefox-140.1.0esr.source.tar.xz",
+        "sha256": "d15c65d790e0c371b5c95332141b1bdeb29fefc27f852d22a5f542b6d1bc1922"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "nspr",
+          "sqlite",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "BUILD_OPT=1",
+          "USE_64=1",
+          "NSS_ENABLE_WERROR=0",
+          "NSS_DISABLE_GTESTS=1",
+          "NSS_USE_SYSTEM_SQLITE=1",
+          "USE_SYSTEM_ZLIB=1",
+          "ZLIB_LIBS=-lz",
+          "NSPR_INCLUDE_DIR=/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/include/nspr",
+          "NSPR_LIB_DIR=/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib",
+          "SQLITE_INCLUDE_DIR=/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/include",
+          "SQLITE_LIB_DIR=/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib",
+          "NSINSTALL=/home/tang/kiki-build/gnome50-session-20261017/desktop-build/nspr/build/config/nsinstall",
+          "CC=gcc --sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 --sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk -B/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64/ -B/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64/ -L/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib -L/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64 -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64 -L/home/tang/kiki-build/gnome50-session-20261017/sdk/lib -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/lib -L/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64 -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64 -Wl,-z,relro,-z,now",
+          "CXX=g++ --sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 --sysroot=/home/tang/kiki-build/gnome50-session-20261017/sdk -B/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64/ -B/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64/ -L/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib -L/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64 -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/usr/lib64 -L/home/tang/kiki-build/gnome50-session-20261017/sdk/lib -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/lib -L/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64 -Wl,-rpath-link,/home/tang/kiki-build/gnome50-session-20261017/sdk/lib64 -Wl,-z,relro,-z,now",
+          "HOST_CC=gcc",
+          "HOST_CXX=g++"
+        ]
+      }
+    },
+    {
+      "name": "pipewire",
+      "version": "1.4.9",
+      "release": "1",
+      "summary": "KIKI native desktop pipewire",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/PipeWire/pipewire/tar.gz/fd60e04525f3a04d90bf50085222e0cc9139b4a4",
+        "sha256": "b8bf4d425ed53f6b36ee91f8aa14aa146de85f92d256faf008fe176df154fd81"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "pulseaudio",
+      "version": "17.0",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-17.0.tar.xz",
+        "sha256": "053794d6671a3e397d849e478a80b82a63cb9d8ca296bd35b73317bb5ceb87b5"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "dbus",
+          "glib",
+          "glibc",
+          "libsndfile",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Ddaemon=false",
+          "-Dclient=true",
+          "-Ddoxygen=false",
+          "-Dman=false",
+          "-Dtests=false",
+          "-Ddatabase=simple",
+          "-Dbluez5=disabled",
+          "-Dgstreamer=disabled",
+          "-Dgtk=disabled",
+          "-Dasyncns=disabled",
+          "-Davahi=disabled",
+          "-Dorc=disabled",
+          "-Dfftw=disabled",
+          "-Djack=disabled",
+          "-Dglib=enabled",
+          "-Dbashcompletiondir=no",
+          "-Dzshcompletiondir=no"
+        ]
+      }
+    },
+    {
+      "name": "pwquality",
+      "version": "1.4.5",
+      "release": "1",
+      "summary": "KIKI native desktop pwquality",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/libpwquality/libpwquality/tar.gz/5490e96a3dd6ed7371435ca5b3ccef98bdb48b5a",
+        "sha256": "9ad652a8602ad58eb8f529c050e214bd2ba9e969fbed4537b0ff5eb945f16f27"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "cracklib",
+          "linux-pam"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "python3-argcomplete",
+      "version": "3.6.2",
+      "release": "1",
+      "summary": "Python argument completion for Mutter gdctl",
+      "license": "Apache-2.0",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://files.pythonhosted.org/packages/31/da/e42d7a9d8dd33fa775f467e4028a47936da2f01e4b0e561f9ba0d74cb0ca/argcomplete-3.6.2-py3-none-any.whl",
+        "sha256": "65b3133a29ad53fb42c48cf5114752c7ab66c1c38544fdf6460f450c09b42591"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "python"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "shared-mime-info",
+      "version": "2.5.1",
+      "release": "3",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/xdg/shared-mime-info/-/archive/2.5.1/shared-mime-info-2.5.1.tar.gz",
+        "sha256": "ea248ea157b7fa0165f4fe282c84919fa84c3f175553642f229c8f1ab7539128"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "libgcc",
+          "libstdcxx",
+          "libxml2"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dbuild-spec=false",
+          "-Dbuild-tests=false",
+          "-Dbuild-tools=true",
+          "-Dbuild-translations=true",
+          "-Dupdate-mimedb=false"
+        ]
+      }
+    },
+    {
+      "name": "simdutf",
+      "version": "9.0.0",
+      "release": "1",
+      "summary": "KIKI native desktop simdutf",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/simdutf/simdutf/tar.gz/ca7acbcea967b5dcbab490066e99e3a6e6925539",
+        "sha256": "ab5538f8655eabf29e7a98d64d41fa63db769f2ea8ff3ed5b36e927ac0c0e942"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "libstdcxx"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "smbclient",
+      "version": "4.24.5",
+      "release": "1",
+      "summary": "KIKI native desktop smbclient",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/samba-team/samba/tar.gz/2ac52091905428fcaa48c10cc4e4fe439f9c679d",
+        "sha256": "72c4b66770f5954d60d43bffab669be22df12db7c5e758ce8209a05ba0f291c1"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "gnutls",
+          "libgcc"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "sqlite",
+      "version": "3.50.4",
+      "release": "5",
+      "summary": "KIKI native desktop sqlite",
+      "license": "Public-Domain",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.sqlite.org/2025/sqlite-autoconf-3500400.tar.gz",
+        "sha256": "a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "tinysparql",
+      "version": "3.11.1",
+      "release": "3",
+      "summary": "KIKI native desktop tinysparql",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/tinysparql/3.11/tinysparql-3.11.1.tar.xz",
+        "sha256": "cfd46021ee1514ad435e714f7aa1ec7a787c7f516a94f4c7438897ee3d6eca1e"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "icu",
+          "sqlite",
+          "json-glib",
+          "libxml2",
+          "libsoup"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "udisks2",
+      "version": "2.11.1",
+      "release": "1",
+      "summary": "KIKI native desktop udisks2",
+      "license": "LGPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/storaged-project/udisks/tar.gz/6375ff14d3fed5f20c66ff50cfc02844473294a1",
+        "sha256": "c8a1c2eea38ba3481fbf7904cdb6dca0a4abdb249ec5975ee8aeb84faff55802"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "polkit",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "vte",
+      "version": "0.84.1",
+      "release": "1",
+      "summary": "KIKI native desktop vte",
+      "license": "LGPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/vte/0.84/vte-0.84.1.tar.xz",
+        "sha256": "aca1caa8478aebcdbb1d67897fb3511eb7601debae6810e16a15b6fa25f31ac8"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "glib",
+          "pango",
+          "cairo",
+          "pcre2",
+          "fribidi",
+          "gnutls",
+          "icu",
+          "libstdcxx",
+          "fmt",
+          "simdutf",
+          "lz4",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "xdg-desktop-portal",
+      "version": "1.22.1",
+      "release": "1",
+      "summary": "KIKI native desktop xdg-desktop-portal",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://codeload.github.com/flatpak/xdg-desktop-portal/tar.gz/1d20fadc304f6601452b5db65ed91197dba77041",
+        "sha256": "d849fbf765ee3e84ed7907c21f24023305b6f1cafd6ab43444f28ddaa33e079e"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "json-glib",
+          "fuse3",
+          "gdk-pixbuf",
+          "gstreamer",
+          "pipewire",
+          "libsystemd",
+          "libgudev",
+          "bubblewrap"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "xdg-desktop-portal-gnome",
+      "version": "50.0",
+      "release": "1",
+      "summary": "KIKI native desktop xdg-desktop-portal-gnome",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/xdg-desktop-portal-gnome/50/xdg-desktop-portal-gnome-50.0.tar.xz",
+        "sha256": "ceeef2fb68b34b3f66a3def0a332a22a70af272641fb6c50065b7a2fde3d5759"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "libadwaita",
+          "glib",
+          "gnome-desktop",
+          "gsettings-desktop-schemas",
+          "xdg-desktop-portal"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    },
+    {
+      "name": "xdg-user-dirs",
+      "version": "0.20",
+      "release": "2",
+      "summary": "KIKI native desktop xdg-user-dirs",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/xdg/xdg-user-dirs/-/archive/cd05b6d29da1abdb3cd253ef496ae7fd1593e4bb/xdg-user-dirs-cd05b6d29da1abdb3cd253ef496ae7fd1593e4bb.tar.gz",
+        "sha256": "a4fa2d993aab904f4da56fd4df3d5fc8ec5131a4a3848a08ad34fbe75e0271f1"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "recorded-native",
+        "manifest": "distro/manifests/kiki-build-1.0.0/sources.json",
+        "skip_sysroot": true
+      }
+    }
+  ]
+}

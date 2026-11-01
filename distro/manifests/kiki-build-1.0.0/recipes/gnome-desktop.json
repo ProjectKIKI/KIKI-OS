@@ -1,0 +1,56 @@
+{
+  "recipes": [
+    {
+      "name": "gnome-desktop",
+      "version": "44.5",
+      "release": "3",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-desktop/44/gnome-desktop-44.5.tar.xz",
+        "sha256": "20e0995a6e3a03e8c1026c5a27bc3f45e69ffcc392ad743dcab6107a541d232f"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "bubblewrap",
+          "cairo",
+          "fontconfig",
+          "gdk-pixbuf",
+          "glib",
+          "glibc",
+          "gsettings-desktop-schemas",
+          "gtk",
+          "iso-codes",
+          "libseccomp",
+          "libsystemd",
+          "libxkbcommon",
+          "systemd",
+          "xkeyboard-config"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dlegacy_library=false",
+          "-Dbuild_gtk4=true",
+          "-Ddesktop_docs=false",
+          "-Ddebug_tools=false",
+          "-Dgtk_doc=false",
+          "-Dinstalled_tests=false",
+          "-Dintrospection=true",
+          "-Dsystemd=enabled",
+          "-Dudev=enabled"
+        ]
+      }
+    }
+  ]
+}

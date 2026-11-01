@@ -1,0 +1,52 @@
+{
+  "recipes": [
+    {
+      "name": "libgcrypt",
+      "version": "1.12.3",
+      "release": "1",
+      "summary": "GNU general purpose cryptographic library",
+      "license": "LGPL-2.1-or-later AND GPL-2.0-or-later AND BSD-3-Clause AND MIT AND LicenseRef-Libgcrypt-Notices",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.12.3.tar.bz2",
+        "file": "libgcrypt-1.12.3.tar.bz2",
+        "sha256": "98d1b0b3202d2b03fa754a35aa3cbbfcf526a3260d8d2ee213748001b1043006"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libgpg-error"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --disable-doc --disable-static --with-libgpg-error-prefix=\"${KI2_SYSROOT}/usr\""
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "install -d \"${KI2_DESTDIR}/usr/share/licenses/libgcrypt\"",
+          "install -m 0644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_SOURCE_DIR}/COPYING.LIB\" \"${KI2_SOURCE_DIR}/LICENSES\" \"${KI2_SOURCE_DIR}/AUTHORS\" \"${KI2_DESTDIR}/usr/share/licenses/libgcrypt/\"",
+          "rm -f \"${KI2_DESTDIR}/usr/lib/libgcrypt.la\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libgcrypt.so.20\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CC": "cc --sysroot=${KI2_SYSROOT}",
+          "GPGRT_CONFIG": "${KI2_SYSROOT}/usr/bin/gpgrt-config",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

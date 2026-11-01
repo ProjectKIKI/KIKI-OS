@@ -1,0 +1,68 @@
+{
+  "recipes": [
+    {
+      "name": "openscap",
+      "version": "1.4.6",
+      "release": "2",
+      "summary": "KIKI source-built openscap",
+      "license": "LGPL-2.1-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/OpenSCAP/openscap/releases/download/1.4.6/openscap-1.4.6.tar.gz",
+        "sha256": "7c6064ea52bc0002a21ba8d49e33bb25f55c388a06ba60b3c5ba02783b8acf8e"
+      },
+      "dependencies": {
+        "build": [
+          "glibc",
+          "libxml2",
+          "libxslt",
+          "xmlsec",
+          "openssl",
+          "pcre2",
+          "curl",
+          "acl",
+          "libcap",
+          "dbus",
+          "libsystemd",
+          "libgcrypt",
+          "util-linux"
+        ],
+        "runtime": [
+          "glibc",
+          "libxml2",
+          "libxslt",
+          "xmlsec",
+          "openssl",
+          "pcre2",
+          "curl",
+          "acl",
+          "libcap",
+          "dbus",
+          "libsystemd",
+          "libgcrypt",
+          "util-linux"
+        ]
+      },
+      "build": {
+        "system": "custom",
+        "configure": [
+          "cmake -S \"${KI2_SOURCE_DIR}\" -B \"${KI2_BUILD_DIR}/out\" \"-DCMAKE_INSTALL_PREFIX=/usr\" \"-DCMAKE_INSTALL_LIBDIR=lib\" \"-DCMAKE_BUILD_TYPE=Release\" \"-DCMAKE_SYSROOT=${KI2_SYSROOT}\" \"-DCMAKE_FIND_ROOT_PATH=${KI2_SYSROOT}\" \"-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY\" \"-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY\" \"-DCMAKE_C_FLAGS=--sysroot=${KI2_SYSROOT} -O2 -pipe -fstack-protector-strong -I${KI2_SYSROOT}/usr/include\" \"-DCMAKE_SHARED_LINKER_FLAGS=--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -L${KI2_SYSROOT}/usr/lib -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib -L${KI2_SYSROOT}/usr/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib64 -L${KI2_SYSROOT}/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/lib64 -L${KI2_SYSROOT}/lib -Wl,-rpath-link,${KI2_SYSROOT}/lib -Wl,-z,relro,-z,now\" \"-DCMAKE_EXE_LINKER_FLAGS=--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -L${KI2_SYSROOT}/usr/lib -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib -L${KI2_SYSROOT}/usr/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib64 -L${KI2_SYSROOT}/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/lib64 -L${KI2_SYSROOT}/lib -Wl,-rpath-link,${KI2_SYSROOT}/lib -Wl,-z,relro,-z,now\" \"-DENABLE_PYTHON3=OFF\" \"-DENABLE_PERL=OFF\" \"-DENABLE_TESTS=OFF\" \"-DENABLE_DOCS=OFF\" \"-DENABLE_SCE=OFF\" \"-DENABLE_OSCAP_UTIL_SSH=OFF\" \"-DENABLE_OSCAP_UTIL_DOCKER=OFF\" \"-DENABLE_OSCAP_UTIL_PODMAN=OFF\" \"-DENABLE_OSCAP_UTIL_VM=OFF\" \"-DENABLE_OSCAP_UTIL_AS_RPM=OFF\" \"-DENABLE_OSCAP_UTIL_IM=OFF\" \"-DENABLE_OSCAP_UTIL_AUTOTAILOR=OFF\" \"-DCMAKE_DISABLE_FIND_PACKAGE_RPM=TRUE\" \"-DCMAKE_DISABLE_FIND_PACKAGE_Ldap=TRUE\" \"-DCMAKE_DISABLE_FIND_PACKAGE_OpenDbx=TRUE\" \"-DCMAKE_DISABLE_FIND_PACKAGE_GConf=TRUE\" \"-DCMAKE_DISABLE_FIND_PACKAGE_Procps=TRUE\" \"-DCMAKE_DISABLE_FIND_PACKAGE_Libyaml=TRUE\" \"-DOPENSCAP_PROBE_INDEPENDENT_YAMLFILECONTENT=OFF\""
+        ],
+        "compile": [
+          "cmake --build \"${KI2_BUILD_DIR}/out\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" cmake --install \"${KI2_BUILD_DIR}/out\""
+        ],
+        "env": {
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} -O2 -pipe -fstack-protector-strong -I${KI2_SYSROOT}/usr/include",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -L${KI2_SYSROOT}/usr/lib -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib -L${KI2_SYSROOT}/usr/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/usr/lib64 -L${KI2_SYSROOT}/lib64 -Wl,-rpath-link,${KI2_SYSROOT}/lib64 -L${KI2_SYSROOT}/lib -Wl,-rpath-link,${KI2_SYSROOT}/lib -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+[[recipe]]
+name = "kiki-security-content"
+version = "1.0.0"
+release = 2
+summary = "KIKI read-only OpenSCAP baseline and effective-setting collector"
+license = "GPL-3.0-or-later"
+tier = "base"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "distro/sources/kiki-security-content"
+[recipe.dependencies]
+build = []
+runtime = ["python", "openscap", "systemd", "openssh"]
+[recipe.build]
+system = "custom"
+configure = []
+compile = []
+install = ['cp -a "${KI2_SOURCE_DIR}/." "${KI2_DESTDIR}/"', 'chmod 755 "${KI2_DESTDIR}/usr/libexec/kiki-security-scan"']

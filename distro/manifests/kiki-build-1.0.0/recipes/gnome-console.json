@@ -1,0 +1,33 @@
+{
+  "recipes": [
+    {
+      "name": "gnome-console",
+      "version": "50.0",
+      "release": "1",
+      "summary": "KIKI native desktop gnome-console",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-gnome-native-apps-20261028/gnome-console/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gtk",
+          "glib",
+          "libadwaita",
+          "vte",
+          "libgtop",
+          "nautilus"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

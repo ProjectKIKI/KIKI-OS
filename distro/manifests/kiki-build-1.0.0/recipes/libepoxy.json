@@ -1,0 +1,40 @@
+{
+  "recipes": [
+    {
+      "name": "libepoxy",
+      "version": "1.5.10",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/libepoxy/1.5/libepoxy-1.5.10.tar.xz",
+        "sha256": "072cda4b59dd098bba8c2363a6247299db1fa89411dc221c8b81b8ee8192e623"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc",
+          "libglvnd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Ddocs=false",
+          "-Dtests=false",
+          "-Dx11=false",
+          "-Dglx=no",
+          "-Degl=yes"
+        ]
+      }
+    }
+  ]
+}

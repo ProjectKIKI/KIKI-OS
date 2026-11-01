@@ -1,0 +1,61 @@
+{
+  "recipes": [
+    {
+      "name": "p11-kit",
+      "version": "0.26.5",
+      "release": "2",
+      "summary": "PKCS#11 module coordination and trust store",
+      "license": "BSD-3-Clause",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/p11-glue/p11-kit/releases/download/0.26.5/p11-kit-0.26.5.tar.xz",
+        "file": "p11-kit-0.26.5.tar.xz",
+        "sha256": "f2cc09111e44bf3fea58f023180b33acea90aa82d042d6fbb623fbc5ba033bb7"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "systemd"
+        ],
+        "runtime": [
+          "glibc",
+          "libffi",
+          "libtasn1",
+          "ca-certificates"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "inputs": [
+          "distro/specs/p11-kit-cross.ini",
+          "distro/scripts/ki2-target-pkg-config",
+          "distro/scripts/ki2-target-run",
+          "distro/scripts/ki2-target-asn1-parser"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-asn1-parser\" \"${KI2_BUILD_DIR}/tools/asn1Parser\"",
+          "install -m644 \"${KI2_REPO_ROOT}/distro/specs/p11-kit-cross.ini\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "sed -i -e \"s|@BUILD@|${KI2_BUILD_DIR}|g\" -e \"s|@REPO@|${KI2_REPO_ROOT}|g\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "PATH=\"${KI2_BUILD_DIR}/tools:$PATH\" meson setup \"${KI2_BUILD_DIR}/p11\" \"${KI2_SOURCE_DIR}\" --cross-file \"${KI2_BUILD_DIR}/cross.ini\" --prefix=/usr --libdir=lib --sysconfdir=/etc --buildtype=release -Ddefault_library=shared -Dlibffi=enabled -Dtrust_module=enabled -Dsystemd=enabled -Dtrust_paths=/etc/ssl/certs/ca-certificates.crt -Dgtk_doc=false -Dman=false"
+        ],
+        "compile": [
+          "meson compile -C \"${KI2_BUILD_DIR}/p11\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" meson install -C \"${KI2_BUILD_DIR}/p11\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_DESTDIR}/usr/share/licenses/p11-kit/COPYING\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libp11-kit.so.0\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

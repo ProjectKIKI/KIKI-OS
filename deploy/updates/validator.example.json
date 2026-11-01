@@ -1,0 +1,20 @@
+{
+  "ssh_library": "C:/path/to/installed/paramiko/libraries",
+  "server_host": "YOUR-BUILD-SERVER",
+  "server_port": 22,
+  "server_user": "YOUR-SSH-USER",
+  "server_key": "C:/Users/YOU/.ssh/BUILD-SERVER-KEY",
+  "server_known_hosts": "C:/Users/YOU/.ssh/known_hosts",
+  "server_store": "/path/to/release-store",
+  "public_url": "https://YOUR-REPOSITORY-HOST",
+  "repository_key_sha256": "REVIEWED-SIGNING-PUBLIC-KEY-SHA256",
+  "guest_host": "YOUR-LAB-VM-IP",
+  "guest_user": "YOUR-LAB-USER",
+  "guest_password": "SET-IN-AN-ACL-PROTECTED-LOCAL-CONFIG",
+  "guest_known_hosts": "C:/path/to/pinned-guest-known-hosts",
+  "vm_name": "kiki-gnome-apps-r3-20261028",
+  "vm_id": "REGISTERED-HYPER-V-UUID",
+  "profile": "gnome50",
+  "sign_key": "C:/path/to/private-validator.ed25519",
+  "output": "C:/path/to/private-validation-reports"
+}

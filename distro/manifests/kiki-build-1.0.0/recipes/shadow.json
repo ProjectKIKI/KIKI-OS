@@ -1,0 +1,48 @@
+{
+  "recipes": [
+    {
+      "name": "shadow",
+      "version": "4.15.1",
+      "release": "6",
+      "summary": "Account and password management tools",
+      "license": "BSD-3-Clause",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/shadow-maint/shadow/releases/download/4.15.1/shadow-4.15.1.tar.xz",
+        "sha256": "bb5f70639a0581f9d626f227ce45b31ac137daa7c451c0f672ce14f2731a96ee"
+      },
+      "dependencies": {
+        "build": [
+          "linux-pam",
+          "linux-headers"
+        ],
+        "runtime": [
+          "acl",
+          "attr",
+          "glibc",
+          "kiki-pam-config",
+          "libsystemd",
+          "libxcrypt",
+          "linux-pam"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--sysconfdir=/etc",
+          "--with-libpam",
+          "--without-selinux",
+          "--without-acl",
+          "--without-libbsd",
+          "--without-bcrypt",
+          "--without-libcrack"
+        ]
+      }
+    }
+  ]
+}

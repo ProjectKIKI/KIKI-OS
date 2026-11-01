@@ -1,0 +1,57 @@
+{
+  "recipes": [
+    {
+      "name": "libical",
+      "version": "3.0.20",
+      "release": "2",
+      "summary": "Native GNOME desktop dependency",
+      "license": "LGPL-2.1-only OR MPL-2.0",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libical/libical/releases/download/v3.0.20/libical-3.0.20.tar.gz",
+        "sha256": "e73de92f5a6ce84c1b00306446b290a2b08cdf0a80988eca0a2c9d5c3510b4c2"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "icu",
+          "libxml2",
+          "tzdata"
+        ]
+      },
+      "build": {
+        "system": "cmake",
+        "configure_options": [
+          "-DCMAKE_SYSTEM_NAME=Linux",
+          "-DCMAKE_SYSROOT=/home/tang/kiki-build/gnome50-session-20261017/sdk",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
+          "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY",
+          "-DCMAKE_CROSSCOMPILING_EMULATOR=/bin/sh;/mnt/e/dev/KIKI-OS/dist/ki2/stage3-6.1.187-gnome50-candidate-20261017/inputs/distro/scripts/ki2-target-run",
+          "-DCMAKE_INSTALL_PREFIX=/usr",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_SKIP_RPATH=ON",
+          "-DSHARED_ONLY=ON",
+          "-DWITH_CXX_BINDINGS=OFF",
+          "-DICAL_GLIB=ON",
+          "-DGOBJECT_INTROSPECTION=ON",
+          "-DICAL_BUILD_DOCS=OFF",
+          "-DICAL_GLIB_VAPI=OFF",
+          "-DLIBICAL_BUILD_TESTING=OFF",
+          "-DUSE_BUILTIN_TZDATA=OFF"
+        ]
+      }
+    }
+  ]
+}

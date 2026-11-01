@@ -1,0 +1,29 @@
+{
+  "recipes": [
+    {
+      "name": "sqlite",
+      "version": "3.50.4",
+      "release": "5",
+      "summary": "KIKI native desktop sqlite",
+      "license": "Public-Domain",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-gnome-native-apps-20261028/sqlite/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "zlib"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

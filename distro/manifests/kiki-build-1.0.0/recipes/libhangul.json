@@ -1,0 +1,28 @@
+{
+  "recipes": [
+    {
+      "name": "libhangul",
+      "version": "0.2.0",
+      "release": "1",
+      "summary": "KIKI native desktop libhangul",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-desktop-apps-20261027/libhangul/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

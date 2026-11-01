@@ -1,0 +1,48 @@
+{
+  "recipes": [
+    {
+      "name": "libusb",
+      "version": "1.0.29",
+      "release": "2",
+      "summary": "USB userspace library for GNOME power and device integration",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libusb/libusb/releases/download/v1.0.29/libusb-1.0.29.tar.bz2",
+        "file": "libusb-1.0.29.tar.bz2",
+        "sha256": "5977fc950f8d1395ccea9bd48c06b3f808fd3c2c961b44b0c2e6e29fc3a70a85"
+      },
+      "dependencies": {
+        "build": [
+          "systemd"
+        ],
+        "runtime": [
+          "glibc",
+          "systemd"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--libdir=/usr/lib",
+          "--enable-udev",
+          "--enable-shared",
+          "--disable-static",
+          "--enable-tests-build",
+          "--disable-examples-build"
+        ],
+        "env": {
+          "CC": "cc",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

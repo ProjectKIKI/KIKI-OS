@@ -1,0 +1,29 @@
+{
+  "recipes": [
+    {
+      "name": "libgtop",
+      "version": "2.41.3",
+      "release": "2",
+      "summary": "KIKI native desktop libgtop",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-gnome-native-apps-20261028/libgtop/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "libsystemd"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

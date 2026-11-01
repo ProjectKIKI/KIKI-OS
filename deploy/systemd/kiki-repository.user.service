@@ -1,0 +1,17 @@
+[Unit]
+Description=KIKI signed candidate repository and automatic publisher
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -u /build-kikios/kiki-build/candidates/mesa-native-20261023/repository-deploy-20261028/code/ki2repository.py --config /build-kikios/kiki-build/candidates/mesa-native-20261023/repository-deploy-20261028/config.json --client /build-kikios/kiki-build/candidates/mesa-native-20261023/repository-deploy-20261028/code/ki2ctl --port 8097
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+UMask=0077
+MemoryMax=512M
+TasksMax=96
+LimitNOFILE=256
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,26 @@
+{
+  "recipes": [
+    {
+      "name": "base-files",
+      "version": "0.1.0",
+      "release": "28",
+      "summary": "KIKI filesystem skeleton, os-release, and default system layout",
+      "license": "GPL-3.0-or-later",
+      "tier": "base",
+      "source": {
+        "type": "local",
+        "path": "distro/sources/base-files"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": []
+      },
+      "build": {
+        "system": "copy"
+      },
+      "architectures": [
+        "all"
+      ]
+    }
+  ]
+}

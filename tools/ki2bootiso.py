@@ -6041,7 +6041,12 @@ def compile_static_init(
         raise BootIsoError(f"C compiler not found: {cc}")
 
     source = work_dir / "kiki-init.c"
-    source.write_text(INIT_C.strip() + "\n", encoding="utf-8")
+    init_source = INIT_C
+    cloud_public = Path(__file__).resolve().parents[1] / 'distro/installer/cloud-install.ed25519.pub'
+    if installer and cloud_public.is_file() and 'cloud_install_active' not in init_source:
+        import ki2cloudseed
+        init_source = ki2cloudseed.inject_init(init_source)
+    source.write_text(init_source.strip() + "\n", encoding="utf-8")
     output.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         compiler,
@@ -6165,6 +6170,10 @@ def add_media_verifier(root: Path, packages_dir: Path, public_key: Path) -> None
     trust.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(public_key, trust)
     trust.chmod(0o644)
+    cloud_public = Path(__file__).resolve().parents[1] / 'distro/installer/cloud-install.ed25519.pub'
+    if cloud_public.is_file():
+        shutil.copy2(Path(__file__).with_name('ki2cloudseed.py'), scripts / 'ki2cloudseed.py')
+        shutil.copy2(cloud_public, trust.parent / 'cloud-install.ed25519.pub')
     link_installer_runtime_lib64(root)
 
 

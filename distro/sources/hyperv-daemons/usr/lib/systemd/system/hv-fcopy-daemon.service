@@ -1,0 +1,13 @@
+[Unit]
+Description=Hyper-V guest file copy (optional)
+ConditionVirtualization=microsoft
+ConditionPathExists=/dev/vmbus/hv_fcopy
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/hv_fcopy_daemon -n
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

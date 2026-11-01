@@ -16,7 +16,21 @@ OS입니다. ISO 또는 디스크 이미지로 부팅하면 네트워크 준비,
 **지원자(Thanks for)**
 안현, 장경빈
 
-## Stage3 현재 상태 (2026-09-29)
+## KIKI Build 1.0.0 (2026-11-01)
+
+빌드 도구의 정식 버전입니다. 패키지 등록·메타정보 편집·그룹 관리, 서명 산출물,
+업데이트·보안 검사, VM 검증과 Local LLM 로그 분석·레시피 초안을 제공합니다.
+지원 범위는 x86_64 단일 Linux 빌더이며 KIKI OS 전체의 범용 하드웨어 GA 선언과 구분합니다.
+
+- [운영 안내](docs/kiki-build-v1.ko.md)
+- [정식 릴리즈 검증](docs/kiki-build-v1-ga-validation-20261101.ko.md)
+- [릴리즈 전체 소스 명세](distro/manifests/kiki-build-1.0.0/sources.json): 231개 패키지의 소스·레시피·패키지 SHA 연결
+- `python3 tools/ki2sources.py`: 명세 검사. 보관 객체까지 검사하려면 `--objects SOURCE_OBJECTS`를 추가합니다.
+
+GitHub·Gitea의 Build 릴리즈는 비공개 저장소에서 관리합니다. Native GNOME의 빌드 순서와
+보존 SDK 요구사항은 [native 빌드 안내](tools/gnome_native/README.ko.md)를 따릅니다.
+
+## Stage3 초기 기준선 (2026-09-29)
 
 Stage1은 부팅·설치 기준선, Stage2는 패키지 관리자·Kubernetes 준비 기준선이다.
 현재 Stage3는 진행 중이며 완료된 운영 배포판을 뜻하지 않는다. 일반 서버 빌드는
@@ -60,7 +74,7 @@ SHA 검사가 실제 VM 설치·커널 부팅·GNOME 로그인 검증을 대신�
 ## 저장소
 
 - 개발자 Gitea: <https://git.vlab.dustbox.kr/dustbox/kiki-os>
-- 개발자 공개 GitHub: <https://github.com/ProjectKIKI/KIKI-OS>
+- 개발자 비공개 GitHub: <https://github.com/ProjectKIKI/KIKI-OS>
 
 ## 현재 상태
 

@@ -1,0 +1,77 @@
+{
+  "recipes": [
+    {
+      "name": "pango",
+      "version": "1.57.1",
+      "release": "2",
+      "summary": "International text layout with Cairo, FreeType and introspection",
+      "license": "LGPL-2.1-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/pango/1.57/pango-1.57.1.tar.xz",
+        "file": "pango-1.57.1.tar.xz",
+        "sha256": "e65d6d117080dc3aeeb7d8b4b3b518f7383aa2e6cfce23117c623cd624764c2f"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "cairo",
+          "fontconfig",
+          "freetype",
+          "fribidi",
+          "glib",
+          "glibc",
+          "gobject-introspection",
+          "harfbuzz",
+          "libthai"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "inputs": [
+          "distro/specs/harfbuzz-cross.ini",
+          "distro/scripts/ki2-target-pkg-config",
+          "distro/scripts/ki2-target-run",
+          "distro/scripts/ki2-target-python3",
+          "distro/scripts/ki2-target-g-ir-scanner",
+          "distro/scripts/ki2-target-g-ir-compiler"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3\" \"${KI2_BUILD_DIR}/target-python3\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-scanner\" \"${KI2_BUILD_DIR}/tools/g-ir-scanner\"",
+          "sed -i \"1c #!/usr/bin/env ${KI2_BUILD_DIR}/target-python3\" \"${KI2_SYSROOT}/usr/bin/g-ir-scanner\"",
+          "install -m755 \"${KI2_SYSROOT}/usr/bin/g-ir-compiler\" \"${KI2_BUILD_DIR}/g-ir-compiler.real\"",
+          "install -m755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-compiler\" \"${KI2_SYSROOT}/usr/bin/g-ir-compiler\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "install -m644 \"${KI2_REPO_ROOT}/distro/specs/harfbuzz-cross.ini\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "sed -i -e \"s|@BUILD@|${KI2_BUILD_DIR}|g\" -e \"s|@REPO@|${KI2_REPO_ROOT}|g\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "PATH=\"${KI2_BUILD_DIR}/tools:$PATH\" meson setup \"${KI2_BUILD_DIR}/pango\" \"${KI2_SOURCE_DIR}\" --cross-file \"${KI2_BUILD_DIR}/cross.ini\" --prefix=/usr --libdir=lib --sysconfdir=/etc --buildtype=release --wrap-mode=nofallback -Ddefault_library=shared -Dintrospection=enabled -Dfontconfig=enabled -Dfreetype=enabled -Dcairo=enabled -Dlibthai=enabled -Dxft=disabled -Dsysprof=disabled -Ddocumentation=false -Dman-pages=false -Dbuild-testsuite=true -Dbuild-examples=true"
+        ],
+        "compile": [
+          "meson compile -C \"${KI2_BUILD_DIR}/pango\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" meson install -C \"${KI2_BUILD_DIR}/pango\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_DESTDIR}/usr/share/licenses/pango/COPYING\"",
+          "test -s \"${KI2_DESTDIR}/usr/lib/girepository-1.0/Pango-1.0.typelib\" && test -s \"${KI2_DESTDIR}/usr/lib/girepository-1.0/PangoCairo-1.0.typelib\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libpango-1.0.so.0\" \"${KI2_DESTDIR}/usr/lib/libpangocairo-1.0.so.0\" \"${KI2_DESTDIR}/usr/lib/libpangoft2-1.0.so.0\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "KI2_USE_TARGET_LOADER": "1",
+          "GI_CROSS_LAUNCHER": "/bin/sh ${KI2_REPO_ROOT}/distro/scripts/ki2-target-run",
+          "KI2_SYSROOT_LIBRARY_PATH": "${KI2_BUILD_DIR}/pango/pango:${KI2_SYSROOT_LIBRARY_PATH}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "CXXFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

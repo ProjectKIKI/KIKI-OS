@@ -54,8 +54,11 @@ def gnu(name,version,options,deps,subdir='',license='LGPL-2.1-or-later',release=
                    **({'krb5_cv_attr_constructor_destructor':'yes,yes','ac_cv_printf_positional':'yes'} if name=='krb5' else {})))
         if name in ['libndp','readline']:a.run(['make','clean'])
         a.run(['make','-j4']+(['SHLIB_LIBS=-lncursesw'] if name=='readline' else []))
-        a.run(['make','DESTDIR='+str(dest),'install'])
+        a.run(['make','DESTDIR='+str(dest),'install']+(['SHLIB_LIBS=-lncursesw'] if name=='readline' else []))
         for path in (dest/'usr/lib').glob('*.la'):path.unlink()
+        if name=='readline':
+            from ki2readlinepayload import prepare
+            prepare(dest)
         return a.package(name,version,dest,deps,a.records[name],license=license,release=release)
     finally:os.chdir(previous)
 
@@ -121,7 +124,7 @@ if __name__=='__main__':
             if not (src/'subprojects/tecla').exists():shutil.copytree(next((a.work/'tecla/source').iterdir()),src/'subprojects/tecla')
             meson(name,['-Ddocumentation=false','-Dtests=false','-Dsnap=false','-Dmalcontent=false'],['gtk','glib','libadwaita','gnome-desktop','gnome-settings-daemon','gsettings-desktop-schemas','gnome-online-accounts','cups-base','NetworkManager','libnma','ModemManager','libwacom','pwquality','colord-gtk','colord','libgtop','udisks2','smbclient','krb5','pulseaudio','upower','polkit','accountsservice','ibus','libgudev','gcr','libxml2','json-glib','libsecret','gsound','gnome-bluetooth','wayland','libepoxy','libxcrypt'],license='GPL-2.0-or-later',release='2')
         elif name=='krb5':gnu(name,'1.22.2',['--disable-rpath','--without-system-verto','--with-system-et','--with-system-ss'],['glibc','e2fsprogs','openssl','libcom-err'],subdir='src',license='MIT',release='2')
-        elif name=='readline':gnu(name,'8.3',['--with-curses'],['glibc','ncurses'],license='GPL-3.0-or-later',release='3')
+        elif name=='readline':gnu(name,'8.3',['--with-curses','--with-shared-termcap-library'],['glibc','ncurses'],license='GPL-3.0-or-later',release=a.ki2build.load_recipes(a.repo/'distro/recipes')['readline'].release)
         elif name=='cups-base':gnu(name,'2.4.12',['--disable-gssapi','--disable-avahi','--with-tls=openssl','--with-rundir=/run/cups','--with-system-groups=root wheel'],['glibc','openssl','zlib','libsystemd'],license='Apache-2.0')
         elif name=='libgtop':gnu(name,'2.41.3',['--disable-introspection'],['glib','libsystemd'],license='GPL-2.0-or-later',release='2')
         elif name=='colord-gtk':meson(name,['-Dgtk2=false','-Dgtk3=false','-Dgtk4=true','-Ddocs=false','-Dman=false','-Dvapi=false'],['gtk','glib','colord','lcms2'])

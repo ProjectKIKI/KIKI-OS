@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>KIKI OS</vendor>
+  <action id="org.kiki.admin.apply">
+    <description>Apply a reviewed KIKI administration operation</description>
+    <description xml:lang="ko">검토한 KIKI 관리 작업 실행</description>
+    <message>Administrator authentication is required to change this system.</message>
+    <message xml:lang="ko">시스템을 변경하려면 관리자 인증이 필요합니다.</message>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/kiki-admin-helper</annotate>
+  </action>
+</policyconfig>

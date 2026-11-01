@@ -1,0 +1,6 @@
+{
+  "schema": "ki2-repo-config-v1",
+  "name": "default",
+  "url": "https://cloud-7-3b778824-09936d.lab.terminal-lab.kr/ki2/updates-testing",
+  "verify_key": "/etc/ki2/trust/kiki-development.ed25519.pub"
+}

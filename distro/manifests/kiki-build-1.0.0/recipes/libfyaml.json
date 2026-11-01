@@ -1,0 +1,39 @@
+{
+  "recipes": [
+    {
+      "name": "libfyaml",
+      "version": "0.9.6",
+      "release": "1",
+      "summary": "Native GNOME desktop dependency",
+      "license": "MIT",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/pantoniou/libfyaml/releases/download/v0.9.6/libfyaml-0.9.6.tar.gz",
+        "sha256": "a59cc3331e2eb903ec36933ad52a45888041cac31e44f553a00511131242c483"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure_options": [
+          "--prefix=/usr",
+          "--libdir=/usr/lib",
+          "--build=x86_64-pc-linux-gnu",
+          "--host=x86_64-kiki-linux-gnu",
+          "--disable-static",
+          "--disable-testsuite"
+        ]
+      }
+    }
+  ]
+}

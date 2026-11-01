@@ -143,6 +143,7 @@ class KoreanHTML(HTMLParser):
 def localize_html(text, route=None):
     p = KoreanHTML(); p.feed(text); p.close()
     text = ''.join(p.parts)
+    if '/updates' not in text:text=text.replace('</nav>',"<a href='/updates'>업데이트 관리</a></nav>",1)
     if '/versions' not in text:
         text = text.replace('</nav>', "<a href='/versions'>소스·바이너리 버전</a><a href='/iso-build'>ISO 생성</a></nav>", 1)
     if '/cpu-profiles' not in text:
@@ -151,11 +152,11 @@ def localize_html(text, route=None):
         text=text.replace('</nav>',"<a href='/releases'>릴리즈 관리</a></nav>",1)
     if route in {'/', '/jobs'}:
         text = re.sub(r"<option value=['\"](?:iso|bootiso|installer-iso)['\"][^>]*>.*?</option>", '', text)
-    if route in {'/', '/artifacts'}:
-        notice = ("<section class='panel'><h2>후보 버전 보관소</h2>"
+    if route == '/':
+        notice = ("<section class='panel'><h2>KIKI Build 1.0.0</h2>"
                   "<p id='release-overview'>보관 버전 현황을 불러오는 중…</p>"
-                  "<p><a href='/versions'>후보 소스·바이너리 열기</a> · <a href='/iso-build'>후보 ISO 작업 열기</a></p>"
-                  "<p class='muted'>아래 집계는 기존 빌드 경로 기준입니다. 보관한 후보 패키지·ISO는 위 링크에서 관리합니다.</p></section>")
+                  "<p><a href='/versions'>소스·바이너리 열기</a> · <a href='/iso-build'>ISO 작업 열기</a> · <a href='/source-manifest'>전체 소스 명세</a></p>"
+                  "<p class='muted'>보관 패키지 집계와 ISO 현황을 함께 표시합니다. 설치·보안 검증 결과는 산출물과 작업 상세에서 확인하세요. <a href='/operations'>v1 지원 범위·복구 안내</a></p></section>")
         text = text.replace('</nav>', '</nav>'+notice, 1)
     if route == '/deploy':
         text = text.replace('</nav>', "</nav><section class='panel'><h2>현재 후보 서버 구성</h2>"

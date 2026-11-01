@@ -1,0 +1,31 @@
+{
+  "recipes": [
+    {
+      "name": "ca-certificates",
+      "version": "2024.07.02",
+      "release": "1",
+      "summary": "Trusted CA certificate bundle",
+      "license": "MPL-2.0",
+      "tier": "network",
+      "architectures": [
+        "all"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://curl.se/ca/cacert-2024-07-02.pem",
+        "sha256": "1bf458412568e134a4514f5e170a328d11091e071c7110955c9884ed87972ac9"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": []
+      },
+      "build": {
+        "system": "copy",
+        "install": [
+          "mkdir -p ${KI2_DESTDIR}/etc/ssl/certs",
+          "cp ${KI2_SOURCE_DIR}/cacert-2024-07-02.pem ${KI2_DESTDIR}/etc/ssl/certs/ca-certificates.crt"
+        ]
+      }
+    }
+  ]
+}

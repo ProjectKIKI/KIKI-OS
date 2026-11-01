@@ -1,0 +1,71 @@
+{
+  "recipes": [
+    {
+      "name": "gnutls",
+      "version": "3.8.13",
+      "release": "1",
+      "summary": "TLS library and certificate tools with system trust and IDNA",
+      "license": "LGPL-2.1-or-later AND GPL-3.0-or-later AND BSD-3-Clause AND MIT AND CC0-1.0 AND LicenseRef-GnuTLS-Notices",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.13.tar.xz",
+        "file": "gnutls-3.8.13.tar.xz",
+        "sha256": "ffed8ec1bf09c2426d4f14aae377de4753b53e537d685e604e99a8b16ca9c97e"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "nettle",
+          "gmp",
+          "libtasn1",
+          "libunistring",
+          "libidn2",
+          "p11-kit",
+          "zlib",
+          "zstd",
+          "libgcc",
+          "libstdcxx",
+          "ca-certificates"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "inputs": [
+          "distro/scripts/ki2-target-pkg-config"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "cd \"${KI2_SOURCE_DIR}\" && PKG_CONFIG=\"${KI2_BUILD_DIR}/target-pkg-config\" ./configure --prefix=/usr --libdir=/usr/lib --sysconfdir=/etc --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --disable-static --disable-doc --disable-rpath --with-zstd=link --with-default-trust-store-file=/etc/ssl/certs/ca-certificates.crt"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "rm -f \"${KI2_DESTDIR}/usr/lib/libgnutls.la\" \"${KI2_DESTDIR}/usr/lib/libgnutlsxx.la\"",
+          "install -d \"${KI2_DESTDIR}/usr/share/licenses/gnutls\"",
+          "install -m644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_SOURCE_DIR}/COPYING.LESSERv2\" \"${KI2_SOURCE_DIR}/README.md\" \"${KI2_DESTDIR}/usr/share/licenses/gnutls/\"",
+          "install -m644 \"${KI2_SOURCE_DIR}/lib/accelerated/x86/license.txt\" \"${KI2_DESTDIR}/usr/share/licenses/gnutls/accelerated-x86.txt\"",
+          "install -m644 \"${KI2_SOURCE_DIR}/lib/inih/LICENSE.txt\" \"${KI2_DESTDIR}/usr/share/licenses/gnutls/inih.txt\"",
+          "install -m644 \"${KI2_SOURCE_DIR}/lib/crau/LICENSE\" \"${KI2_DESTDIR}/usr/share/licenses/gnutls/crau.txt\"",
+          "install -m644 \"${KI2_SOURCE_DIR}/lib/extras/licenses/CC0\" \"${KI2_DESTDIR}/usr/share/licenses/gnutls/CC0\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libgnutls.so.30\" \"${KI2_DESTDIR}/usr/lib/libgnutlsxx.so.30\" \"${KI2_DESTDIR}/usr/bin/gnutls-cli\" \"${KI2_DESTDIR}/usr/bin/certtool\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CC": "cc --sysroot=${KI2_SYSROOT}",
+          "CXX": "c++ --sysroot=${KI2_SYSROOT}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "CXXFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

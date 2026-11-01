@@ -71,3 +71,11 @@ util-linux 실행 파일에 연결했습니다. 암호 라이브러리는 ABI 1�
 서버에서 재컴파일한 결과로 표시하지 않습니다. 버전 라이브러리의 새 서명
 스냅샷은 로컬 ISO에 내장된 서명 인덱스와 구분하고, 실제 설치 증거는
 동일한 ISO SHA에 연결합니다. 개인 서명키는 전송하지 않습니다.
+
+## 후속 관리자 앱 후보
+
+위 ISO와 설치 검증 기록은 GNOME 기본 앱 후보의 이력이다. 이후 추가한
+`KIKI 관리자`는 별도 서명 후보 `dist/ki2/kiki-admin-20261028-r4`에 포함하며,
+현재 `desktop-gnome.toml`은 이 후보를 사용한다. 기존 GNOME ISO 파일은
+변경하지 않았다. 관리자 앱의 기능·권한·검증 범위는
+[`cmd/kiki-admin/README.ko.md`](../cmd/kiki-admin/README.ko.md)에 기록한다.

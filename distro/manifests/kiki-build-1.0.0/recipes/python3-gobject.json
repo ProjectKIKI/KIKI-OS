@@ -1,0 +1,69 @@
+{
+  "recipes": [
+    {
+      "name": "python3-gobject",
+      "version": "3.52.3",
+      "release": "4",
+      "summary": "Python 3 bindings for GLib and GObject Introspection",
+      "license": "LGPL-2.1-or-later",
+      "tier": "runtime",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/pygobject/3.52/pygobject-3.52.3.tar.gz",
+        "file": "pygobject-3.52.3.tar.gz",
+        "sha256": "00e427d291e957462a8fad659a9f9c8be776ff82a8b76bdf402f1eaeec086d82"
+      },
+      "dependencies": {
+        "build": [
+          "glib",
+          "gobject-introspection",
+          "libffi",
+          "python"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "gobject-introspection",
+          "libffi",
+          "python"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure_options": [
+          "-Dbuildtype=release",
+          "-Dtests=false",
+          "-Dpycairo=disabled",
+          "-Dpython.platlibdir=lib/python3.12/site-packages",
+          "-Dpython.purelibdir=lib/python3.12/site-packages"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3\" \"${KI2_BUILD_DIR}/target-python3\"",
+          "meson setup \"${KI2_BUILD_DIR}/python3-gobject\" \"${KI2_SOURCE_DIR}\" --prefix=/usr --libdir=lib -Dbuildtype=release -Dtests=false -Dpycairo=disabled -Dpython=\"${KI2_BUILD_DIR}/target-python3\" -Dpython.platlibdir=lib/python3.12/site-packages -Dpython.purelibdir=lib/python3.12/site-packages"
+        ],
+        "compile": [
+          "meson compile -C \"${KI2_BUILD_DIR}/python3-gobject\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" meson install -C \"${KI2_BUILD_DIR}/python3-gobject\"",
+          "find \"${KI2_DESTDIR}/usr/lib/python3.12\" -type f -name '*.pyc' -delete",
+          "find \"${KI2_DESTDIR}/usr/lib/python3.12\" -depth -type d -name '__pycache__' -empty -delete",
+          "find \"${KI2_DESTDIR}/usr/lib/python3.12\" -type f -exec sh -c 'for binary do file \"${binary}\" | grep -q ELF && strip --strip-unneeded \"${binary}\" || true; done' sh '{}' +"
+        ],
+        "env": {
+          "CPPFLAGS": "${KI2_SYSROOT_CPPFLAGS}",
+          "CFLAGS": "${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=${KI2_WORK}=/usr/src/python3-gobject -fdebug-prefix-map=${KI2_WORK}=/usr/src/python3-gobject -ffile-prefix-map=${KI2_SYSROOT}=/usr -fdebug-prefix-map=${KI2_SYSROOT}=/usr",
+          "LDFLAGS": "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now",
+          "PYTHONDONTWRITEBYTECODE": "1",
+          "PYTHONHASHSEED": "0"
+        }
+      }
+    }
+  ]
+}

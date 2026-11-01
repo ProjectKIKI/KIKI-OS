@@ -1,0 +1,37 @@
+{
+  "recipes": [
+    {
+      "name": "ethtool",
+      "version": "6.15",
+      "release": "3",
+      "summary": "Ethernet device inspection package",
+      "license": "GPL-2.0-only",
+      "tier": "network",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.kernel.org/pub/software/network/ethtool/ethtool-6.15.tar.xz",
+        "file": "ethtool-6.15.tar.xz",
+        "sha256": "9477c365114d910120aaec5336a1d16196c833d8486f7c6da67bedef57880ade"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "skip_sysroot": true,
+        "configure_options": [
+          "--disable-netlink"
+        ],
+        "env": {
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2"
+        }
+      }
+    }
+  ]
+}

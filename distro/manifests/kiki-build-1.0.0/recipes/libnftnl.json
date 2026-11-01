@@ -1,0 +1,51 @@
+{
+  "recipes": [
+    {
+      "name": "libnftnl",
+      "version": "1.3.1",
+      "release": "1",
+      "summary": "Netfilter nftables userspace library",
+      "license": "GPL-2.0-or-later",
+      "tier": "network",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.netfilter.org/projects/libnftnl/files/libnftnl-1.3.1.tar.xz",
+        "file": "libnftnl-1.3.1.tar.xz",
+        "sha256": "607da28dba66fbdeccf8ef1395dded9077e8d19f2995f9a4d45a9c2f0bcffba8"
+      },
+      "dependencies": {
+        "build": [
+          "libmnl"
+        ],
+        "runtime": [
+          "glibc",
+          "libmnl"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --disable-static --enable-shared"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "find \"${KI2_DESTDIR}/usr/lib\" -name '*.la' -delete"
+        ],
+        "env": {
+          "CPPFLAGS": "${KI2_SYSROOT_CPPFLAGS}",
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

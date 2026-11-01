@@ -8,10 +8,10 @@ from ki2users import ROLES
 NAV = (
     ('빌드 콘솔', (('/', '운영 현황', 'overview'), ('/jobs', '빌드 작업', 'jobs'),
                   ('/package-build', '개별 패키지 빌드', 'package'), ('/kernel-build', '커널 빌드', 'cpu'), ('/packages', '패키지', 'package'),
-                  ('/profiles', '구성 프로필', 'file'), ('/artifacts', '산출물', 'file'),
-                  ('/security', '검증 현황', 'shield'))),
+                  ('/package-groups', '패키지 그룹 관리', 'package'), ('/profiles', '구성 프로필', 'file'), ('/artifacts', '산출물', 'file'),
+                  ('/security', '검증 현황', 'shield'),('/assistant','Local LLM 보조','cpu'),('/operations','운영·복구','settings'))),
     ('시스템 관리', (('/git', 'Git 소스 동기화', 'branch'), ('/deploy', '서버 구성', 'server'), ('/releases', '릴리즈 관리', 'tag'),
-                   ('/versions', '소스·바이너리 버전', 'branch'), ('/iso-build', '버전별 ISO', 'disc'),
+                   ('/versions', '소스·바이너리 버전', 'branch'), ('/updates', '업데이트 관리', 'package'), ('/iso-build', '버전별 ISO', 'disc'),
                    ('/cpu-profiles', 'CPU 대상 관리', 'cpu'))),
     ('계정', (('/users', '사용자 관리', 'user'), ('/account', '내 계정', 'settings'))),
 )

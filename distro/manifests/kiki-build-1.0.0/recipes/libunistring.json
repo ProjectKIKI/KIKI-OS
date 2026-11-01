@@ -1,0 +1,50 @@
+{
+  "recipes": [
+    {
+      "name": "libunistring",
+      "version": "1.4.2",
+      "release": "2",
+      "summary": "Unicode string processing and normalization",
+      "license": "(LGPL-3.0-or-later OR GPL-2.0-or-later) AND GFDL-1.2-no-invariants-or-later",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/libunistring/libunistring-1.4.2.tar.xz",
+        "file": "libunistring-1.4.2.tar.xz",
+        "sha256": "5b46e74377ed7409c5b75e7a96f95377b095623b689d8522620927964a41499c"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --disable-static"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "rm -f \"${KI2_DESTDIR}/usr/lib/libunistring.la\"",
+          "install -d \"${KI2_DESTDIR}/usr/share/licenses/libunistring\"",
+          "install -m 0644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_SOURCE_DIR}/COPYING.LIB\" \"${KI2_SOURCE_DIR}/README\" \"${KI2_SOURCE_DIR}/doc/fdl.texi\" \"${KI2_DESTDIR}/usr/share/licenses/libunistring/\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libunistring.so.5\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CC": "cc --sysroot=${KI2_SYSROOT}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

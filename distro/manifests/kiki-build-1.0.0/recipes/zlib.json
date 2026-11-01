@@ -1,0 +1,42 @@
+{
+  "recipes": [
+    {
+      "name": "zlib",
+      "version": "1.3.1",
+      "release": "3",
+      "summary": "Compression library used by core userland",
+      "license": "Zlib",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://zlib.net/fossils/zlib-1.3.1.tar.gz",
+        "sha256": "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure": [
+          "cd ${KI2_SOURCE_DIR} && ./configure --prefix=/usr"
+        ],
+        "compile": [
+          "make -C ${KI2_SOURCE_DIR} -j${KI2_JOBS}"
+        ],
+        "install": [
+          "make -C ${KI2_SOURCE_DIR} DESTDIR=${KI2_DESTDIR} install",
+          "find ${KI2_DESTDIR}/usr -type f -name '*.a' -delete"
+        ]
+      }
+    }
+  ]
+}

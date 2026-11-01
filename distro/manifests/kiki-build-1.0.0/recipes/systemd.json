@@ -1,0 +1,69 @@
+{
+  "recipes": [
+    {
+      "name": "systemd",
+      "version": "255.7",
+      "release": "9",
+      "summary": "System and service manager for KIKI OS",
+      "license": "LGPL-2.1-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/systemd/systemd-stable/archive/refs/tags/v255.7.tar.gz",
+        "sha256": "da29f2490c192ca743511098b1d15e385b1b5e7744979661dc30514c1ac61f0e"
+      },
+      "dependencies": {
+        "build": [
+          "linux-pam",
+          "linux-headers"
+        ],
+        "runtime": [
+          "acl",
+          "curl",
+          "glibc",
+          "kiki-pam-config",
+          "kmod",
+          "libcap",
+          "libseccomp",
+          "libsystemd",
+          "libxcrypt",
+          "linux-pam",
+          "openssl",
+          "util-linux",
+          "xz",
+          "zlib",
+          "zstd"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "patches": [
+          "distro/patches/systemd/0001-include-linux-mount-before-fallback-macros.patch"
+        ],
+        "configure_options": [
+          "-Ddefault-dnssec=no",
+          "-Dfirstboot=false",
+          "-Dmachined=true",
+          "-Dman=false",
+          "-Dtests=false",
+          "-Ddbus-interfaces-dir=no",
+          "-Ddbuspolicydir=/usr/share/dbus-1/system.d",
+          "-Ddbussystemservicedir=/usr/share/dbus-1/system-services",
+          "-Ddbussessionservicedir=/usr/share/dbus-1/services",
+          "-Dc_args='--sysroot=${KI2_SYSROOT} -Wno-error=shift-overflow'",
+          "-Dpam=true",
+          "-Dpamconfdir=/etc/pam.d",
+          "-Dbzip2=false",
+          "-Dimportd=false"
+        ],
+        "env": {
+          "CFLAGS": "--sysroot=${KI2_SYSROOT}",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ -L${KI2_SYSROOT}/usr/lib64 -L${KI2_SYSROOT}/lib64 -L${KI2_SYSROOT}/usr/lib -Wl,-rpath-link=${KI2_SYSROOT}/lib64 -Wl,-rpath-link=${KI2_SYSROOT}/usr/lib64 -Wl,-rpath-link=${KI2_SYSROOT}/usr/lib"
+        }
+      }
+    }
+  ]
+}

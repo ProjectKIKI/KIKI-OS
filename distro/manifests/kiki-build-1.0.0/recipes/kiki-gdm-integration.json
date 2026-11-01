@@ -1,0 +1,40 @@
+{
+  "recipes": [
+    {
+      "name": "kiki-gdm-integration",
+      "version": "0.1.0",
+      "release": "5",
+      "summary": "KIKI GDM Wayland password-login integration",
+      "license": "GPL-3.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/home/tang/kiki-build/gnome50-session-20261017/gdm-integration-v5"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "gdm",
+          "kiki-pam-config",
+          "polkit",
+          "systemd",
+          "shadow",
+          "glibc-locales",
+          "glib",
+          "glib-networking",
+          "gdk-pixbuf",
+          "librsvg",
+          "shared-mime-info",
+          "gtk",
+          "fontconfig"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

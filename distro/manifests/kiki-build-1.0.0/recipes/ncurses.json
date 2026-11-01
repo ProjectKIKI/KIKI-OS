@@ -1,0 +1,41 @@
+{
+  "recipes": [
+    {
+      "name": "ncurses",
+      "version": "6.5",
+      "release": "2",
+      "summary": "Terminal control libraries for console TUI tools",
+      "license": "X11",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz",
+        "sha256": "136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure_options": [
+          "--libdir=/lib",
+          "--with-shared",
+          "--without-debug",
+          "--without-ada",
+          "--without-cxx-binding",
+          "--enable-widec",
+          "--with-termlib=tinfo"
+        ]
+      }
+    }
+  ]
+}

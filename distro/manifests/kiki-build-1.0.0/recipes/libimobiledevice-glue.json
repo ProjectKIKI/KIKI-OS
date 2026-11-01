@@ -1,0 +1,50 @@
+{
+  "recipes": [
+    {
+      "name": "libimobiledevice-glue",
+      "version": "1.3.2",
+      "release": "5",
+      "summary": "Common device integration helpers for the GNOME mobile device stack",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libimobiledevice/libimobiledevice-glue/releases/download/1.3.2/libimobiledevice-glue-1.3.2.tar.bz2",
+        "file": "libimobiledevice-glue-1.3.2.tar.bz2",
+        "sha256": "6489a3411b874ecd81c87815d863603f518b264a976319725e0ed59935546774"
+      },
+      "dependencies": {
+        "build": [
+          "libplist"
+        ],
+        "runtime": [
+          "glibc",
+          "libplist"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --libdir=/usr/lib --enable-shared --disable-static",
+          "sed -i -e \"s/^hardcode_libdir_flag_spec=.*/hardcode_libdir_flag_spec=/\" -e \"s/^runpath_var=.*/runpath_var=/\" \"${KI2_SOURCE_DIR}/libtool\""
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "rm -f \"${KI2_DESTDIR}/usr/lib/libimobiledevice-glue-1.0.la\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libimobiledevice-glue-1.0.so.0.3.2\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CC": "cc",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

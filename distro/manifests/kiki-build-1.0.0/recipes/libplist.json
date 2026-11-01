@@ -1,0 +1,55 @@
+{
+  "recipes": [
+    {
+      "name": "libplist",
+      "version": "2.7.0",
+      "release": "4",
+      "summary": "Property list C/C++ libraries and conversion tools for device integration",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://github.com/libimobiledevice/libplist/releases/download/2.7.0/libplist-2.7.0.tar.bz2",
+        "file": "libplist-2.7.0.tar.bz2",
+        "sha256": "7ac42301e896b1ebe3c654634780c82baa7cb70df8554e683ff89f7c2643eb8b"
+      },
+      "dependencies": {
+        "build": [
+          "libstdcxx",
+          "libgcc"
+        ],
+        "runtime": [
+          "glibc",
+          "libgcc",
+          "libstdcxx"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "patches": [
+          "distro/patches/libplist/0001-fix-format-test-exit-checks.patch"
+        ],
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --libdir=/usr/lib --without-cython --with-tools --with-tests --enable-shared --disable-static"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "rm -f \"${KI2_DESTDIR}/usr/lib/libplist-2.0.la\" \"${KI2_DESTDIR}/usr/lib/libplist++-2.0.la\""
+        ],
+        "env": {
+          "CC": "cc",
+          "CXX": "g++",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "CXXFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now -shared-libgcc"
+        }
+      }
+    }
+  ]
+}

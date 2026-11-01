@@ -1,0 +1,41 @@
+{
+  "recipes": [
+    {
+      "name": "gnome-settings-daemon",
+      "version": "50.1",
+      "release": "2",
+      "summary": "KIKI native desktop gnome-settings-daemon",
+      "license": "GPL-2.0-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-desktop-apps-20261027/gsd/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glib",
+          "gnome-settings-daemon-schemas",
+          "gnome-desktop",
+          "geocode-glib",
+          "libgweather",
+          "libcanberra",
+          "geoclue",
+          "libnotify",
+          "pulseaudio",
+          "polkit",
+          "upower",
+          "libsystemd",
+          "libgudev",
+          "alsa-lib"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

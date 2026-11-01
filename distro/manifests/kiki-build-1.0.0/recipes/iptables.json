@@ -1,0 +1,67 @@
+{
+  "recipes": [
+    {
+      "name": "iptables",
+      "version": "1.8.13",
+      "release": "4",
+      "summary": "iptables nft compatibility package",
+      "license": "GPL-2.0-only",
+      "tier": "network",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.netfilter.org/projects/iptables/files/iptables-1.8.13.tar.xz",
+        "file": "iptables-1.8.13.tar.xz",
+        "sha256": "1afcd33da9e8f913ace6a2126788162e207e26f5d5e29c6573c0e581ffc58b99"
+      },
+      "dependencies": {
+        "build": [
+          "libmnl",
+          "libnfnetlink",
+          "libnetfilter-conntrack",
+          "libnftnl"
+        ],
+        "runtime": [
+          "glibc",
+          "libmnl",
+          "libnfnetlink",
+          "libnetfilter-conntrack",
+          "libnftnl"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "sysroot_exclude": [
+          "glibc"
+        ],
+        "configure_options": [
+          "--enable-nftables",
+          "--enable-libnfnetlink",
+          "--enable-connlabel",
+          "--enable-devel",
+          "--disable-static",
+          "--enable-shared"
+        ],
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --sbindir=/usr/sbin --libexecdir=/usr/lib --enable-nftables --enable-libnfnetlink --enable-connlabel --enable-devel --disable-static --enable-shared"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j\"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "ln -sfn ../sbin/xtables-legacy-multi \"${KI2_DESTDIR}/usr/bin/iptables-xml\"",
+          "for command in iptables iptables-restore iptables-save ip6tables ip6tables-restore ip6tables-save; do ln -sfn xtables-nft-multi \"${KI2_DESTDIR}/usr/sbin/${command}\"; done",
+          "find \"${KI2_DESTDIR}/usr/lib\" -name '*.la' -delete"
+        ],
+        "env": {
+          "CPPFLAGS": "${KI2_SYSROOT_CPPFLAGS}",
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "recipes": [
+    {
+      "name": "bridge-utils",
+      "version": "1.7.1",
+      "release": "3",
+      "summary": "Legacy brctl compatibility package for Kubernetes nodes",
+      "license": "GPL-2.0-or-later",
+      "tier": "network",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://cdn.kernel.org/pub/linux/utils/net/bridge-utils/bridge-utils-1.7.1.tar.xz",
+        "file": "bridge-utils-1.7.1.tar.xz",
+        "sha256": "a61d8be4f1a1405c60c8ef38d544f0c18c05b33b9b07e5b4b31033536165e60e"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "iproute2"
+        ]
+      },
+      "build": {
+        "system": "make",
+        "skip_sysroot": true,
+        "configure": [
+          "mkdir -p \"${KI2_BUILD_DIR}/bridge-utils\" && install -m644 /dev/null \"${KI2_BUILD_DIR}/bridge-utils/config.h\""
+        ],
+        "compile": [
+          "for source in libbridge_devif libbridge_if libbridge_init libbridge_misc; do cc $CFLAGS -Wall -I\"${KI2_BUILD_DIR}/bridge-utils\" -I\"${KI2_SOURCE_DIR}/libbridge\" -c \"${KI2_SOURCE_DIR}/libbridge/${source}.c\" -o \"${KI2_BUILD_DIR}/bridge-utils/${source}.o\"; done",
+          "ar rcs \"${KI2_BUILD_DIR}/bridge-utils/libbridge.a\" \"${KI2_BUILD_DIR}\"/bridge-utils/libbridge_*.o",
+          "for source in brctl brctl_cmd brctl_disp; do cc $CFLAGS -Wall '-DPACKAGE_NAME=\"bridge-utils\"' '-DPACKAGE_VERSION=\"1.7.1\"' -I\"${KI2_BUILD_DIR}/bridge-utils\" -I\"${KI2_SOURCE_DIR}/libbridge\" -I\"${KI2_SOURCE_DIR}/brctl\" -c \"${KI2_SOURCE_DIR}/brctl/${source}.c\" -o \"${KI2_BUILD_DIR}/bridge-utils/${source}.o\"; done",
+          "cc $LDFLAGS \"${KI2_BUILD_DIR}/bridge-utils/brctl.o\" \"${KI2_BUILD_DIR}/bridge-utils/brctl_cmd.o\" \"${KI2_BUILD_DIR}/bridge-utils/brctl_disp.o\" \"${KI2_BUILD_DIR}/bridge-utils/libbridge.a\" -o \"${KI2_BUILD_DIR}/bridge-utils/brctl\""
+        ],
+        "install": [
+          "install -Dm755 \"${KI2_BUILD_DIR}/bridge-utils/brctl\" \"${KI2_DESTDIR}/usr/sbin/brctl\"",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/doc/brctl.8\" \"${KI2_DESTDIR}/usr/share/man/man8/brctl.8\""
+        ],
+        "env": {
+          "CFLAGS": "-O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "-Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

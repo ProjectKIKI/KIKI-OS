@@ -1,0 +1,37 @@
+{
+  "recipes": [
+    {
+      "name": "libevdev",
+      "version": "1.13.4",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.freedesktop.org/software/libevdev/libevdev-1.13.4.tar.xz",
+        "sha256": "f00ab8d42ad8b905296fab67e13b871f1a424839331516642100f82ad88127cd"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dtests=disabled",
+          "-Dtools=enabled",
+          "-Ddocumentation=disabled"
+        ]
+      }
+    }
+  ]
+}

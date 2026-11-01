@@ -8,10 +8,22 @@ from unittest import mock
 
 import ki2release as release
 import ki2ci_ko as ko
-from ki2iso_preserved import preserved_guard
+from ki2iso_preserved import preserved_guard, current_media_verifier
 
 
 class KoreanTests(unittest.TestCase):
+    def test_current_network_writer_replaces_preserved_backend_helper(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);target=root/'usr/lib/kiki-installer/ki2network.py'
+            def original(*args):
+                target.parent.mkdir(parents=True);target.write_text('old helper')
+            packages=root/'packages';packages.mkdir()
+            with tarfile.open(packages/'util-linux-1-1.x86_64.ki2','w:gz') as archive:
+                entry=tarfile.TarInfo('rootfs/usr/sbin/blkid');blob=b'blkid fixture';entry.size=len(blob);entry.mode=0o755;archive.addfile(entry,io.BytesIO(blob))
+            current_media_verifier(original)(root,packages,Path('public'))
+            self.assertEqual(target.read_bytes(),Path(release.__file__).with_name('ki2network.py').read_bytes())
+            self.assertEqual((root/'usr/sbin/blkid').read_bytes(),b'blkid fixture')
+
     def test_iso_result_uses_korean_labels_and_keeps_unverified_scope_visible(self):
         r=dict(snapshot='candidate',file='test.iso',bytes=100,sha256='a'*64,media_packages=182,root_regular_files_checked=25597,bios_catalog=True,uefi_catalog=True,fresh_install_tested=False,gdm_login_tested=False,secure_boot_signed=False,validation='SHA 통과')
         result=release.result_panel('iso',r)
@@ -24,7 +36,7 @@ class KoreanTests(unittest.TestCase):
     def test_candidate_overview_is_distinct_from_old_build_paths(self):
         out=ko.localize_html("<nav></nav><option value='installer-iso'>Installer ISO</option><p>Present:</p><p>Missing:</p>",'/')
         self.assertIn('release-overview',out)
-        self.assertIn('기존 빌드 경로 기준',out)
+        self.assertIn('보관 패키지 집계',out)
         self.assertNotIn("value='installer-iso'",out)
         self.assertIn('설치됨:',out);self.assertIn('누락됨:',out)
 
@@ -44,6 +56,46 @@ class KoreanTests(unittest.TestCase):
 
 
 class LibraryTests(unittest.TestCase):
+    def test_iso_result_keeps_packaged_catalog_after_boot_report_validation(self):
+        from types import SimpleNamespace
+        import subprocess
+        data={'schema':'ki2-package-groups-v1','groups':[{'id':'minimal','requires':[],'packages':{'mandatory':['ki2ctl'],'default':[],'optional':[]},'services':{'enable':[]}}],'profiles':[]}
+        content=(json.dumps(data)+'\n').encode()
+        import hashlib
+        expected=hashlib.sha256(content).hexdigest()
+        selection={}
+        for name,relative,blob in [('linux','boot/vmlinuz-kiki',b'kernel fixture'),('ki2ctl','usr/share/ki2/package-groups.json',content),
+            ('kiki-installer-gtk','usr/share/kiki-installer-gtk/runtime-manifest.json',json.dumps({'catalog_sha256':expected}).encode())]:
+            stage=self.root/name;path=stage/relative;path.parent.mkdir(parents=True);path.write_bytes(blob)
+            recipe=self.lib.build.normalize_recipe({'name':name,'version':'1.0','summary':name,'license':'MIT'},Path('fixture.json'))
+            package=self.root/(name+'.ki2')
+            self.lib.build.create_package(SimpleNamespace(arch='x86_64'),recipe,stage,package,'fixture',{})
+            record=self.lib.add_binary(package,release.sha(package),'fixture');selection[name]=record['sha256']
+        self.lib.snapshot('catalog-iso',selection,'fixture')
+        job=self.lib.submit('iso',{'snapshot':'catalog-iso','profile':'gnome50','release_version':'catalog-iso','cpu_profile':'x86_64'})
+        def run(command,*args,**kwargs):
+            if '--output' in command:Path(command[command.index('--output')+1]).write_bytes(b'ISO fixture')
+            if '-extract' in command:release.save(command[-1],{'package_media':{'copied':3,'missing':[]}})
+        original_run=subprocess.run
+        def command(command,*args,**kwargs):
+            if command[0]=='xorriso':return subprocess.CompletedProcess([],0,'BIOS UEFI','')
+            return original_run(command,*args,**kwargs)
+        with mock.patch.object(self.lib,'iso_inputs',return_value=(self.backend,'desktop-gnome',['ki2ctl'])),mock.patch.object(self.lib,'run',side_effect=run) as runner,mock.patch.object(release.subprocess,'run',side_effect=command):
+            result=self.lib.iso_job(job)
+        self.assertEqual(result['catalog_groups'],1)
+        self.assertEqual(result['catalog_sha256'],expected)
+        iso_command=next(call.args[0] for call in runner.call_args_list if '--output' in call.args[0])
+        self.assertIn('--catalog-file',iso_command)
+        self.assertEqual(iso_command[iso_command.index('--expected-kernel-sha256')+1],selection['linux'])
+
+    def test_native_iso_roots_come_from_packaged_catalog(self):
+        import ki2installcatalog
+        data=ki2installcatalog.load()
+        group=next(g for g in data['groups'] if g['id']=='desktop-gnome')
+        group['packages']['default'].append('openscap')
+        _,_,roots=self.lib.iso_inputs('gnome50',{'kiki-desktop-defaults':{}},data)
+        self.assertIn('openscap',roots)
+
     def test_native_desktop_uses_current_catalog_and_backend(self):
         import ki2installcatalog
         self.lib.legacy_backend=self.root/'legacy'
@@ -74,6 +126,13 @@ class LibraryTests(unittest.TestCase):
         with tarfile.open(p,'w:gz') as t:
             entry=tarfile.TarInfo('manifest.json');entry.size=len(data);t.addfile(entry,io.BytesIO(data))
         return p
+
+    def test_stale_writer_cannot_overwrite_new_snapshot_packages(self):
+        other=release.Library(self.lib.root,self.backend,self.base,self.root/'sources',self.root/'native')
+        package=self.package();record=self.lib.add_binary(package,release.sha(package),'test');self.lib.commit()
+        self.lib.snapshot('immutable-test',{'demo':record['sha256']},'test')
+        with self.assertRaisesRegex(ValueError,'다른 프로세스'):other.commit()
+        restored=release.load_catalog(self.lib.root);self.assertIn(record['sha256'],restored['binaries'])
 
     def test_catalog_recovers_from_empty_primary_and_preserves_evidence(self):
         p=self.package();self.lib.add_binary(p,release.sha(p),'test');self.lib.commit()
@@ -138,6 +197,7 @@ class LibraryTests(unittest.TestCase):
         p=self.package();r=self.lib.add_binary(p,release.sha(p),'test')
         result=self.lib.snapshot('test-1',{'demo':r['sha256']},'test')
         self.assertEqual(result['packages']['demo'],r['sha256'])
+        self.assertIn(r['sha256'],release.load_catalog(self.lib.root)['binaries'])
         directory=self.lib.root/'snapshots/test-1'
         self.assertTrue(self.lib.repo.verify_metadata_file(directory/'repo/metadata.x86_64.json',directory/'candidate.pub'))
         before=(directory/'manifest.json').read_bytes()
@@ -174,6 +234,49 @@ class LibraryTests(unittest.TestCase):
         self.lib.sync_completed_jobs();r=self.lib.catalog['binaries'][release.sha(p)]
         self.assertIn('런타임 미검증',r['validation'])
         self.lib.sync_completed_jobs();self.assertEqual(len(self.lib.catalog['binaries']),1)
+
+    def test_completed_build_automatically_creates_signed_candidate_when_enabled(self):
+        p=self.package();record=self.lib.add_binary(p,release.sha(p),'fixture')
+        self.lib.snapshot('auto-base',{'demo':record['sha256']},'fixture')
+        release.save(self.lib.root/'repository-auto-publish.json',{'enabled':True,'base':'auto-base'})
+        job=self.backend/'build/ki2ci/jobs/auto-test';(job/'packages').mkdir(parents=True)
+        (job/'packages'/p.name).write_bytes(p.read_bytes())
+        release.save(job/'metadata.json',{'id':'auto-test','package':'demo','status':'succeeded'})
+        self.lib.sync_completed_jobs()
+        policy=release.read(self.lib.root/'repository-auto-publish.json')
+        self.assertTrue(policy['base'].startswith('build-'))
+        snap=self.lib.root/'snapshots'/policy['base']
+        self.assertTrue(self.lib.repo.verify_metadata_file(snap/'repo/metadata.x86_64.json',snap/'candidate.pub'))
+        self.assertFalse(release.read(snap/'manifest.json')['release_ready'])
+        self.lib.sync_completed_jobs()
+        self.assertEqual(len(self.lib.snapshots()),2)
+
+    def test_failed_build_never_creates_automatic_candidate(self):
+        release.save(self.lib.root/'repository-auto-publish.json',{'enabled':True,'base':'unused'})
+        job=self.backend/'build/ki2ci/jobs/failed-test';(job/'packages').mkdir(parents=True)
+        p=self.package();(job/'packages'/p.name).write_bytes(p.read_bytes())
+        release.save(job/'metadata.json',{'id':'failed-test','package':'demo','status':'failed'})
+        self.lib.sync_completed_jobs()
+        self.assertEqual(self.lib.snapshots(),[])
+
+    def test_jobs_in_legacy_builder_are_imported_and_old_jobs_do_not_auto_publish(self):
+        legacy=self.backend/'legacy';self.lib.legacy_backend=legacy
+        job=legacy/'build/ki2ci/jobs/older-job';(job/'packages').mkdir(parents=True)
+        p=self.package();(job/'packages'/p.name).write_bytes(p.read_bytes())
+        release.save(job/'metadata.json',{'id':'older-job','package':'demo','status':'succeeded','finished_at':'2026-10-27T00:00:00+00:00'})
+        release.save(self.lib.root/'repository-auto-publish.json',{'enabled':True,'base':'unused','after':'2026-10-28T00:00:00+00:00'})
+        self.lib.sync_completed_jobs()
+        self.assertEqual(len(self.lib.catalog['binaries']),1)
+        self.assertEqual(self.lib.snapshots(),[])
+
+    def test_automatic_repository_refuses_downgrade_and_keeps_previous_base(self):
+        p=self.package(version='2.0');new=self.lib.add_binary(p,release.sha(p),'fixture')
+        self.lib.snapshot('new-base',{'demo':new['sha256']},'fixture')
+        release.save(self.lib.root/'repository-auto-publish.json',{'enabled':True,'base':'new-base'})
+        p=self.package(version='1.0');old=self.lib.add_binary(p,release.sha(p),'fixture')
+        with self.assertRaisesRegex(ValueError,'버전 하락'):
+            self.lib.auto_repository_snapshot({'id':'older'}, {'demo':old['sha256']})
+        self.assertEqual(release.read(self.lib.root/'repository-auto-publish.json')['base'],'new-base')
 
     def test_pinned_installer_exception_does_not_accept_other_hashes(self):
         original=mock.Mock(side_effect=ValueError('name policy'))

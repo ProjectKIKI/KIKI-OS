@@ -1,0 +1,29 @@
+{
+  "recipes": [
+    {
+      "name": "glibc-locales",
+      "version": "2.39",
+      "release": "1",
+      "summary": "KIKI English and Korean UTF-8 locales",
+      "license": "LGPL-2.1-or-later",
+      "tier": "base",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/libc/glibc-2.39.tar.xz",
+        "sha256": "f77bd47cf8170c57365ae7bf86696c118adb3b120d3259c64c502d3dc1e2d926"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

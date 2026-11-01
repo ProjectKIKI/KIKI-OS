@@ -1,0 +1,13 @@
+[Unit]
+Description=Hyper-V snapshot integration
+ConditionVirtualization=microsoft
+ConditionPathExists=/dev/vmbus/hv_vss
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/hv_vss_daemon -n
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

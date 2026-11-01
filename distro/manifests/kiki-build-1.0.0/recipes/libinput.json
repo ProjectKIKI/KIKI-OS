@@ -1,0 +1,45 @@
+{
+  "recipes": [
+    {
+      "name": "libinput",
+      "version": "1.30.0",
+      "release": "1",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "MIT",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://gitlab.freedesktop.org/libinput/libinput/-/archive/1.30.0/libinput-1.30.0.tar.gz",
+        "sha256": "fcce701746b8f5ee57c6724e963496d2223a9639856c6d1b811cff38e6dd4465"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glibc",
+          "systemd",
+          "libevdev"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dlibwacom=false",
+          "-Dmtdev=false",
+          "-Ddebug-gui=false",
+          "-Dtests=false",
+          "-Dinstall-tests=false",
+          "-Ddocumentation=false",
+          "-Dzshcompletiondir=no",
+          "-Dlua-plugins=disabled",
+          "-Dinternal-event-debugging=false"
+        ]
+      }
+    }
+  ]
+}

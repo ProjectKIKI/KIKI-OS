@@ -1,0 +1,14 @@
+#!/usr/bin/python3
+"""Read-only VM integration diagnostics for KIKI OS."""
+import json,subprocess
+from pathlib import Path
+
+def run(*args):
+    try:return subprocess.run(args,text=True,capture_output=True,timeout=5).stdout.strip()
+    except (OSError,subprocess.TimeoutExpired):return ''
+
+kind=run('systemd-detect-virt') or 'none'
+devices=['/dev/virtio-ports/org.qemu.guest_agent.0','/dev/vmbus/hv_kvp','/dev/vmbus/hv_vss','/dev/vmbus/hv_fcopy']
+units=['qemu-guest-agent.service','hv-kvp-daemon.service','hv-vss-daemon.service','hv-fcopy-daemon.service']
+print(json.dumps(dict(schema='kiki-vm-status-v1',virtualization=kind,
+    devices={p:Path(p).exists() for p in devices},services={u:run('systemctl','is-active',u) or 'unavailable' for u in units}),indent=2))

@@ -1,0 +1,28 @@
+{
+  "recipes": [
+    {
+      "name": "kiki-desktop-fonts",
+      "version": "0.1.0",
+      "release": "1",
+      "summary": "Preserved desktop fonts including Korean coverage",
+      "license": "LicenseRef-KIKI-Preserved-Fonts",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/home/tang/kiki-build/gnome50-session-20261017/bootstrap-fonts"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "fontconfig"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}

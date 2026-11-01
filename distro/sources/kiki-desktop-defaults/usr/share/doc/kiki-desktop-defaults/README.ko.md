@@ -9,6 +9,11 @@ GNOME 기본 구성
 - GNOME 프로파일의 네트워크는 NetworkManager와 systemd-resolved를 사용합니다.
   서버 프로파일은 기존 systemd-networkd 구성을 유지합니다.
 - 배경은 현재 이미지 디코더에서 지원하는 GNOME SVG·PNG 배경을 제공합니다.
+- 기본 입력 방화벽은 SSH(22), 기존 연결, DHCP와 ICMP/IPv6 필수 통신을 허용합니다.
+  추가 서버 포트는 `/etc/kiki/desktop-firewall.nft`에서 설정한 뒤
+  `systemctl reload kiki-desktop-firewall.service`로 반영합니다. KIKI 전용 테이블만 교체합니다.
+- `systemd-timesyncd`가 기본으로 시작하며, 명시적으로 선택한 chrony/ntpd는 우선합니다.
+- OpenSSH 기본 정책은 root 직접 로그인과 빈 암호를 차단합니다.
 
 KIKI 설정·파일 초안은 이 프로파일의 기본 앱으로 설치하지 않습니다.
 오디오, 화면 공유, Xwayland와 실제 하드웨어 GPU 지원은 별도 검증 대상입니다.

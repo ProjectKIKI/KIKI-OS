@@ -1,0 +1,55 @@
+{
+  "recipes": [
+    {
+      "name": "kiki-agent",
+      "version": "0.1.0",
+      "release": "5",
+      "summary": "KIKI node registration, heartbeat, validation, and Stage 3 configuration defaults",
+      "license": "GPL-3.0-or-later",
+      "tier": "kiki",
+      "architectures": [
+        "all"
+      ],
+      "source": {
+        "type": "local",
+        "path": "distro/sources/kiki-agent",
+        "inputs": [
+          "go.mod",
+          "go.sum",
+          "vendor",
+          "cmd/kiki-agent",
+          "internal/agent",
+          "internal/stage3"
+        ]
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "python",
+          "systemd",
+          "ca-certificates"
+        ]
+      },
+      "build": {
+        "system": "go",
+        "skip_sysroot": true,
+        "compile": [
+          "mkdir -p ${KI2_BUILD_DIR}/source/cmd ${KI2_BUILD_DIR}/source/internal",
+          "cp ${KI2_REPO_ROOT}/go.mod ${KI2_REPO_ROOT}/go.sum ${KI2_BUILD_DIR}/source/",
+          "cp -a ${KI2_REPO_ROOT}/vendor ${KI2_BUILD_DIR}/source/vendor",
+          "cp -a ${KI2_REPO_ROOT}/cmd/kiki-agent ${KI2_BUILD_DIR}/source/cmd/kiki-agent",
+          "cp -a ${KI2_REPO_ROOT}/internal/agent ${KI2_BUILD_DIR}/source/internal/agent",
+          "cp -a ${KI2_REPO_ROOT}/internal/stage3 ${KI2_BUILD_DIR}/source/internal/stage3",
+          "cd ${KI2_BUILD_DIR}/source && GOTOOLCHAIN=local CGO_ENABLED=0 GOCACHE=${KI2_BUILD_DIR}/go-cache GOPATH=${KI2_BUILD_DIR}/gopath go build -mod=vendor -buildvcs=false -trimpath -o ${KI2_BUILD_DIR}/kiki-agent-stage3 ./cmd/kiki-agent"
+        ],
+        "install": [
+          "mkdir -p ${KI2_DESTDIR}/etc/systemd/system ${KI2_DESTDIR}/usr/bin ${KI2_DESTDIR}/usr/libexec ${KI2_DESTDIR}/usr/share",
+          "cp ${KI2_BUILD_DIR}/kiki-agent-stage3 ${KI2_DESTDIR}/usr/libexec/kiki-agent-stage3",
+          "cp ${KI2_SOURCE_DIR}/etc/systemd/system/kiki-agent.service ${KI2_DESTDIR}/etc/systemd/system/kiki-agent.service",
+          "cp ${KI2_SOURCE_DIR}/usr/bin/kiki-agent ${KI2_SOURCE_DIR}/usr/bin/kiki-stage1-check ${KI2_DESTDIR}/usr/bin/",
+          "cp -a ${KI2_SOURCE_DIR}/usr/share/kiki ${KI2_DESTDIR}/usr/share/kiki"
+        ]
+      }
+    }
+  ]
+}

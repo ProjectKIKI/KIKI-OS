@@ -1,0 +1,77 @@
+{
+  "recipes": [
+    {
+      "name": "json-glib",
+      "version": "1.10.8",
+      "release": "3",
+      "summary": "GLib JSON parser, generator and introspection data for GNOME",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/json-glib/1.10/json-glib-1.10.8.tar.xz",
+        "file": "json-glib-1.10.8.tar.xz",
+        "sha256": "55c5c141a564245b8f8fbe7698663c87a45a7333c2a2c56f06f811ab73b212dd"
+      },
+      "dependencies": {
+        "build": [
+          "glib",
+          "gobject-introspection",
+          "linux-headers"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "gobject-introspection"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "sysroot_exclude": [],
+        "configure_options": [
+          "-Dintrospection=enabled",
+          "-Ddocumentation=disabled",
+          "-Dman=false",
+          "-Dtests=true",
+          "-Dinstalled_tests=false",
+          "-Dconformance=false"
+        ],
+        "inputs": [
+          "distro/specs/graphics-cross.ini",
+          "distro/scripts/ki2-target-pkg-config",
+          "distro/scripts/ki2-target-run",
+          "distro/scripts/ki2-target-python3",
+          "distro/scripts/ki2-target-g-ir-scanner",
+          "distro/scripts/ki2-target-g-ir-compiler"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3\" \"${KI2_BUILD_DIR}/target-python3\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-scanner\" \"${KI2_BUILD_DIR}/tools/g-ir-scanner\"",
+          "sed -i \"1c #!/usr/bin/env ${KI2_BUILD_DIR}/target-python3\" \"${KI2_SYSROOT}/usr/bin/g-ir-scanner\"",
+          "install -m755 \"${KI2_SYSROOT}/usr/bin/g-ir-compiler\" \"${KI2_BUILD_DIR}/g-ir-compiler.real\"",
+          "install -m755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-g-ir-compiler\" \"${KI2_SYSROOT}/usr/bin/g-ir-compiler\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "install -m644 \"${KI2_REPO_ROOT}/distro/specs/graphics-cross.ini\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "sed -i -e \"s|@BUILD@|${KI2_BUILD_DIR}|g\" -e \"s|@REPO@|${KI2_REPO_ROOT}|g\" \"${KI2_BUILD_DIR}/cross.ini\"",
+          "PATH=\"${KI2_BUILD_DIR}/tools:$PATH\" meson setup \"${KI2_BUILD_DIR}/json\" \"${KI2_SOURCE_DIR}\" --cross-file \"${KI2_BUILD_DIR}/cross.ini\" --prefix=/usr --libdir=lib --buildtype=release --wrap-mode=nofallback -Dintrospection=enabled -Ddocumentation=disabled -Dman=false -Dtests=true -Dinstalled_tests=false -Dconformance=false"
+        ],
+        "compile": [
+          "meson compile -C \"${KI2_BUILD_DIR}/json\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "DESTDIR=\"${KI2_DESTDIR}\" meson install -C \"${KI2_BUILD_DIR}/json\""
+        ],
+        "env": {
+          "KI2_USE_TARGET_LOADER": "1",
+          "GI_CROSS_LAUNCHER": "/bin/sh ${KI2_REPO_ROOT}/distro/scripts/ki2-target-run",
+          "KI2_SYSROOT_LIBRARY_PATH": "${KI2_BUILD_DIR}/json/json-glib:${KI2_SYSROOT_LIBRARY_PATH}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

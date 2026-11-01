@@ -1,0 +1,59 @@
+{
+  "recipes": [
+    {
+      "name": "libxcb",
+      "version": "1.17.0",
+      "release": "2",
+      "summary": "X11 client protocol libraries including XKB and graphics extensions",
+      "license": "MIT",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://www.x.org/releases/individual/lib/libxcb-1.17.0.tar.xz",
+        "file": "libxcb-1.17.0.tar.xz",
+        "sha256": "599ebf9996710fea71622e6e184f3a8ad5b43d0e5fa8c4e407123c88a59a6d55"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "xorgproto",
+          "xcb-proto"
+        ],
+        "runtime": [
+          "glibc",
+          "libxau"
+        ]
+      },
+      "build": {
+        "system": "autotools",
+        "inputs": [
+          "distro/scripts/ki2-target-python3",
+          "distro/scripts/ki2-target-run",
+          "distro/scripts/ki2-target-pkg-config"
+        ],
+        "configure": [
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-python3\" \"${KI2_BUILD_DIR}/target-python3\"",
+          "install -Dm755 \"${KI2_REPO_ROOT}/distro/scripts/ki2-target-pkg-config\" \"${KI2_BUILD_DIR}/target-pkg-config\"",
+          "mkdir -p \"${KI2_BUILD_DIR}/libxcb\" && cd \"${KI2_BUILD_DIR}/libxcb\" && PYTHON=\"${KI2_BUILD_DIR}/target-python3\" PKG_CONFIG=\"${KI2_BUILD_DIR}/target-pkg-config\" \"${KI2_SOURCE_DIR}/configure\" --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --disable-static --disable-devel-docs --without-doxygen --enable-xkb --enable-dri3"
+        ],
+        "compile": [
+          "make -C \"${KI2_BUILD_DIR}/libxcb\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_BUILD_DIR}/libxcb\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "install -Dm644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_DESTDIR}/usr/share/licenses/libxcb/COPYING\"",
+          "test -s \"${KI2_DESTDIR}/usr/lib/libxcb-xkb.so.1\" && test -s \"${KI2_DESTDIR}/usr/lib/libxcb-dri3.so.0\"",
+          "readelf -d \"${KI2_DESTDIR}\"/usr/lib/libxcb*.so > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "KI2_USE_TARGET_LOADER": "1",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

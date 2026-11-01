@@ -1,0 +1,40 @@
+{
+  "recipes": [
+    {
+      "name": "gnome-autoar",
+      "version": "0.4.5",
+      "release": "2",
+      "summary": "Native GNOME 50 desktop dependency",
+      "license": "LGPL-2.1-or-later",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://download.gnome.org/sources/gnome-autoar/0.4/gnome-autoar-0.4.5.tar.xz",
+        "sha256": "838c5306fc38bfaa2f23abe24262f4bf15771e3303fb5dcb74f5b9c7a615dabe"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers",
+          "gobject-introspection"
+        ],
+        "runtime": [
+          "glib",
+          "glibc",
+          "libarchive"
+        ]
+      },
+      "build": {
+        "system": "meson",
+        "configure_options": [
+          "-Dgtk=false",
+          "-Dtests=false",
+          "-Dintrospection=enabled",
+          "-Dvapi=false"
+        ]
+      }
+    }
+  ]
+}

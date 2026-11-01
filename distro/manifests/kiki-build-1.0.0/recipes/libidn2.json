@@ -1,0 +1,51 @@
+{
+  "recipes": [
+    {
+      "name": "libidn2",
+      "version": "2.3.8",
+      "release": "1",
+      "summary": "IDNA2008 and TR46 internationalized domain names",
+      "license": "(LGPL-3.0-or-later OR GPL-2.0-or-later) AND GPL-3.0-or-later AND LicenseRef-Unicode-Data",
+      "tier": "library",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "url",
+        "url": "https://ftp.gnu.org/gnu/libidn/libidn2-2.3.8.tar.gz",
+        "file": "libidn2-2.3.8.tar.gz",
+        "sha256": "f557911bf6171621e1f72ff35f5b1825bb35b52ed45325dcdee931e5d3c0787a"
+      },
+      "dependencies": {
+        "build": [
+          "linux-headers"
+        ],
+        "runtime": [
+          "glibc",
+          "libunistring"
+        ]
+      },
+      "build": {
+        "system": "gnu",
+        "configure": [
+          "cd \"${KI2_SOURCE_DIR}\" && ./configure --prefix=/usr --libdir=/usr/lib --build=x86_64-pc-linux-gnu --host=${KI2_TARGET_TRIPLE} --disable-static --disable-doc --disable-rpath"
+        ],
+        "compile": [
+          "make -C \"${KI2_SOURCE_DIR}\" -j \"${KI2_JOBS}\""
+        ],
+        "install": [
+          "make -C \"${KI2_SOURCE_DIR}\" DESTDIR=\"${KI2_DESTDIR}\" install",
+          "rm -f \"${KI2_DESTDIR}/usr/lib/libidn2.la\"",
+          "install -d \"${KI2_DESTDIR}/usr/share/licenses/libidn2\"",
+          "install -m 0644 \"${KI2_SOURCE_DIR}/COPYING\" \"${KI2_SOURCE_DIR}/COPYINGv2\" \"${KI2_SOURCE_DIR}/COPYING.LESSERv3\" \"${KI2_SOURCE_DIR}/COPYING.unicode\" \"${KI2_SOURCE_DIR}/README.md\" \"${KI2_DESTDIR}/usr/share/licenses/libidn2/\"",
+          "readelf -d \"${KI2_DESTDIR}/usr/lib/libidn2.so.0\" \"${KI2_DESTDIR}/usr/bin/idn2\" > \"${KI2_BUILD_DIR}/elf-dynamic.txt\" && ! grep -E \"RPATH|RUNPATH\" \"${KI2_BUILD_DIR}/elf-dynamic.txt\""
+        ],
+        "env": {
+          "CC": "cc --sysroot=${KI2_SYSROOT}",
+          "CFLAGS": "--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -fstack-protector-strong -D_FORTIFY_SOURCE=2",
+          "LDFLAGS": "--sysroot=${KI2_SYSROOT} -B${KI2_SYSROOT}/usr/lib64/ -B${KI2_SYSROOT}/lib64/ ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"
+        }
+      }
+    }
+  ]
+}

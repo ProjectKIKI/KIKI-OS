@@ -1,0 +1,29 @@
+{
+  "recipes": [
+    {
+      "name": "fmt",
+      "version": "11.2.0",
+      "release": "1",
+      "summary": "KIKI native desktop fmt",
+      "license": "MIT OR Apache-2.0",
+      "tier": "desktop",
+      "architectures": [
+        "x86_64"
+      ],
+      "source": {
+        "type": "local",
+        "path": "/tmp/kiki-desktop-apps-20261027/fmt/dest"
+      },
+      "dependencies": {
+        "build": [],
+        "runtime": [
+          "glibc",
+          "libstdcxx"
+        ]
+      },
+      "build": {
+        "system": "copy"
+      }
+    }
+  ]
+}
