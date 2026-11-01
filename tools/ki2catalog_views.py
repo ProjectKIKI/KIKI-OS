@@ -95,6 +95,7 @@ def metadata_edit(store, name):
         raise ValueError('해당 패키지가 없습니다.')
     patch = state['metadata'].get(name, {})
     content = intro(state) + f"<div class='panel'><h2>{esc(name)} 메타정보 편집</h2><p>보존 레시피 {esc(recipe.version)}-{esc(recipe.release)} · 편집본 release {esc(patch.get('release','미지정'))} · 실제 빌드 release는 선택한 소스와 그룹 리비전에 따라 증가합니다. 버전·소스·의존성 변경은 <a href='/updates/new?package={quote(name)}'>업데이트 후보</a>에서 빌드·검증합니다.</p>"
+    content += f"<p><a href='/assistant?package={quote(name)}'>AI 메타정보 제안·업데이트 계획</a></p>"
     if recipe.build.get('system')=='recorded-native':
         content += "<p class='notice'>이 패키지는 별도 native SDK 파이프라인에서 컴파일합니다. 보존된 바이너리를 소스 빌드로 처리하지 않습니다. 전체 소스 명세와 tools/gnome_native/README.ko.md의 빌드 순서를 확인하세요.</p><p><a class='button' href='/source-manifest'>Native 소스·빌드 명세</a> <a href='/packages'>패키지 목록</a></p>"
     else:
@@ -117,6 +118,7 @@ def package_new(store, form=None, error=''):
     body=intro(state)+"<div class='panel'><div class='catalog-heading'><div><h2>새 패키지 등록</h2></div><a href='/packages'>패키지 목록</a></div>"
     body+="<p>등록한 레시피는 편집본으로 보관됩니다. 시험 빌드·서명·저장소 배포는 별도 단계입니다.</p>"
     if error:body+=f"<p role='alert' class='catalog-error'>{esc(error)}</p>"
+    body+="<p><a href='/assistant'>AI로 레시피·메타정보 초안 작성</a></p>"
     body+="<form class='catalog-form' method='post' action='/packages/register'>"+hidden('revision',state['revision'])
     body+=select('kind','등록 방식',[('source','HTTPS 소스 압축파일 빌드'),('documentation','문서 패키지')],f.get('kind','source'))
     body+="<div class='catalog-grid'>"+''.join(field(k,label,f.get(k,default)) for k,label,default in [('name','패키지 이름',''),('version','버전','1.0.0'),('summary','설명',''),('license','라이선스',''),('tier','분류','extra')])+select('arch','아키텍처',[('x86_64','x86_64'),('all','아키텍처 공통')],f.get('arch','x86_64'))+'</div>'

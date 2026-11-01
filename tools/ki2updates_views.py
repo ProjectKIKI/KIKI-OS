@@ -47,6 +47,7 @@ def new(manager,render,q):
     wanted=q.get('package',[''])[0];version=q.get('version',[''])[0];url=q.get('url',[''])[0]
     body="<section class='panel'><h2>업데이트 후보 준비</h2><p>입력은 기준 스냅샷과 함께 고정합니다. 버전이 같으면 release가 증가합니다. 새 소스는 내려받아 SHA-256을 고정한 뒤 기존 빌드 대기열에 제출합니다.</p>"
     body+="<form method='get' action='/updates/new'><label>기준 스냅샷 <select name='base'>"+''.join(f"<option value='{esc(s['id'])}'{' selected' if base==s['id'] else ''}>{esc(s['id'])}</option>" for s in snapshots)+"</select></label><button>기준 변경</button></form>"
+    body+=f"<p><a href='/assistant?package={urllib.parse.quote(wanted)}'>AI 업데이트 계획 검토</a></p>"
     options=[]
     for name,p in sorted(packages.items()):
         try:manager.recipe_for(name,p);reason=''

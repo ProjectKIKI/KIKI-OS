@@ -37,6 +37,8 @@ from ki2git_views import git_page, source_summary
 from ki2catalog import Catalog, Conflict
 import ki2catalog_views
 import ki2assistant
+import ki2planning
+import ki2catalog
 import ki2sources
 import ki2buildops
 
@@ -1503,8 +1505,10 @@ def make_handler(server: BuildServer):
             if parsed.path == "/packages":
                 self.send_html(self.packages_page(urllib.parse.parse_qs(parsed.query).get('q', [''])[0]))
                 return
+            if parsed.path=='/kernel-livepatch':
+                self.send_html(render_page('커널 라이브 패치 시험 준비',ki2planning.kernel_page(server.config.repo_root/'tools/gnome_native/installed-kernel.config'),active='/assistant'));return
             if parsed.path=='/assistant':
-                self.send_html(render_page('Local LLM 보조',ki2assistant.page(server.assistant,server.store.list(),selected=urllib.parse.parse_qs(parsed.query).get('job',[''])[0]),active='/assistant'));return
+                self.send_html(render_page('Local LLM 보조',ki2assistant.page(server.assistant,server.store.list(),selected=urllib.parse.parse_qs(parsed.query).get('job',[''])[0],selected_package=urllib.parse.parse_qs(parsed.query).get('package',[''])[0]),active='/assistant'));return
             if parsed.path.startswith('/assistant/reports/'):
                 try:result=server.assistant.report(parsed.path.removeprefix('/assistant/reports/'))
                 except (OSError,ValueError):self.send_error(404,'report not found');return
@@ -1600,7 +1604,7 @@ def make_handler(server: BuildServer):
 
         def do_POST(self) -> None:  # noqa: N802
             action = re.fullmatch(r"/jobs/(\d{8}-\d{6}-\d{4})/(retry|cancel)", self.path)
-            if self.path not in {"/jobs", "/package-build", "/kernel-build", "/git/sync", "/package-update-build", '/package-groups/save', '/package-groups/restore', '/packages/metadata', '/packages/register','/assistant/settings','/assistant/analyze','/assistant/draft'} and not action:
+            if self.path not in {"/jobs", "/package-build", "/kernel-build", "/git/sync", "/package-update-build", '/package-groups/save', '/package-groups/restore', '/packages/metadata', '/packages/register','/assistant/settings','/assistant/analyze','/assistant/draft','/assistant/metadata','/assistant/plan'} and not action:
                 self.send_error(HTTPStatus.NOT_FOUND, "not found")
                 return
             origin = self.headers.get("Origin")
@@ -1629,6 +1633,14 @@ def make_handler(server: BuildServer):
                             job=server.store.read(form.get('job',''));file=server.store.log_path(job['id'])
                             with file.open('rb') as stream:stream.seek(max(0,file.stat().st_size-131072));context=stream.read().decode('utf-8',errors='replace')
                             result=server.assistant.complete('analyze',context,job['id'])
+                        elif self.path in {'/assistant/metadata','/assistant/plan'}:
+                            task=self.path.rsplit('/',1)[1]
+                            with server.catalog.lock:planning=ki2planning.context(server.catalog,form.get('package',''),form.get('target',''))
+                            prompt=dict(planning);prompt['affected']=prompt['affected'][:40]
+                            prompt['affected_total']=len(planning['affected'])
+                            result=server.assistant.complete(task,json.dumps(prompt,ensure_ascii=False))
+                            result['planning']=planning
+                            ki2catalog.atomic(server.assistant.root/'reports'/(result['id']+'.json'),result)
                         else:
                             if not 1<=len(form.get('description',''))<=6000:raise ValueError('레시피 초안 요청을 1~6000자로 입력하세요.')
                             result=server.assistant.complete('draft',form['description'])

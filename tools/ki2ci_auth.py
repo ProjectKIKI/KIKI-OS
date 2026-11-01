@@ -338,7 +338,7 @@ def make_handler(store, upstream, origins, secure=False, release_upstream=None, 
                 return None
             try:
                 length = int(self.headers.get('Content-Length', '0'))
-                catalog_route = urlsplit(self.path).path in {'/package-groups/save', '/package-groups/restore', '/packages/metadata','/packages/register','/assistant/analyze','/assistant/draft'}
+                catalog_route = urlsplit(self.path).path in {'/package-groups/save', '/package-groups/restore', '/packages/metadata','/packages/register','/assistant/analyze','/assistant/draft','/assistant/metadata','/assistant/plan'}
                 limit=65536 if catalog_route else 131072 if urlsplit(self.path).path.startswith('/releases/') else FORM_LIMIT
                 if not 0 < length <= limit:
                     raise ValueError()
