@@ -1,0 +1,86 @@
+{
+  "schema": "kiki-browser-x11-sources-v1",
+  "source_index": "https://www.x.org/releases/individual/lib/",
+  "sources": [
+    {
+      "name": "xtrans",
+      "version": "1.6.0",
+      "file": "xtrans-1.6.0.tar.xz",
+      "url": "https://www.x.org/releases/individual/lib/xtrans-1.6.0.tar.xz",
+      "sha256": "faafea166bf2451a173d9d593352940ec6404145c5d1da5c213423ce4d359e92",
+      "bytes": 177156
+    },
+    {
+      "name": "libX11",
+      "version": "1.8.14",
+      "file": "libX11-1.8.14.tar.xz",
+      "url": "https://www.x.org/releases/individual/lib/libX11-1.8.14.tar.xz",
+      "sha256": "bbc78c46217174655c2b32b138ad119f3ac15f50808b4d0b3a2677a4b1afc950",
+      "bytes": 1897544
+    },
+    {
+      "name": "libXext",
+      "version": "1.3.7",
+      "file": "libXext-1.3.7.tar.xz",
+      "url": "https://www.x.org/releases/individual/lib/libXext-1.3.7.tar.xz",
+      "sha256": "6c643c7035cdacf67afd68f25d01b90ef889d546c9fcd7c0adf7c2cf91e3a32d",
+      "bytes": 347068
+    },
+    {
+      "name": "libXrender",
+      "version": "0.9.13",
+      "file": "libXrender-0.9.13.tar.xz",
+      "url": "https://www.x.org/releases/individual/lib/libXrender-0.9.13.tar.xz",
+      "sha256": "3fe88c609df6782e1e7af2e4de36b2563d70cd70ff7dcb1cda561ad64912bb64",
+      "bytes": 316404
+    },
+    {
+      "name": "libXfixes",
+      "version": "6.0.2",
+      "file": "libXfixes-6.0.2.tar.xz",
+      "url": "https://www.x.org/releases/individual/lib/libXfixes-6.0.2.tar.xz",
+      "sha256": "39f115d72d9c5f8111e4684164d3d68cc1fd21f9b27ff2401b08fddfc0f409ba",
+      "bytes": 270896
+    },
+    {
+      "name": "libXcomposite",
+      "version": "0.4.7",
+      "file": "libXcomposite-0.4.7.tar.xz",
+      "url": "https://www.x.org/releases/individual/lib/libXcomposite-0.4.7.tar.xz",
+      "sha256": "8bdf310967f484503fa51714cf97bff0723d9b673e0eecbf92b3f97c060c8ccb",
+      "bytes": 272620
+    },
+    {
+      "name": "libXdamage",
+      "version": "1.1.7",
+      "file": "libXdamage-1.1.7.tar.xz",
+      "url": "https://www.x.org/releases/individual/lib/libXdamage-1.1.7.tar.xz",
+      "sha256": "127067f521d3ee467b97bcb145aeba1078e2454d448e8748eb984d5b397bde24",
+      "bytes": 265336
+    },
+    {
+      "name": "libXrandr",
+      "version": "1.5.5",
+      "file": "libXrandr-1.5.5.tar.xz",
+      "url": "https://www.x.org/releases/individual/lib/libXrandr-1.5.5.tar.xz",
+      "sha256": "72b922c2e765434e9e9f0960148070bd4504b288263e2868a4ccce1b7cf2767a",
+      "bytes": 288912
+    },
+    {
+      "name": "libXi",
+      "version": "1.8.4",
+      "file": "libXi-1.8.4.tar.xz",
+      "url": "https://www.x.org/releases/individual/lib/libXi-1.8.4.tar.xz",
+      "sha256": "ddd6057b89a91903bc2f884d55c8467440906945e482c36547260dff28661afc",
+      "bytes": 422212
+    },
+    {
+      "name": "libXcursor",
+      "version": "1.2.3",
+      "file": "libXcursor-1.2.3.tar.xz",
+      "url": "https://www.x.org/releases/individual/lib/libXcursor-1.2.3.tar.xz",
+      "sha256": "fde9402dd4cfe79da71e2d96bb980afc5e6ff4f8a7d74c159e1966afb2b2c2c0",
+      "bytes": 292764
+    }
+  ]
+}

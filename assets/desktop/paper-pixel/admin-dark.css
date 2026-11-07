@@ -1,0 +1,14 @@
+@define-color window_bg_color #151c25;
+@define-color window_fg_color #f5f1e5;
+@define-color view_bg_color #222c36;
+@define-color view_fg_color #f5f1e5;
+@define-color headerbar_bg_color #202934;
+@define-color headerbar_fg_color #f5f1e5;
+@define-color sidebar_bg_color #283440;
+@define-color sidebar_fg_color #f5f1e5;
+@define-color card_bg_color #222c36;
+@define-color card_fg_color #f5f1e5;
+@define-color borders #8090a4;
+@define-color accent_bg_color #3159d9;
+@define-color accent_fg_color #ffffff;
+:root { --window-bg-color: #151c25; --window-fg-color: #f5f1e5; --view-bg-color: #222c36; --view-fg-color: #f5f1e5; --headerbar-bg-color: #202934; --headerbar-fg-color: #f5f1e5; --sidebar-bg-color: #283440; --sidebar-fg-color: #f5f1e5; --card-bg-color: #222c36; --card-fg-color: #f5f1e5; --accent-bg-color: #3159d9; --accent-fg-color: #ffffff; }

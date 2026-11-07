@@ -1,0 +1,58 @@
+{
+  "glibc": {
+    "sha256": "5274d305f5dd092b6cc185121c51b9af4e22a15f43d6aa99038dff609a89044d",
+    "build_key": "8194be3afe3ec6d90f4dd75e102c18f960e66c6aa67379e04fc96e1bcb8cd2f4"
+  },
+  "glib": {
+    "sha256": "93ceaadc5023bc14a4bdabac81751529ef290d09c73652d3c1ea026c9fbba496",
+    "build_key": "ef88e4c304fbc4fd667ecbf7b1ceef9458dfc82438d6da895bda7826f2da214f"
+  },
+  "gtk+-3": {
+    "sha256": "c2a5165c3ef1824135ed6335ef64750f2a54049c885563d65caa5575c9dd0e73",
+    "build_key": "9ab0471217acb09dd7f7476216e89493f3d4261fac988ce29b9df9f229dfff15"
+  },
+  "dbus": {
+    "sha256": "118323cddcfe829b63b8c892e9d1520f95ad57bc26b3eb3d7550726422fbf35c",
+    "build_key": "d59c5252a21c722cf5f6c2638ff23ba784ca85cacadc589437145b856175632f"
+  },
+  "alsa-lib": {
+    "sha256": "749925f5b056261ed2e9a652f05757dbee746d568cf802c1acfa040e1844dd6e",
+    "build_key": "65a76cdaafd091c0b2daaebd63602cbe7f1ac3b6a06d7ea6347b434c425f8a3d"
+  },
+  "libstdcxx": {
+    "sha256": "e0387ecb9a7346dd2ffdcd52a08cf7004be5476d689f35a76008bf7d94989091",
+    "build_key": "1dc3429a020696504339eb931af6317c8c1369bc3b3910b91572a02f2d66191f"
+  },
+  "libgcc": {
+    "sha256": "daded59aef66582a5f657a755a2a3df01ebefff8ba2747746d987189a0085d0c",
+    "build_key": "05363dc60ba3ba9694e7a3a0ea3cfb072a1b41b304107f12113b4bb1dfc6a4c8"
+  },
+  "zlib": {
+    "sha256": "a077fcbf4aa724a7b4002a0d13e456438425fe3b5471be5c305a9f21e99a96ae",
+    "build_key": "f412113917166eb568b4c8174331e362f594d61089dedad3620128e43e8cb804"
+  },
+  "fontconfig": {
+    "sha256": "c656c59fbe413bab4b9f4972666cdaa6389461b2174eb6e49fd94ddd5a8e9923",
+    "build_key": "28742dda2ab67fc4104fdbba281a2900a1c5c95e1449ef73758b810eb643e3fa"
+  },
+  "freetype": {
+    "sha256": "eb468bbb1d200cf615503b81346181db3dedd6c9f56d6ae55839fa9385c88766",
+    "build_key": "55e16245f9934753abc5ae2aedf78a7d099a86837e227a1fc1083df3db04d35b"
+  },
+  "ca-certificates": {
+    "sha256": "24c7e26ae06f1f169ac0f886d52d6ca6ff49c69acbc8f7b5ae27992f146d8210",
+    "build_key": "6eb4177290e67898024fbf09f698223cceb6562bad8fdaf85d2def8b8301a164"
+  },
+  "libxcb": {
+    "sha256": "ea292a44816220931a9a13483ff4e7b3850c221a2d187e2531f7186659d582c5",
+    "build_key": "02da86870b1b6f3fc8c6cd7c57a073e0e34386ebe3bef42ea73f5259abcee1e4"
+  },
+  "libxau": {
+    "sha256": "ea71aed36e93123fc7044c3806c378f68f74ad1e2f7110bcf6e4a3cae028504f",
+    "build_key": "60e96fa01dc5282ed27c1ad88099b68f615f60ab75eb92770fa030c090e8f54b"
+  },
+  "cairo": {
+    "sha256": "f50fe43a36ea71256b3f2b6c9f0e0b7561183d040245a4c7cc0f6deaa863c757",
+    "build_key": "372bd460fa4eaf29ec486b514ccdb279da1fed4f73741d13796b39d01497c303"
+  }
+}

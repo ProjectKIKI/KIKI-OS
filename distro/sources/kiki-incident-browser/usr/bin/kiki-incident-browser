@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+if [ "$(id -u)" -eq 0 ]; then
+    printf '%s\n' 'Run the candidate browser as a normal desktop user.' >&2
+    exit 1
+fi
+profile="${XDG_DATA_HOME:-$HOME/.local/share}/kiki-incident-browser/profile"
+if [ ! -d "$profile" ]; then
+    mkdir -p "$profile"
+    chmod 700 "$profile"
+    cp /usr/share/kiki-incident-browser/user.js "$profile/user.js"
+fi
+if [ "${XDG_SESSION_TYPE:-}" = wayland ]; then
+    export MOZ_ENABLE_WAYLAND="${MOZ_ENABLE_WAYLAND:-1}"
+fi
+if [ "$#" -eq 0 ]; then set -- 'https://incident-ai.lab.terminal-lab.kr/#ask'; fi
+slot=/usr/libexec/kiki-incident-browser/153.6.0esr
+# Process-local compatibility libraries. Shared GNOME paths and the D-Bus/user
+# manager environment are unchanged; sandbox and TLS defaults remain enabled.
+exec env LD_LIBRARY_PATH="$slot/compat:$slot" "$slot/firefox" --class KikiIncidentBrowser --profile "$profile" --new-tab "$@"

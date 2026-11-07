@@ -1,0 +1,27 @@
+#!/usr/bin/python3
+"""A separate user settings database, with bounded activation environment cleanup."""
+import os
+import subprocess
+import sys
+
+values = dict(DCONF_PROFILE='/usr/share/kiki-paper-pixel/dconf-profile', KIKI_PAPER_PIXEL='1')
+if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', 'graphical-session.target']).returncode == 0:
+    raise SystemExit('An existing graphical session must end before starting KIKI Paper Pixel.')
+previous = {}
+for line in subprocess.check_output(['systemctl', '--user', 'show-environment'], text=True).splitlines():
+    key, _, value = line.partition('=')
+    if key in values: previous[key] = value
+os.environ.update(values)
+subprocess.run(['systemctl', '--user', 'set-environment', *[k+'='+v for k,v in values.items()]], check=True)
+subprocess.run(['dbus-update-activation-environment', *values], check=True)
+try:
+    result = subprocess.call(['/usr/bin/gnome-session', '--session=kiki-ops'])
+finally:
+    subprocess.run(['systemctl', '--user', 'unset-environment', *values], check=False)
+    if previous:
+        subprocess.run(['systemctl', '--user', 'set-environment', *[k+'='+v for k,v in previous.items()]], check=False)
+    # D-Bus has no unset operation. Restore explicit default values instead.
+    restored = dict(DCONF_PROFILE=previous.get('DCONF_PROFILE', 'user'), KIKI_PAPER_PIXEL=previous.get('KIKI_PAPER_PIXEL', ''))
+    os.environ.update(restored)
+    subprocess.run(['dbus-update-activation-environment', *restored], check=False)
+sys.exit(result)

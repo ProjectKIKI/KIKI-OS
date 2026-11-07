@@ -1,0 +1,26 @@
+[[recipe]]
+name = "kiki-incident-browser"
+version = "153.6.0esr"
+release = 3
+summary = "Official Mozilla Firefox ESR binary in an isolated KIKI candidate profile"
+license = "MPL-2.0"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "url"
+url = "https://archive.mozilla.org/pub/firefox/releases/153.6.0esr/linux-x86_64/ko/firefox-153.6.0esr.tar.xz"
+sha256 = "31a820a4cb3c1c4724a296ce89c62c5b7e112e28ab1621e38bbee80a1017bfc7"
+inputs = ["distro/sources/kiki-incident-browser", "distro/manifests/firefox-esr-153.6.0esr.json"]
+[recipe.dependencies]
+build = []
+runtime = ["glibc", "glib", "gtk+-3", "dbus", "alsa-lib", "libstdcxx", "libgcc", "zlib", "fontconfig", "freetype", "ca-certificates", "kiki-browser-x11-libs", "kiki-browser-gtk3"]
+[recipe.build]
+system = "custom"
+configure = []
+compile = []
+install = [
+  'mkdir -p "${KI2_DESTDIR}/usr/libexec/kiki-incident-browser/153.6.0esr"',
+  'cp -a "${KI2_SOURCE_DIR}/." "${KI2_DESTDIR}/usr/libexec/kiki-incident-browser/153.6.0esr/"',
+  'cp -a "${KI2_REPO_ROOT}/distro/sources/kiki-incident-browser/." "${KI2_DESTDIR}/"',
+  'chmod 755 "${KI2_DESTDIR}/usr/bin/kiki-incident-browser"',
+]

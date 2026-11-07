@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KIKI 운영
+Comment=로컬 서버 상태와 서비스 점검
+Exec=kiki-operations
+Icon=org.kiki.Operations
+Terminal=false
+Categories=System;Monitor;GTK;
+StartupNotify=true

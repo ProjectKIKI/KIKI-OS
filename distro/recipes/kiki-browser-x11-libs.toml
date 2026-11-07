@@ -1,0 +1,20 @@
+[[recipe]]
+name = "kiki-browser-x11-libs"
+version = "2026.11.07"
+release = 1
+summary = "Native X11 client libraries for the isolated browser candidate, without an X server"
+license = "MIT"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "tools"
+inputs = ["distro/manifests/kiki-browser-x11-20261107.json"]
+[recipe.dependencies]
+build = ["pkgconf", "xorgproto", "xcb-proto", "libxcb", "libxau", "linux-headers"]
+runtime = ["glibc", "libxcb", "libxau"]
+[recipe.build]
+system = "custom"
+configure = []
+compile = ['python3 "${KI2_REPO_ROOT}/tools/build_kiki_browser_x11.py" --sdk "${KI2_SYSROOT}" --work "${KI2_BUILD_DIR}/x11-native" --inputs "${KI2_BUILD_DIR}/x11-inputs" --lock "${KI2_REPO_ROOT}/distro/manifests/kiki-browser-x11-20261107.json" --stage "${KI2_BUILD_DIR}/x11-payload"']
+install = ['cp -a "${KI2_BUILD_DIR}/x11-payload/." "${KI2_DESTDIR}/"']

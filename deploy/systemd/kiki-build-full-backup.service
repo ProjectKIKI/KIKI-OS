@@ -1,0 +1,11 @@
+[Unit]
+Description=KIKI full XFS data backup and isolated restore verification
+RequiresMountsFor=/build-kikios /kiki-backups
+
+[Service]
+Type=oneshot
+UMask=0077
+Nice=15
+ExecStart=/usr/bin/python3 /usr/local/libexec/kiki-xfs-backup.py --config /etc/kiki-build/full-backup.json
+ExecStopPost=/usr/bin/python3 /usr/local/libexec/kiki-xfs-backup.py --config /etc/kiki-build/full-backup.json --recover-only
+TimeoutStartSec=12h

@@ -1,0 +1,41 @@
+#!/usr/bin/python3 -I
+"""Fixed, unprivileged Console inspections. Never evaluate a shell command."""
+import argparse
+import runpy
+import shlex
+import subprocess
+import sys
+
+
+def main(argv=None, runner=subprocess.run, contract=None, pause=None):
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('mode', choices=['status', 'logs'])
+    p.add_argument('unit')
+    args = p.parse_args(argv)
+    try:
+        api = contract or runpy.run_path('/usr/libexec/kiki-operations-backend.py', run_name='console_contract')
+        command = api['inspection_argv'](args.mode, args.unit)
+        print('KIKI · ' + args.unit, flush=True)
+        print('일반 사용자 점검 · 시스템 로그 인증은 KIKI 운영의 로그 화면을 사용하세요.', flush=True)
+        print('$ ' + shlex.join(command), flush=True)
+        result = runner(command, timeout=30)
+        code = result.returncode
+        print('\n점검 명령 종료 코드: ' + str(code), flush=True)
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        print('점검하지 못했습니다: ' + str(error), file=sys.stderr)
+        code = 1
+    acknowledged = False
+    if pause is not None:
+        pause()
+        acknowledged = True
+    elif sys.stdin.isatty():
+        try:
+            input('\nEnter를 누르면 점검을 마칩니다. Console 창은 닫기 버튼으로 닫을 수 있습니다. ')
+        except (EOFError, KeyboardInterrupt):
+            pass
+        acknowledged = True
+    return 0 if acknowledged else code
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

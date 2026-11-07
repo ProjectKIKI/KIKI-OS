@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=KIKI Paper Pixel
+Name[ko]=KIKI 픽셀 운영 데스크톱
+Comment=GNOME operations session with isolated KIKI settings
+Exec=/usr/libexec/kiki-ops-session
+TryExec=/usr/bin/gnome-session
+Type=Application
+DesktopNames=GNOME;KIKI;
+X-GDM-SessionRegisters=true

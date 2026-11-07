@@ -1,0 +1,26 @@
+{
+  "schema": "kiki-browser-private-gtk3-v1",
+  "sources": [
+    {
+      "name": "epoxy",
+      "version": "1.5.10",
+      "url": "https://download.gnome.org/sources/libepoxy/1.5/libepoxy-1.5.10.tar.xz",
+      "file": "libepoxy-1.5.10.tar.xz",
+      "sha256": "072cda4b59dd098bba8c2363a6247299db1fa89411dc221c8b81b8ee8192e623"
+    },
+    {
+      "name": "cairo",
+      "version": "1.18.4",
+      "url": "https://cairographics.org/releases/cairo-1.18.4.tar.xz",
+      "file": "cairo-1.18.4.tar.xz",
+      "sha256": "445ed8208a6e4823de1226a74ca319d3600e83f6369f99b14265006599c32ccb"
+    },
+    {
+      "name": "gtk3",
+      "version": "3.24.52",
+      "url": "https://download.gnome.org/sources/gtk/3.24/gtk-3.24.52.tar.xz",
+      "file": "gtk-3.24.52.tar.xz",
+      "sha256": "80931fa472a77b9a164f6740e3c0b444fac6770054632d35a7ff9d679e5e7b9f"
+    }
+  ]
+}

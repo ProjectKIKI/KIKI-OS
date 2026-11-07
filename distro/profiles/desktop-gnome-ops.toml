@@ -1,0 +1,16 @@
+[profile]
+name = "desktop-gnome-ops"
+description = "Paper Pixel GNOME operations candidate; separate from the preserved standard desktop"
+arch = "x86_64"
+groups = ["desktop-gnome"]
+packages = ["kiki-session-gnome-ops"]
+
+[profile.boot]
+init = "/usr/lib/systemd/systemd"
+kernel = "/boot/vmlinuz-kiki"
+
+[profile.prebuilt]
+repository = "dist/ki2/paper-pixel-20261105-r6"
+public_key = "paper-pixel.ed25519.pub"
+public_key_sha256 = "22122bb259fb1d61c21bf0db35c439cedbf631cb2f1c5cc8af07ef23e3a24f2f"
+index_sha256 = "c400e1d453c9561c7d7f4d39377b6b88109cd34fad93887362141b8fc66b4d2f"

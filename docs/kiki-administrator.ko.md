@@ -4,6 +4,10 @@
 관리를 별도 앱에 모았다. 소스와 사용법은
 [`cmd/kiki-admin/README.ko.md`](../cmd/kiki-admin/README.ko.md)에 있다.
 
+픽셀 스타일의 GNOME 운영 데스크톱과 후속 경량 세션은
+[KIKI Server Shell 1~4단계 실행 계획](kiki-server-shell-roadmap.ko.md)을 따른다.
+해당 문서는 단계별 작업·완료 조건·비교 측정·기존 환경 보존 방침을 정의한다.
+
 ## 배포 후보
 
 - 네이티브 앱: `kiki-admin 0.1.0-3`, GTK4 / Libadwaita.

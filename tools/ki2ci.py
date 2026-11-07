@@ -1279,6 +1279,7 @@ class BuildServer:
     def _submit(self, pipeline: str, *, package: str | None = None, retry_of: str | None = None,
                 source: str = "preserved", commit: str = "", catalog_state=None, catalog_engine=None) -> dict[str, Any]:
         with self.store.lock:
+            if (self.config.artifact_root/'maintenance.json').exists():raise CiError('스토리지 유지보수 중입니다. 완료 후 다시 요청하세요.')
             if package and catalog_state is None:catalog_state=self.catalog.current()
             if not ki2buildops.health(self.config.artifact_root)['ok']:raise CiError('디스크 여유가 1GiB 미만입니다. 저장 공간을 확보한 뒤 빌드하세요.')
             if self.closed:
@@ -1373,6 +1374,7 @@ class BuildServer:
         return self._submit(pipeline, source=source, commit=commit)
 
     def submit_update(self, plan_id, expected):
+        if (self.config.artifact_root/'maintenance.json').exists():raise CiError('스토리지 유지보수 중입니다. 완료 후 다시 요청하세요.')
         from ki2updatebuild import read_plan
         if not re.fullmatch('[a-f0-9]{32}',plan_id) or not re.fullmatch('[a-f0-9]{64}',expected):raise CiError('invalid update plan')
         try:plan=read_plan(Path('/update-inputs')/(plan_id+'.json'),expected)

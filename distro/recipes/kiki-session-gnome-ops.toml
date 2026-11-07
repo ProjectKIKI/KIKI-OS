@@ -1,0 +1,26 @@
+[[recipe]]
+name = "kiki-session-gnome-ops"
+version = "0.1.0"
+release = 6
+summary = "Isolated GNOME Paper Pixel operations session and local administrator entry points"
+license = "GPL-3.0-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "distro/sources/kiki-session-gnome-ops"
+inputs = ["desktop/gnome/kiki-ops", "assets/desktop/paper-pixel", "tools/ki2pixeltheme.py"]
+[recipe.dependencies]
+build = []
+runtime = ["gnome-session", "gnome-shell", "gjs", "kiki-admin", "gnome-console", "nautilus", "dconf", "python", "systemd"]
+[recipe.build]
+system = "custom"
+configure = []
+compile = []
+install = [
+  'cp -a "${KI2_SOURCE_DIR}/." "${KI2_DESTDIR}/"',
+  'install -d "${KI2_DESTDIR}/usr/share/gnome-shell/extensions/kiki-ops@kikios.org" "${KI2_DESTDIR}/usr/share/kiki-paper-pixel"',
+  'cp -a "${KI2_REPO_ROOT}/desktop/gnome/kiki-ops/." "${KI2_DESTDIR}/usr/share/gnome-shell/extensions/kiki-ops@kikios.org/"',
+  'cp -a "${KI2_REPO_ROOT}/assets/desktop/paper-pixel/." "${KI2_DESTDIR}/usr/share/kiki-paper-pixel/"',
+  'chmod 755 "${KI2_DESTDIR}/usr/libexec/kiki-ops-session" "${KI2_DESTDIR}/usr/libexec/kiki-ops-link"',
+]

@@ -1,0 +1,8 @@
+{
+  "uuid": "kiki-ops@kikios.org",
+  "name": "KIKI 운영 데스크톱",
+  "description": "KIKI Paper Pixel: local status and native administrator entry points in the dedicated operations session.",
+  "shell-version": ["50"],
+  "session-modes": ["kiki-ops"],
+  "version": 5
+}

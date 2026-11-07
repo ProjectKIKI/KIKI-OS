@@ -3,6 +3,11 @@
 GNOME 데스크톱에서 KIKI 고유의 시스템·KI2·진단 작업을 수행하는 GTK4 /
 Libadwaita 앱이다. GNOME 설정, Nautilus, Console은 계속 기본 앱으로 사용한다.
 
+별도 Paper Pixel 세션에서는 앱 범위의 라이트·다크 스타일을 적용한다.
+일반 GNOME 실행에는 이 스타일을 강제하지 않는다. 구현·후보·검증 범위는
+[픽셀 운영 데스크톱 1단계 기록](../../docs/kiki-paper-pixel-stage1.ko.md)을 참고한다.
+`--page overview|packages|repositories|diagnostics`로 기존/새 창의 해당 화면을 연다.
+
 ## 화면과 동작
 
 - **시스템 개요**: OS·커널·호스트 이름, 실제 파일시스템 여유 공간, 실패한

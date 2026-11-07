@@ -1,0 +1,37 @@
+#!/usr/bin/python3
+"""Open an explicitly configured HTTPS incident-ai URL; never forward logs."""
+import json
+from pathlib import Path
+import subprocess
+import sys
+from urllib.parse import urlsplit
+
+def configured_url(config):
+    if config.stat().st_size > 4096:
+        raise ValueError('설정 파일이 너무 큽니다.')
+    url = json.loads(config.read_text())['url']
+    if not isinstance(url,str) or len(url)>2048 or any(c.isspace() or ord(c)<32 for c in url):
+        raise ValueError('올바른 HTTPS 주소를 설정하세요.')
+    parsed = urlsplit(url)
+    if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError('인증 정보·쿼리 없는 HTTPS 기본 주소를 설정하세요.')
+    return url
+
+
+def main():
+    try:
+        config = Path.home()/'.config/kiki/incident-ai.json'
+        if not config.is_file(): config = Path('/etc/kiki/incident-ai.json')
+        url = configured_url(config)
+    except (OSError, ValueError, KeyError) as error:
+        print('incident-ai 주소를 ~/.config/kiki/incident-ai.json 또는 /etc/kiki/incident-ai.json의 url에 설정하세요. '+str(error), file=sys.stderr)
+        return 1
+    result = subprocess.run(['/usr/bin/gio', 'open', url],capture_output=True,text=True)
+    if result.returncode:
+        print('웹 브라우저 연결을 확인하세요. HTTPS 기본 앱이 없으면 브라우저 설치·기본 앱 설정이 필요합니다. '+result.stderr.strip(),file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__=='__main__':
+    sys.exit(main())

@@ -1,0 +1,15 @@
+{
+  "schema": "kiki-official-browser-input-v1",
+  "version": "153.6.0esr",
+  "locale": "ko",
+  "url": "https://archive.mozilla.org/pub/firefox/releases/153.6.0esr/linux-x86_64/ko/firefox-153.6.0esr.tar.xz",
+  "sha256": "31a820a4cb3c1c4724a296ce89c62c5b7e112e28ab1621e38bbee80a1017bfc7",
+  "sha512": "2dd9f2b112ecfc9dda187a00921753506e19cf68fa656597291af047108c3f861435bce40363de13c35e09c8cff5d019fc8c570fc029e06e705ab058a7ca8f18",
+  "signing_primary": "14F26682D0916CDD81E37B6D61B7B526D98F0353",
+  "signing_subkey": "827E658608679618CD349F93678E455D76767AA3",
+  "signature_url": "https://archive.mozilla.org/pub/firefox/releases/153.6.0esr/SHA512SUMS.asc",
+  "checksums_url": "https://archive.mozilla.org/pub/firefox/releases/153.6.0esr/SHA512SUMS",
+  "key_url": "https://archive.mozilla.org/pub/firefox/releases/153.6.0esr/KEY",
+  "key_reference": "https://blog.mozilla.org/security/2026/08/10/updated-gpg-key-for-signing-firefox-and-thunderbird-releases/",
+  "distribution": "official Mozilla prebuilt, isolated candidate only; not a KIKI source build"
+}

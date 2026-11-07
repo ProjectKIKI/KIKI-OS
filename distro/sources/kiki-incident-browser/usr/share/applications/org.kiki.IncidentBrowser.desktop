@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=KIKI incident-ai browser candidate
+Name[ko]=KIKI incident-ai 브라우저 후보
+Comment=Official Firefox ESR with a separate KIKI candidate profile
+Comment[ko]=독립 후보 프로필을 사용하는 공식 Firefox ESR
+Exec=/usr/bin/kiki-incident-browser %u
+Icon=/usr/libexec/kiki-incident-browser/153.6.0esr/browser/chrome/icons/default/default128.png
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=x-scheme-handler/https;
+StartupNotify=true
+StartupWMClass=KikiIncidentBrowser

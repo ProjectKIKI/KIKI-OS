@@ -1,7 +1,7 @@
 [[recipe]]
 name = "kiki-admin"
 version = "0.1.0"
-release = 6
+release = 7
 summary = "Native GNOME administrator for KIKI system health, KI2 and recovery"
 license = "GPL-3.0-or-later"
 tier = "desktop"

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.kiki.Operations" path="/org/kiki/operations/">
+    <key name="theme" type="s"><default>'light'</default><choices><choice value="light"/><choice value="dark"/></choices><summary>KIKI application theme</summary></key>
+    <key name="failed-only" type="b"><default>false</default><summary>Show only failed services</summary></key>
+  </schema>
+</schemalist>

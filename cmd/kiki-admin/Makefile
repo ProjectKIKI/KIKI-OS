@@ -6,9 +6,9 @@ FLAGS := $(shell pkg-config --cflags $(PKGS))
 LIBS := $(shell pkg-config --libs $(PKGS))
 
 all: kiki-admin
-kiki-admin: main.c
+kiki-admin: main.c pixel.h
 	$(CC) $(CFLAGS) $(FLAGS) -o $@ $< $(LDFLAGS) $(LIBS)
-ui-test: ui_test.c main.c
+ui-test: ui_test.c main.c pixel.h
 	$(CC) $(CFLAGS) $(FLAGS) -o $@ $< $(LDFLAGS) $(LIBS)
 install: kiki-admin
 	install -Dm755 kiki-admin $(DESTDIR)$(PREFIX)/bin/kiki-admin

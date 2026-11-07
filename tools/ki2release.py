@@ -362,6 +362,7 @@ class Library:
         with self.lock:return self._submit(kind,dict(values))
 
     def _submit(self,kind,values):
+        if (self.root/'maintenance.json').exists():raise ValueError('스토리지 유지보수 중입니다. 완료 후 다시 요청하세요.')
         if kind=='iso' and shutil.disk_usage(self.root).free<4*1024**3:raise ValueError('ISO 생성에는 최소 4GiB 여유 공간이 필요합니다.')
         if sum(j['status'] in {'pending','running'} for j in self.jobs())>=8:raise ValueError('대기 작업이 많습니다. 기존 작업 완료 후 요청하세요.')
         if kind in {'update-check','update-security','update-prepare','update-promote'}:

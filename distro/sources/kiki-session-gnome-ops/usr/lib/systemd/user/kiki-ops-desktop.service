@@ -1,0 +1,10 @@
+[Unit]
+Description=KIKI Paper Pixel administrator
+After=gnome-session-initialized.target
+PartOf=gnome-session@kiki-ops.target
+CollectMode=inactive-or-failed
+
+[Service]
+ExecStart=/usr/bin/kiki-admin
+Restart=no
+TimeoutStopSec=5

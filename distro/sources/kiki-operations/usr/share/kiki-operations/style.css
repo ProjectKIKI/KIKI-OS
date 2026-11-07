@@ -1,0 +1,20 @@
+.kiki-operations { font-family: sans-serif; }
+.kiki-operations .workspace { padding: 14px; }
+.kiki-operations .sidebar { padding: 12px 8px; border-right: 2px solid; }
+.kiki-operations .title { font-size: 1.6em; font-weight: 700; }
+.kiki-operations .section-title { font-size: 1.12em; font-weight: 700; }
+.kiki-operations .value { font-size: 1.7em; font-weight: 700; font-family: monospace; }
+.kiki-operations .metric { padding: 12px; border: 2px solid; border-radius: 2px; min-width: 112px; }
+.kiki-operations .card { padding: 12px; border: 2px solid; border-radius: 2px; }
+.kiki-operations button { border: 1px solid; border-radius: 2px; box-shadow: 2px 2px 0 alpha(currentColor,0.2); padding: 7px 9px; }
+.kiki-operations button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.kiki-operations .nav { border: none; box-shadow: none; padding: 10px; }
+.kiki-operations .service-row { padding: 9px 6px; border-bottom: 1px solid alpha(currentColor,0.15); }
+.kiki-operations .table-head { font-weight: 700; padding: 9px 6px; }
+.kiki-operations .muted { opacity: 0.76; }
+.kiki-operations .bad { font-weight: 700; }
+.kiki-operations .footer { padding: 7px 12px; border-top: 1px solid; }
+.kiki-operations entry, .kiki-operations list { border-radius: 0; }
+.kiki-operations progressbar trough, .kiki-operations progressbar progress { border-radius: 0; min-height: 5px; }
+.kiki-operations paned > separator { min-width: 10px; min-height: 10px; background: transparent; }
+.kiki-operations .code { font-family: monospace; }

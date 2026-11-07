@@ -1,0 +1,20 @@
+[[recipe]]
+name = "kiki-browser-gtk3"
+version = "2026.11.07"
+release = 1
+summary = "Private native dual-backend GTK3 and Cairo for the Firefox candidate"
+license = "MIT AND LGPL-2.1-or-later AND (LGPL-2.1-only OR MPL-1.1)"
+tier = "library"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "tools"
+inputs = ["distro/manifests/kiki-browser-gtk3-20261107.json", "distro/manifests/kiki-browser-x11-20261107.json"]
+[recipe.dependencies]
+build = ["meson", "ninja", "pkgconf", "gtk+-3", "cairo", "linux-headers"]
+runtime = ["gtk+-3", "cairo", "kiki-browser-x11-libs"]
+[recipe.build]
+system = "custom"
+configure = []
+compile = ['python3 "${KI2_REPO_ROOT}/tools/build_kiki_browser_gtk3.py" --sdk "${KI2_SYSROOT}" --work "${KI2_BUILD_DIR}/gtk3-private" --inputs "${KI2_BUILD_DIR}/gtk3-inputs" --lock "${KI2_REPO_ROOT}/distro/manifests/kiki-browser-gtk3-20261107.json" --stage "${KI2_BUILD_DIR}/gtk3-payload"']
+install = ['cp -a "${KI2_BUILD_DIR}/gtk3-payload/." "${KI2_DESTDIR}/"']

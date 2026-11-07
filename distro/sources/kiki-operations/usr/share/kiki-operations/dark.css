@@ -1,0 +1,11 @@
+.kiki-operations { background: #17212a; color: #e9ecdf; }
+.kiki-operations headerbar, .kiki-operations .sidebar { background: #202c35; color: #e9ecdf; border-color: #8593a5; }
+.kiki-operations .card, .kiki-operations .metric, .kiki-operations list { background: #202e36; color: #e9ecdf; border-color: #8593a5; }
+.kiki-operations .card, .kiki-operations .metric { box-shadow: 3px 3px 0 #0c141b; }
+.kiki-operations button, .kiki-operations entry { background: #293640; color: #e9ecdf; border-color: #8593a5; }
+.kiki-operations button:hover { background: #3a4858; }
+.kiki-operations row:selected, .kiki-operations button:checked, .kiki-operations .suggested { background: #3156df; color: #ffffff; }
+.kiki-operations .bad { color: #ff9ca2; }
+.kiki-operations .warning { color: #e8bd68; }
+.kiki-operations row:selected .bad { color: #ffffff; }
+.kiki-operations textview, .kiki-operations textview text { background: #202e36; color: #e9ecdf; }

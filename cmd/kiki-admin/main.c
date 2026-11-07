@@ -2,11 +2,13 @@
 #include <json-glib/json-glib.h>
 #include <locale.h>
 #include <string.h>
+#include "pixel.h"
 
 typedef struct {
     AdwApplication *app;
     GtkWindow *window;
     GtkStack *stack;
+    GtkListBox *navigation;
     GtkWidget *pages[4], *refresh, *spinner;
     GtkLabel *status;
     GtkTextBuffer *activity;
@@ -313,6 +315,7 @@ static void activate(GApplication *app,gpointer data) {
     Admin *ui=data;
     if(ui->window) { gtk_window_present(ui->window); return; }
     ui->app=ADW_APPLICATION(app); ui->window=GTK_WINDOW(adw_application_window_new(GTK_APPLICATION(app)));
+    pixel_style(app);
     gtk_window_set_title(ui->window,"KIKI 관리자"); gtk_window_set_default_size(ui->window,1080,760);
     g_object_add_weak_pointer(G_OBJECT(ui->window),(gpointer*)&ui->window);
     g_signal_connect(ui->window,"close-request",G_CALLBACK(close_requested),ui);
@@ -324,6 +327,7 @@ static void activate(GApplication *app,gpointer data) {
     GtkWidget *sidebar=gtk_box_new(GTK_ORIENTATION_VERTICAL,16); gtk_widget_add_css_class(sidebar,"sidebar"); gtk_widget_set_size_request(sidebar,210,-1);
     GtkWidget *brand=label("KIKI OS","title-3"); gtk_widget_set_margin_start(brand,20); gtk_widget_set_margin_top(brand,24); gtk_box_append(GTK_BOX(sidebar),brand);
     GtkWidget *nav=gtk_list_box_new(); gtk_widget_add_css_class(nav,"navigation-sidebar"); gtk_box_append(GTK_BOX(sidebar),nav);
+    ui->navigation=GTK_LIST_BOX(nav);
     const char *names[]={"overview","packages","repositories","diagnostics"}, *titles[]={"시스템 개요","패키지","저장소","진단 및 복구"}, *icons[]={"computer-symbolic","package-x-generic-symbolic","folder-remote-symbolic","utilities-system-monitor-symbolic"};
     for(guint i=0;i<4;i++) { GtkWidget *r=gtk_list_box_row_new(), *line=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,12);
         gtk_widget_set_margin_top(line,10); gtk_widget_set_margin_bottom(line,10); gtk_widget_set_margin_start(line,12);
@@ -352,8 +356,21 @@ static void activate(GApplication *app,gpointer data) {
         gtk_label_set_text(ui->status,stamp);
     } else request(ui,"snapshot","","",NULL);
 }
+static int command_line(GApplication *app,GApplicationCommandLine *line,gpointer data) {
+    const char *page="overview", *requested=NULL;
+    if(g_variant_dict_lookup(g_application_command_line_get_options_dict(line),"page","&s",&requested)) page=requested;
+    const char *names[]={"overview","packages","repositories","diagnostics"};
+    guint i=0;
+    for(;i<G_N_ELEMENTS(names);i++) if(!strcmp(page,names[i])) break;
+    if(i==G_N_ELEMENTS(names)) { g_application_command_line_printerr(line,"Unknown administrator page\n"); return 2; }
+    g_application_activate(app); Admin *ui=data;
+    gtk_list_box_select_row(ui->navigation,gtk_list_box_get_row_at_index(ui->navigation,i));
+    return 0;
+}
 int main(int argc,char **argv) {
-    setlocale(LC_ALL,""); Admin ui={0}; g_autoptr(AdwApplication) app=adw_application_new("org.kiki.Admin",G_APPLICATION_DEFAULT_FLAGS);
+    setlocale(LC_ALL,""); Admin ui={0}; g_autoptr(AdwApplication) app=adw_application_new("org.kiki.Admin",G_APPLICATION_HANDLES_COMMAND_LINE);
+    g_application_add_main_option(G_APPLICATION(app),"page",0,G_OPTION_FLAG_NONE,G_OPTION_ARG_STRING,"Open overview, packages, repositories or diagnostics","PAGE");
+    g_signal_connect(app,"command-line",G_CALLBACK(command_line),&ui);
     g_signal_connect(app,"activate",G_CALLBACK(activate),&ui); int code=g_application_run(G_APPLICATION(app),argc,argv);
     g_clear_object(&ui.snapshot); g_clear_object(&ui.activity); return code;
 }

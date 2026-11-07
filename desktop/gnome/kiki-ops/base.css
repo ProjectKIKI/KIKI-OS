@@ -1,0 +1,64 @@
+/* Generated palette is appended by tools/ki2pixeltheme.py. Every selector
+ * belongs to the dedicated session's removable Shell UI scope. */
+.kiki-paper-pixel #panel { border-bottom-width: 2px; border-style: solid; }
+.kiki-paper-pixel #panel .panel-button,
+.kiki-paper-pixel #panel .clock,
+.kiki-paper-pixel #panelActivities .workspace-dot { border-radius: 0; }
+.kiki-paper-pixel .popup-menu-content,
+.kiki-paper-pixel .quick-settings,
+.kiki-paper-pixel .quick-toggle-menu,
+.kiki-paper-pixel .datemenu-popover,
+.kiki-paper-pixel .calendar,
+.kiki-paper-pixel .events-button,
+.kiki-paper-pixel .world-clocks-button,
+.kiki-paper-pixel .weather-button,
+.kiki-paper-pixel .datemenu-today-button,
+.kiki-paper-pixel .search-entry,
+.kiki-paper-pixel #dash .dash-background,
+.kiki-paper-pixel .search-section-content,
+.kiki-paper-pixel .app-folder-dialog,
+.kiki-paper-pixel .notification-banner,
+.kiki-paper-pixel .message,
+.kiki-paper-pixel .modal-dialog,
+.kiki-paper-pixel .osd-window,
+.kiki-paper-pixel .switcher-list {
+  border-radius: 2px;
+  border-width: 2px;
+  border-style: solid;
+  box-shadow: 3px 3px 0 rgba(0,0,0,0.35);
+}
+.kiki-paper-pixel .button,
+.kiki-paper-pixel .icon-button,
+.kiki-paper-pixel .quick-toggle,
+.kiki-paper-pixel .quick-toggle-has-menu,
+.kiki-paper-pixel .quick-toggle-has-menu .quick-toggle:ltr,
+.kiki-paper-pixel .quick-toggle-has-menu .quick-toggle:rtl,
+.kiki-paper-pixel .quick-toggle-has-menu .quick-toggle:last-child,
+.kiki-paper-pixel .quick-toggle-has-menu .quick-toggle-menu-button,
+.kiki-paper-pixel .quick-slider .slider-bin,
+.kiki-paper-pixel .popup-menu-item,
+.kiki-paper-pixel .calendar .calendar-day,
+.kiki-paper-pixel .calendar .calendar-day-heading,
+.kiki-paper-pixel .calendar .calendar-week-number,
+.kiki-paper-pixel .calendar .calendar-month-label,
+.kiki-paper-pixel .calendar .pager-button,
+.kiki-paper-pixel .events-button .events-list .event-box,
+.kiki-paper-pixel .app-folder-dialog .folder-name-container .folder-name-entry,
+.kiki-paper-pixel .message-list-clear-button,
+.kiki-paper-pixel .message .message-header .message-expand-button,
+.kiki-paper-pixel .message .message-header .message-close-button,
+.kiki-paper-pixel .message-collapse-button,
+.kiki-paper-pixel .notification-button,
+.kiki-paper-pixel .modal-dialog-button,
+.kiki-paper-pixel .modal-dialog StEntry,
+.kiki-paper-pixel .overview-tile,
+.kiki-paper-pixel #dash .overview-tile .overview-icon,
+.kiki-paper-pixel #dash .show-apps .overview-icon,
+.kiki-paper-pixel .app-folder,
+.kiki-paper-pixel .window-close,
+.kiki-paper-pixel .window-caption,
+.kiki-paper-pixel .toggle-switch,
+.kiki-paper-pixel .toggle-switch .handle { border-radius: 2px; }
+.kiki-paper-pixel .app-grid-running-dot { border-radius: 0; height: 4px; width: 12px; }
+.kiki-paper-pixel .workspace-background { border-radius: 2px; }
+.kiki-paper-pixel .workspace-thumbnail-indicator { border-radius: 2px; border-width: 2px; }

@@ -1,0 +1,14 @@
+{
+  "source": "/build-kikios",
+  "source_uuid": "REPLACE-WITH-DATA-FILESYSTEM-UUID",
+  "target": "/kiki-backups",
+  "target_uuid": "REPLACE-WITH-BACKUP-FILESYSTEM-UUID",
+  "user": "lab",
+  "units": ["kiki-build-auth", "kiki-candidate-buildd", "kiki-release-worker", "kiki-build-llm-relay"],
+  "maintenance_markers": ["/opt/kiki-build/build/ki2ci/maintenance.json", "/opt/kiki-build/release-store/maintenance.json"],
+  "status_file": "/var/lib/kiki-build-backup/full-status.json",
+  "log_dir": "/var/log/kiki-build-backup",
+  "public_status_file": "/opt/kiki-build/build/ki2ci/backup-status.json",
+  "auth_relative": "kiki-build/candidates/mesa-native-20261023/auth/state/auth.sqlite3",
+  "host_paths": ["/etc/fstab", "/etc/kiki-build", "/etc/systemd/system/kiki-build-full-backup.service", "/etc/systemd/system/kiki-build-full-backup.timer", "/usr/local/libexec/kiki-xfs-backup.py", "/home/lab/.config/systemd/user", "/home/lab/.config/containers"]
+}

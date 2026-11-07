@@ -1,0 +1,24 @@
+[[recipe]]
+name = "kiki-operations"
+version = "0.1.0"
+release = 7
+summary = "Independent pixel operations workspace with read-only local runtime data"
+license = "GPL-3.0-or-later"
+tier = "desktop"
+architectures = ["x86_64"]
+[recipe.source]
+type = "local"
+path = "cmd/kiki-operations"
+inputs = ["distro/sources/kiki-operations"]
+[recipe.dependencies]
+build = ["pkgconf", "gtk", "json-glib", "linux-headers"]
+runtime = ["gtk", "json-glib", "python", "systemd", "kiki-admin", "hicolor-icon-theme", "gnome-console"]
+[recipe.build]
+system = "custom"
+configure = []
+compile = ['make -C "${KI2_SOURCE_DIR}" CC=cc CFLAGS="--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_CPPFLAGS} -O2 -pipe -Wall -Wextra -Werror -fstack-protector-strong" LDFLAGS="--sysroot=${KI2_SYSROOT} ${KI2_SYSROOT_LDFLAGS} -Wl,-z,relro,-z,now"']
+install = [
+  'install -Dm755 "${KI2_SOURCE_DIR}/kiki-operations" "${KI2_DESTDIR}/usr/bin/kiki-operations"',
+  'cp -a "${KI2_REPO_ROOT}/distro/sources/kiki-operations/." "${KI2_DESTDIR}/"',
+  'chmod 755 "${KI2_DESTDIR}/usr/bin/kiki-operationsctl" "${KI2_DESTDIR}/usr/libexec/kiki-operations-backend.py" "${KI2_DESTDIR}/usr/libexec/kiki-operations-console"',
+]
