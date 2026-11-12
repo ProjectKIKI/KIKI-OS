@@ -39,7 +39,7 @@ Gitea 소스 동기화와 빌드 진행·로그 조회를 이용할 수 있습�
 - [릴리즈 전체 소스 명세](distro/manifests/kiki-build-1.0.0/sources.json): 231개 패키지의 소스·레시피·패키지 SHA 연결
 - `python3 tools/ki2sources.py`: 명세 검사. 보관 객체까지 검사하려면 `--objects SOURCE_OBJECTS`를 추가합니다.
 
-GitHub·Gitea의 Build 릴리즈는 비공개 저장소에서 관리합니다. Native GNOME의 빌드 순서와
+소스와 Build 릴리즈 안내는 공개 GitHub·Gitea 저장소에서 제공합니다. 빌드 웹 콘솔은 로그인이 필요합니다. Native GNOME의 빌드 순서와
 보존 SDK 요구사항은 [native 빌드 안내](tools/gnome_native/README.ko.md)를 따릅니다.
 
 ## Stage3 초기 기준선 (2026-09-29)
@@ -86,7 +86,7 @@ SHA 검사가 실제 VM 설치·커널 부팅·GNOME 로그인 검증을 대신�
 ## 저장소
 
 - 개발자 Gitea: <https://git.vlab.dustbox.kr/dustbox/kiki-os>
-- 개발자 비공개 GitHub: <https://github.com/ProjectKIKI/KIKI-OS>
+- 개발자 GitHub: <https://github.com/ProjectKIKI/KIKI-OS>
 
 ## 현재 상태
 
