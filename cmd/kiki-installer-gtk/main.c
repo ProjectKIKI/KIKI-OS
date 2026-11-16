@@ -9,6 +9,10 @@
 #include "disk.h"
 #include "catalog.generated.h"
 
+#ifndef PLAN_TIMEOUT_MS
+#define PLAN_TIMEOUT_MS 30000
+#endif
+
 #ifndef GUI_INSTALL_REQUEST_PATH
 #define GUI_INSTALL_REQUEST_PATH "/run/kiki/gui-install.request"
 #endif
@@ -89,6 +93,13 @@ typedef struct {
     char progress_fingerprint[65];
     gint64 progress_changed_at;
     guint progress_source;
+    gboolean planning;
+    gboolean plan_for_install;
+    gboolean plan_timed_out;
+    GSubprocess *plan_process;
+    GCancellable *plan_cancel;
+    guint plan_timeout;
+    GtkWidget *cancel_plan_button;
     gboolean install_started;
     gboolean install_complete;
     gboolean install_failed;
@@ -97,6 +108,10 @@ typedef struct {
 static void installer_ui_free(gpointer data) {
     InstallerUI *ui = data;
     if (ui->progress_source) g_source_remove(ui->progress_source);
+    if (ui->plan_timeout) g_source_remove(ui->plan_timeout);
+    if (ui->plan_process) g_subprocess_force_exit(ui->plan_process);
+    g_clear_object(&ui->plan_process);
+    g_clear_object(&ui->plan_cancel);
     g_free(ui->last_progress_message);
     g_clear_pointer(&ui->network_devices, g_ptr_array_unref);
     g_clear_pointer(&ui->disks, g_ptr_array_unref);
@@ -478,13 +493,9 @@ static gboolean validate_gui(InstallerUI *ui, GError **error) {
     return TRUE;
 }
 
-static gboolean write_plan_file(InstallerUI *ui, GError **error) {
-    if (!validate_gui(ui, error)) {
-        gtk_label_set_text(ui->status, (*error)->message);
-        gtk_widget_add_css_class(GTK_WIDGET(ui->status), "error");
-        return FALSE;
-    }
+static void finish_install(InstallerUI *ui);
 
+static GPtrArray *plan_arguments(InstallerUI *ui) {
     const char *tool = g_getenv("KIKI_INSTALLER_TUI");
     if (!tool || !*tool) tool = "kiki-installer-tui";
     g_autoptr(GPtrArray) args = g_ptr_array_new();
@@ -516,33 +527,98 @@ static gboolean write_plan_file(InstallerUI *ui, GError **error) {
     add_arg(args, "--ai-endpoint", gtk_editable_get_text(GTK_EDITABLE(ui->ai_endpoint)));
     g_ptr_array_add(args, NULL);
 
-    g_autoptr(GSubprocess) process = g_subprocess_newv(
-        (const char *const *)args->pdata,
-        G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE,
-        error);
-    if (!process) {
-        gtk_label_set_text(ui->status, (*error)->message);
-        return FALSE;
-    }
-    g_autofree char *stdout_text = NULL;
-    g_autofree char *stderr_text = NULL;
-    if (!g_subprocess_communicate_utf8(process, NULL, NULL, &stdout_text, &stderr_text, error) ||
-        !g_subprocess_get_successful(process)) {
-        gtk_label_set_text(ui->status, *error ? (*error)->message : (stderr_text && *stderr_text ? stderr_text : L("계획 생성 실패", "Could not generate the plan")));
+    return g_steal_pointer(&args);
+}
+
+static void cancel_plan(GtkButton *button, gpointer data) {
+    (void)button;
+    InstallerUI *ui = data;
+    if (!ui->planning) return;
+    g_subprocess_force_exit(ui->plan_process);
+    g_cancellable_cancel(ui->plan_cancel);
+}
+
+static gboolean plan_timeout(gpointer data) {
+    InstallerUI *ui = data;
+    ui->plan_timeout = 0;
+    ui->plan_timed_out = TRUE;
+    cancel_plan(NULL, ui);
+    return G_SOURCE_REMOVE;
+}
+
+static void plan_finished(GObject *source, GAsyncResult *result, gpointer data) {
+    InstallerUI *ui = data;
+    g_autoptr(GtkWindow) lifetime = ui->window;
+    g_autoptr(GError) error = NULL;
+    g_autofree char *output = NULL, *diagnostic = NULL;
+    gboolean ok = g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source), result,
+                                                       &output, &diagnostic, &error);
+    ok = ok && g_subprocess_get_successful(G_SUBPROCESS(source));
+    if (ui->plan_timeout) { g_source_remove(ui->plan_timeout); ui->plan_timeout = 0; }
+    ui->planning = FALSE;
+    g_clear_object(&ui->plan_process);
+    g_clear_object(&ui->plan_cancel);
+    if (!gtk_window_get_child(ui->window)) return;
+    gtk_widget_set_sensitive(GTK_WIDGET(ui->stack), TRUE);
+    gtk_widget_set_sensitive(ui->sidebar, TRUE);
+    gtk_widget_set_sensitive(ui->navigation, TRUE);
+    gtk_widget_set_visible(ui->cancel_plan_button, FALSE);
+    gtk_window_set_deletable(ui->window, TRUE);
+    if (!ok) {
+        gtk_check_button_set_active(ui->destructive_confirm, FALSE);
+        const char *message = ui->plan_timed_out
+            ? L("계획 생성 시간이 초과되었습니다. 설정을 확인한 뒤 다시 시도하세요.", "Plan generation timed out. Check the settings and retry.")
+            : error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)
+            ? L("계획 생성을 취소했습니다. 설치 요청은 보내지 않았습니다.", "Plan generation cancelled. No installation request was sent.")
+            : L("계획을 생성하지 못했습니다. 입력과 계획 생성기를 확인하세요.", "Could not generate the plan. Check the input and planner.");
+        /* Planner stderr is not a trusted, bounded user message. Never echo secrets. */
+        gtk_label_set_text(ui->status, message);
         gtk_widget_add_css_class(GTK_WIDGET(ui->status), "error");
-        return FALSE;
+        return;
     }
     gtk_widget_remove_css_class(GTK_WIDGET(ui->status), "error");
-    gtk_label_set_text(ui->status, stdout_text && *stdout_text ? stdout_text : L("설치 계획을 저장했습니다.", "Installation plan saved."));
-    update_review(ui);
-    return TRUE;
+    gtk_label_set_text(ui->status, L("설치 계획을 저장했습니다.", "Installation plan saved."));
+    if (ui->plan_for_install) finish_install(ui);
+}
+
+static void begin_plan(InstallerUI *ui, gboolean install) {
+    if (ui->planning || ui->install_started) return;
+    g_autoptr(GError) error = NULL;
+    if (!validate_gui(ui, &error)) {
+        gtk_label_set_text(ui->status, error->message);
+        gtk_widget_add_css_class(GTK_WIDGET(ui->status), "error");
+        gtk_check_button_set_active(ui->destructive_confirm, FALSE);
+        return;
+    }
+    g_autoptr(GPtrArray) args = plan_arguments(ui);
+    ui->plan_process = g_subprocess_newv((const char *const *)args->pdata,
+        G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE, &error);
+    if (!ui->plan_process) {
+        gtk_check_button_set_active(ui->destructive_confirm, FALSE);
+        gtk_label_set_text(ui->status, L("계획 생성기를 시작할 수 없습니다.", "Cannot start the installation planner."));
+        gtk_widget_add_css_class(GTK_WIDGET(ui->status), "error");
+        return;
+    }
+    ui->planning = TRUE;
+    ui->plan_for_install = install;
+    ui->plan_timed_out = FALSE;
+    ui->plan_cancel = g_cancellable_new();
+    if (!install) gtk_check_button_set_active(ui->destructive_confirm, FALSE);
+    gtk_widget_set_sensitive(GTK_WIDGET(ui->install_button), FALSE);
+    gtk_widget_set_sensitive(GTK_WIDGET(ui->stack), FALSE);
+    gtk_widget_set_sensitive(ui->sidebar, FALSE);
+    gtk_widget_set_sensitive(ui->navigation, FALSE);
+    gtk_widget_set_visible(ui->cancel_plan_button, TRUE);
+    gtk_window_set_deletable(ui->window, FALSE);
+    gtk_label_set_text(ui->status, L("설치 계획을 확인하는 중…", "Checking the installation plan…"));
+    ui->plan_timeout = g_timeout_add(PLAN_TIMEOUT_MS, plan_timeout, ui);
+    g_object_ref(ui->window); /* Keep callback state alive even during application shutdown. */
+    g_subprocess_communicate_utf8_async(ui->plan_process, NULL, ui->plan_cancel, plan_finished, ui);
 }
 
 static void write_plan(GtkButton *button, gpointer data) {
     (void)button;
-    InstallerUI *ui = data;
-    g_autoptr(GError) error = NULL;
-    write_plan_file(ui, &error);
+    begin_plan(data, FALSE);
 }
 
 static void target_disk_changed(GtkEditable *editable, gpointer data) {
@@ -552,9 +628,19 @@ static void target_disk_changed(GtkEditable *editable, gpointer data) {
     update_review(ui);
 }
 
+static void configuration_changed(GObject *object, gpointer detail, gpointer data) {
+    (void)object; (void)detail;
+    InstallerUI *ui = data;
+    gtk_check_button_set_active(ui->destructive_confirm, FALSE);
+}
+
+static void entry_configuration_changed(GtkEditable *editable, gpointer data) {
+    configuration_changed(G_OBJECT(editable), NULL, data);
+}
+
 static void consent_changed(GtkCheckButton *button, gpointer data) {
     InstallerUI *ui = data;
-    gtk_widget_set_sensitive(GTK_WIDGET(ui->install_button), gtk_check_button_get_active(button));
+    gtk_widget_set_sensitive(GTK_WIDGET(ui->install_button), !ui->planning && !ui->install_started && gtk_check_button_get_active(button));
 }
 
 static gboolean append_request_field(GString *request, const char *key, const char *value, GError **error) {
@@ -631,6 +717,7 @@ static gboolean write_install_request(InstallerUI *ui, GError **error) {
 #undef REQUEST_FIELD
 
     gboolean selected = FALSE;
+    guint selected_packages = 0;
     g_auto(GStrv) lines = g_strsplit(plan, "\n", -1);
     for (gsize i = 0; lines[i]; i++) {
         if (g_str_equal(lines[i], "    selected:")) {
@@ -643,9 +730,19 @@ static gboolean write_install_request(InstallerUI *ui, GError **error) {
             const char *end = strrchr(start, '"');
             if (end && end > start) {
                 g_autofree char *package = g_strndup(start, end - start);
+                if (!g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9+_.-]*$", package, 0, 0)) {
+                    g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT, "Invalid package in installation plan");
+                    return FALSE;
+                }
                 if (!append_request_field(request, "package", package, error)) return FALSE;
+                selected_packages++;
             }
         }
+    }
+    if (!selected_packages || request->len >= 16384) {
+        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                    L("설치 계획의 패키지 목록 또는 크기를 확인하세요.", "Check the package list and installation plan size."));
+        return FALSE;
     }
     int request_fd = g_open(GUI_INSTALL_REQUEST_TMP_PATH, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
     if (request_fd < 0) {
@@ -674,6 +771,13 @@ static gboolean write_install_request(InstallerUI *ui, GError **error) {
             return FALSE;
         }
         written += (gsize)amount;
+    }
+    if (fsync(request_fd) != 0) {
+        int saved_errno = errno;
+        close(request_fd);
+        g_unlink(GUI_INSTALL_REQUEST_TMP_PATH);
+        g_set_error(error, G_IO_ERROR, g_io_error_from_errno(saved_errno), "Cannot sync installation request");
+        return FALSE;
     }
     if (close(request_fd) != 0) {
         int saved_errno = errno;
@@ -874,8 +978,16 @@ static void request_reboot(GtkButton *button, gpointer data) {
 static void start_install(GtkButton *button, gpointer data) {
     (void)button;
     InstallerUI *ui = data;
+    if (!gtk_check_button_get_active(ui->destructive_confirm)) {
+        gtk_label_set_text(ui->status, L("검토 후 디스크 삭제에 동의해 주세요.", "Review the plan and confirm disk erasure."));
+        return;
+    }
+    begin_plan(ui, TRUE);
+}
+
+static void finish_install(InstallerUI *ui) {
     g_autoptr(GError) error = NULL;
-    if (!write_plan_file(ui, &error) || !write_install_request(ui, &error)) {
+    if (!write_install_request(ui, &error)) {
         if (error) gtk_label_set_text(ui->status, error->message);
         gtk_widget_add_css_class(GTK_WIDGET(ui->status), "error");
         return;
@@ -930,8 +1042,48 @@ static void navigation_changed(GObject *object, GParamSpec *spec, gpointer data)
 
 static void navigate(GtkButton *button, gpointer data) {
     InstallerUI *ui = data;
-    if (ui->install_started) return;
+    if (ui->install_started || ui->planning) return;
     const char *name = gtk_stack_get_visible_child_name(ui->stack);
+    if (button == ui->next_button) {
+        GtkWidget *invalid = NULL;
+        const char *message = NULL;
+        if (g_str_equal(name, "disk") && !g_regex_match_simple(
+                "^/dev/((sd|vd|xvd|hd)[a-z]+|nvme[0-9]+n[0-9]+|mmcblk[0-9]+)$",
+                gtk_editable_get_text(GTK_EDITABLE(ui->disk)), 0, 0)) {
+            invalid = GTK_WIDGET(ui->disk_device);
+            message = L("설치할 전체 디스크를 선택하세요.", "Select a whole installation disk.");
+        } else if (g_str_equal(name, "network") && !g_str_equal(selected_network_mode(ui), "off")) {
+            if (!*gtk_editable_get_text(GTK_EDITABLE(ui->network_interface))) {
+                invalid = GTK_WIDGET(ui->network_device);
+                message = L("네트워크 장치 또는 오프라인을 선택하세요.", "Choose a network device or offline mode.");
+            } else if (g_str_equal(selected_network_mode(ui), "static") &&
+                       !*gtk_editable_get_text(GTK_EDITABLE(ui->address))) {
+                invalid = GTK_WIDGET(ui->address);
+                message = L("고정 IP의 주소/CIDR를 입력하세요.", "Enter the static IP address and CIDR prefix.");
+            }
+        } else if (g_str_equal(name, "account")) {
+            const char *password = gtk_editable_get_text(GTK_EDITABLE(ui->admin_password));
+            if (!*gtk_editable_get_text(GTK_EDITABLE(ui->admin_user))) {
+                invalid = GTK_WIDGET(ui->admin_user);
+                message = L("관리자 이름을 입력하세요.", "Enter the administrator name.");
+            } else if (!*gtk_editable_get_text(GTK_EDITABLE(ui->hostname))) {
+                invalid = GTK_WIDGET(ui->hostname);
+                message = L("호스트명을 입력하세요.", "Enter the hostname.");
+            } else if (strlen(password) < 8 || strlen(password) > 95 ||
+                       !g_str_equal(password, gtk_editable_get_text(GTK_EDITABLE(ui->admin_password_confirm)))) {
+                invalid = GTK_WIDGET(ui->admin_password);
+                message = L("암호를 8~95바이트로 입력하고 확인값을 맞춰주세요.", "Use an 8–95 byte password and a matching confirmation.");
+            }
+        }
+        if (invalid) {
+            gtk_label_set_text(ui->status, message);
+            gtk_widget_add_css_class(GTK_WIDGET(ui->status), "error");
+            gtk_widget_grab_focus(invalid);
+            return;
+        }
+        gtk_widget_remove_css_class(GTK_WIDGET(ui->status), "error");
+        gtk_label_set_text(ui->status, "");
+    }
     for (guint i = 0; i < G_N_ELEMENTS(wizard_pages); i++) {
         if (g_strcmp0(name, wizard_pages[i]) != 0) continue;
         int next = (int)i + (button == ui->back_button ? -1 : 1);
@@ -944,7 +1096,7 @@ static void navigate(GtkButton *button, gpointer data) {
 static gboolean installer_close_requested(GtkWindow *window, gpointer data) {
     (void)window;
     InstallerUI *ui = data;
-    return ui->install_started && !ui->install_complete && !ui->install_failed;
+    return ui->planning || (ui->install_started && !ui->install_complete && !ui->install_failed);
 }
 
 static GtkWidget *welcome_item(const char *number, const char *title, const char *description) {
@@ -1025,7 +1177,7 @@ static void build_installer_ui(GtkApplication *application) {
     load_css();
 
     ui->window = GTK_WINDOW(gtk_application_window_new(application));
-    g_object_set_data(G_OBJECT(ui->window), "kiki-ui-version", (gpointer)"KIKI_INSTALLER_UI_V2");
+    g_object_set_data(G_OBJECT(ui->window), "kiki-ui-version", (gpointer)"KIKI_INSTALLER_UI_V13_C");
     gtk_window_set_title(ui->window, L("KIKI OS 인스톨러", "KIKI OS Installer"));
     gtk_window_set_icon_name(ui->window, "kiki-installer");
     gtk_window_set_default_size(ui->window, 980, 680);
@@ -1143,7 +1295,7 @@ static void build_installer_ui(GtkApplication *application) {
     gtk_box_append(GTK_BOX(page), grid);
     stack_page(GTK_STACK(stack), page, "account", L("계정", "Account"));
 
-    page = page_new(L("패키지 소스", "Package source"), L("로컬 미디어, 원격 저장소 또는 오프라인 미러를 선택합니다.", "Choose local media, a remote repository, or an offline mirror."));
+    page = page_new(L("패키지 소스", "Package source"), L("설치는 로컬 미디어를 사용합니다. 원격·미러는 계획 작성만 지원합니다.", "Install from local media. Remote repositories and mirrors support planning only."));
     grid = form_new();
     ui->source_type = form_dropdown(GTK_GRID(grid), 0, L("소스", "Source"), source_types);
     ui->source_location = form_entry(GTK_GRID(grid), 1, L("위치", "Location"), "/run/install-media");
@@ -1281,6 +1433,10 @@ static void build_installer_ui(GtkApplication *application) {
     gtk_widget_set_visible(GTK_WIDGET(ui->status), FALSE);
     g_signal_connect(ui->status, "notify::label", G_CALLBACK(status_changed), NULL);
     gtk_box_append(GTK_BOX(footer), GTK_WIDGET(ui->status));
+    ui->cancel_plan_button = gtk_button_new_with_label(L("계획 생성 취소", "Cancel plan generation"));
+    gtk_widget_set_visible(ui->cancel_plan_button, FALSE);
+    g_signal_connect(ui->cancel_plan_button, "clicked", G_CALLBACK(cancel_plan), ui);
+    gtk_box_append(GTK_BOX(footer), ui->cancel_plan_button);
     ui->navigation = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
     ui->step_label = GTK_LABEL(gtk_label_new(""));
     gtk_widget_add_css_class(GTK_WIDGET(ui->step_label), "dim-label");
@@ -1298,6 +1454,16 @@ static void build_installer_ui(GtkApplication *application) {
     gtk_box_append(GTK_BOX(root), footer);
     g_signal_connect(stack, "notify::visible-child-name", G_CALLBACK(navigation_changed), ui);
     g_signal_connect(ui->window, "close-request", G_CALLBACK(installer_close_requested), ui);
+    GtkEntry *entries[] = {ui->plan_path, ui->disk, ui->hostname, ui->admin_user,
+        ui->admin_password, ui->admin_password_confirm, ui->locale, ui->keymap, ui->timezone,
+        ui->network_interface, ui->address, ui->gateway, ui->dns, ui->source_location,
+        ui->verify_key, ui->ai_endpoint, ui->package_groups};
+    for (guint i = 0; i < G_N_ELEMENTS(entries); i++)
+        g_signal_connect(entries[i], "changed", G_CALLBACK(entry_configuration_changed), ui);
+    GtkDropDown *choices[] = {ui->install_mode, ui->swap_mode, ui->network_mode, ui->network_device,
+        ui->dns_mode, ui->source_type, ui->profile, ui->runtime, ui->ai_mode};
+    for (guint i = 0; i < G_N_ELEMENTS(choices); i++)
+        g_signal_connect(choices[i], "notify::selected", G_CALLBACK(configuration_changed), ui);
     navigation_changed(NULL, NULL, ui);
 
     update_review(ui);

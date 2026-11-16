@@ -1,5 +1,23 @@
 # KIKI OS GTK 4 인스톨러
 
+## v1.3 별도 후보
+
+C/GTK4가 `ki2graphics.py`와 `ki2refreshinstaller.py`의 기본 구현이다.
+Go/gotk4는 삭제하지 않으며 `--installer-ui gotk`를 지정한 호환 빌드로 남긴다.
+이 후보는 기존 패키지·ISO·GNOME 설치 환경을 교체하지 않는다.
+
+계획 생성은 비동기로 실행하며 30초 제한과 취소 버튼을 제공한다. 실패·취소·시간
+초과 시 설치 요청을 만들지 않는다. 설정·암호 변경은 삭제 동의를 해제한다.
+원격/미러는 계획 생성용이고 실제 Stage-1 설치는 로컬 미디어만 지원한다.
+설치 요청의 0600 권한과 기존 파일 덮어쓰기 금지는 유지한다.
+
+후보 C 실행 파일은 `-march=x86-64-v2 -mtune=generic`으로 빌드한다. 번들 전체의
+최소 CPU 인증을 뜻하지 않으며 제한 CPU VM·ISO 부팅 시험은 별도다.
+아카이브 소스 빌드는 `KIKI_SOURCE_COMMIT`에 기준 커밋을 지정한다. 런타임 명세는
+기준 커밋과 수정된 입력 파일별 SHA, 실행 파일·카탈로그 SHA를 함께 기록한다.
+기존 C 런타임의 ABI·카탈로그가 같을 때만 새 release로 재패키징할 수 있다.
+공용 GTK/GNOME 라이브러리는 이 단계에서 변경하지 않는다.
+
 `kiki-installer-gtk`는 GTK 4 기반 설치 프런트엔드입니다. YAML을 독자적으로
 작성하지 않고 `kiki-installer-tui --write`를 호출하므로 CLI, TUI, GUI와 무인
 설치에서 동일한 프로필 선택, 검증 및 `InstallPlan` 직렬화 로직을 사용합니다.

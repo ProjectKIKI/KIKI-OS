@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild the Go Scratch Pad KI2 from a verified graphical runtime package.
+"""Refresh a verified C/GTK4 runtime; explicit gotk compatibility is preserved.
 
 The caller must verify the baseline package against signed repository metadata
 before invoking this tool. Other runtime files are preserved byte-for-byte.
@@ -16,13 +16,14 @@ import tempfile
 from types import SimpleNamespace
 
 import ki2build
+import ki2graphics
 
 
 TITLE = b"KIKI OS Scratch Pad"
 OLD_TITLE = b"KIKI OS Installer"
 
 
-def refresh(baseline: Path, binary: Path, output: Path, release: int, repo_root: Path) -> None:
+def refresh(baseline: Path, binary: Path, output: Path, release: int, repo_root: Path, installer_ui: str = "c") -> None:
     if output.exists():
         raise ValueError(f"refusing to overwrite package: {output}")
     old = ki2build.read_package_manifest(baseline)
@@ -31,8 +32,12 @@ def refresh(baseline: Path, binary: Path, output: Path, release: int, repo_root:
     if release <= int(old["release"]):
         raise ValueError("new release must be greater than the baseline release")
     new_binary = binary.read_bytes()
-    if TITLE not in new_binary or OLD_TITLE in new_binary or b"Go/GTK4" in new_binary:
-        raise ValueError("binary does not contain only the new Scratch Pad title")
+    if installer_ui not in {"c", "gotk"}:
+        raise ValueError("unknown installer implementation")
+    if installer_ui == "c" and b"KIKI_INSTALLER_UI_V13_C" not in new_binary:
+        raise ValueError("binary lacks the C/GTK4 implementation marker")
+    if installer_ui == "gotk" and (TITLE not in new_binary or OLD_TITLE in new_binary or b"Go/GTK4" in new_binary):
+        raise ValueError("binary does not contain only the compatibility Scratch Pad title")
 
     with tempfile.TemporaryDirectory(prefix="kiki-installer-refresh-") as temporary:
         payload = Path(temporary) / "rootfs"
@@ -40,14 +45,23 @@ def refresh(baseline: Path, binary: Path, output: Path, release: int, repo_root:
         ki2build.extract_package_rootfs(baseline, payload)
         runtime_path = payload / "usr/share/kiki-installer-gtk/runtime-manifest.json"
         runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
-        if runtime.get("installer_ui") != "gotk":
-            raise ValueError("baseline must contain the Go/GTK graphical runtime")
+        if runtime.get("installer_ui") != installer_ui:
+            raise ValueError("baseline and replacement installer implementations must match")
+        if installer_ui == "c":
+            catalog = repo_root / "distro/sources/ki2ctl/usr/share/ki2/package-groups.json"
+            if runtime.get("catalog_sha256") != hashlib.sha256(catalog.read_bytes()).hexdigest():
+                raise ValueError("catalog changed; rebuild the installer runtime instead of refreshing a binary")
         installed_binary = payload / "usr/bin/kiki-installer-gtk"
         previous_size = installed_binary.stat().st_size
         shutil.copyfile(binary, installed_binary)
         installed_binary.chmod(0o755)
         runtime["bytes"] += len(new_binary) - previous_size
-        runtime["display_name"] = TITLE.decode("ascii")
+        runtime["display_name"] = "KIKI OS Installer" if installer_ui == "c" else TITLE.decode("ascii")
+        runtime["installer_binary_sha256"] = hashlib.sha256(new_binary).hexdigest()
+        runtime["source_provenance"] = ki2graphics.source_provenance(repo_root, installer_ui)
+        runtime["baseline_package_sha256"] = ki2build.file_sha256(baseline)
+        runtime["package"] = {"name": old["name"], "version": old["version"], "release": str(release)}
+        runtime["ui_version"] = "KIKI_INSTALLER_UI_V13_C" if installer_ui == "c" else runtime.get("ui_version")
         runtime_path.write_text(json.dumps(runtime, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
                                 encoding="utf-8")
 
@@ -55,7 +69,7 @@ def refresh(baseline: Path, binary: Path, output: Path, release: int, repo_root:
         digest = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
         recipe = ki2build.load_recipes(repo_root / "distro/recipes")["kiki-installer-gtk"]
         recipe = replace(recipe, release=str(release),
-                         summary="KIKI OS Scratch Pad graphical installer and Cage runtime",
+                         summary="KIKI OS graphical installer and Cage runtime" if installer_ui == "c" else "KIKI OS Scratch Pad graphical installer and Cage runtime",
                          license=old["license"], digest=digest)
         ki2build.create_package(SimpleNamespace(arch="x86_64"), recipe, payload, output, digest, {})
 
@@ -108,6 +122,7 @@ def main() -> None:
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--release", required=True, type=int)
+    parser.add_argument("--installer-ui", choices=("c", "gotk"), default="c")
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--baseline-rootfs", type=Path)
     parser.add_argument("--rootfs-output", type=Path)
@@ -115,8 +130,8 @@ def main() -> None:
     if bool(args.baseline_rootfs) != bool(args.rootfs_output):
         parser.error("--baseline-rootfs and --rootfs-output must be used together")
     refresh(args.baseline_package.resolve(strict=True), args.binary.resolve(strict=True),
-            args.output.resolve(), args.release, args.repo_root.resolve(strict=True))
-    print(f"Rebuilt Scratch Pad package: {args.output}")
+            args.output.resolve(), args.release, args.repo_root.resolve(strict=True), args.installer_ui)
+    print(f"Refreshed {args.installer_ui} installer package: {args.output}")
     if args.baseline_rootfs:
         refresh_rootfs(args.baseline_rootfs.resolve(strict=True), args.rootfs_output.resolve(),
                        args.output.resolve(strict=True))

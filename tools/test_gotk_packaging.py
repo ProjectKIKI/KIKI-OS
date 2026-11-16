@@ -19,8 +19,9 @@ class GotkPackagingTests(unittest.TestCase):
             self.assertEqual(link.resolve(), source)
             self.assertEqual(link.read_text(), "font")
 
-    def test_default_selects_scratch_pad_go_ui(self):
-        self.assertEqual(ki2graphics.parser().parse_args(["prepare"]).installer_ui, "gotk")
+    def test_default_selects_c_and_gotk_requires_explicit_choice(self):
+        self.assertEqual(ki2graphics.parser().parse_args(["prepare"]).installer_ui, "c")
+        self.assertEqual(ki2graphics.parser().parse_args(["prepare", "--installer-ui", "gotk"]).installer_ui, "gotk")
 
     def test_opt_in_builds_live_at_existing_path(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(ki2graphics, "run") as run:

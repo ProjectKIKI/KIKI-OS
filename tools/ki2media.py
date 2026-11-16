@@ -159,12 +159,23 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--media-root", type=Path, required=True)
     parser.add_argument("--public-key", type=Path, required=True)
+    parser.add_argument("--origin-descriptor", type=Path)
+    parser.add_argument("--provenance-file", type=Path)
     parser.add_argument('--selection-file', type=Path)
     parser.add_argument('--resolved-file', type=Path)
     parser.add_argument('--record-installed-root', type=Path)
     args = parser.parse_args()
     try:
+        if bool(args.origin_descriptor) != bool(args.provenance_file):
+            raise MediaError('origin descriptor and provenance output must be supplied together')
+        if args.provenance_file:
+            args.provenance_file.unlink(missing_ok=True)
         count = verify_media(args.media_root, args.public_key)
+        if args.provenance_file:
+            import ki2provenance
+            text = ki2provenance.origin_text(args.media_root, args.origin_descriptor)
+            args.provenance_file.write_text(text, encoding='utf-8')
+            args.provenance_file.chmod(0o600)
         if args.record_installed_root:
             if not args.selection_file or args.resolved_file:
                 raise MediaError('record-installed-root requires selection-file only')

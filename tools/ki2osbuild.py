@@ -227,7 +227,7 @@ def build_steps(ctx: BuildContext) -> list[Step]:
     if graphics and not isinstance(graphics, dict):
         raise OsBuildError("graphics section must be a mapping")
     if isinstance(graphics, dict) and bool_value(graphics, "enabled", False) and not ctx.skip_build:
-        installer_ui = str(graphics.get("installer_ui") or "gotk")
+        installer_ui = str(graphics.get("installer_ui") or "c")
         if installer_ui not in {"c", "gotk"}:
             raise OsBuildError(f"unsupported installer UI: {installer_ui}")
         graphics_output = ctx.repo_root / str(graphics.get("output") or "build/ki2/host-graphics/rootfs")

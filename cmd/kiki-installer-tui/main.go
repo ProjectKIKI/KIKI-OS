@@ -24,6 +24,7 @@ type InstallPlan struct {
 	Schema       string
 	APIVersion   string
 	Kind         string
+	Generation GenerationPlan
 	GeneratedBy  string
 	Mode         string
 	Source       SourcePlan
@@ -349,7 +350,7 @@ func NewDefaultPlan(profile string) InstallPlan {
 			MediaRoot:           defaultMediaRoot,
 			RepoIndex:           localMediaRepoIndex(defaultMediaRoot),
 			RepoURL:             "",
-			Channel:             "stage2-v2",
+			Channel:             "unknown",
 			VerifyKey:           "",
 			DisconnectedInstall: true,
 		},
@@ -2153,6 +2154,7 @@ func ReviewReady(plan InstallPlan) bool {
 }
 
 func WritePlanFile(path string, plan InstallPlan) error {
+	if _, err := applyInstallerOrigin(plan); err != nil { return err }
 	if path == "" {
 		return fmt.Errorf("plan path is empty")
 	}
@@ -2174,6 +2176,9 @@ func WritePlanFile(path string, plan InstallPlan) error {
 }
 
 func WritePlanYAML(w io.Writer, plan InstallPlan) error {
+	var err error
+	plan, err = applyInstallerOrigin(plan)
+	if err != nil { return err }
 	bw := bufio.NewWriter(w)
 	line := func(format string, args ...any) {
 		fmt.Fprintf(bw, format+"\n", args...)
@@ -2184,6 +2189,15 @@ func WritePlanYAML(w io.Writer, plan InstallPlan) error {
 	line("  api_version: %s", quoteYAML(plan.APIVersion))
 	line("  kind: %s", quoteYAML(plan.Kind))
 	line("  generated_by: %s", quoteYAML(plan.GeneratedBy))
+	line("  generation:")
+	line("    frontend: %s", quoteYAML(plan.Generation.Frontend))
+	line("    planner: %s", quoteYAML(plan.Generation.Planner))
+	line("    executor: %s", quoteYAML(plan.Generation.Executor))
+	line("    source_commit: %s", quoteYAML(plan.Generation.SourceCommit))
+	line("    source_state: %s", quoteYAML(plan.Generation.SourceState))
+	line("    source_archive_sha256: %s", quoteYAML(plan.Generation.SourceArchiveSHA256))
+	line("    source_tree_sha256: %s", quoteYAML(plan.Generation.SourceTreeSHA256))
+	line("    input_manifest_sha256: %s", quoteYAML(plan.Generation.InputManifestSHA256))
 	line("  mode: %s", quoteYAML(plan.Mode))
 	line("  source:")
 	line("    type: %s", quoteYAML(plan.Source.Type))

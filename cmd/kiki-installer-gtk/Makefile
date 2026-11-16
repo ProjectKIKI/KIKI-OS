@@ -1,5 +1,5 @@
 CC ?= cc
-CFLAGS ?= -O2 -pipe -Wall -Wextra -Werror
+CFLAGS ?= -O2 -pipe -march=x86-64-v2 -mtune=generic -Wall -Wextra -Werror
 PREFIX ?= /usr
 BRAND_ICON ?= ../../assets/brand/kikios-kiki-wordmark-v1.png
 

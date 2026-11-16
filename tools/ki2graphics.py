@@ -218,7 +218,7 @@ def build_installer(repo_root: Path, binary: Path, installer_ui: str) -> None:
     elif installer_ui == "c":
         cflags = subprocess.check_output(["pkg-config", "--cflags", "gtk4"], text=True).split()
         libs = subprocess.check_output(["pkg-config", "--libs", "gtk4"], text=True).split()
-        run(["cc", "-O2", "-pipe", "-Wall", "-Wextra", "-Werror", *cflags,
+        run(["cc", "-O2", "-pipe", "-march=x86-64-v2", "-mtune=generic", "-Wall", "-Wextra", "-Werror", *cflags,
              "-o", str(binary), str(repo_root / "cmd/kiki-installer-gtk/main.c"), *libs])
     else:
         raise GraphicsError(f"Unknown installer UI: {installer_ui}")
@@ -270,7 +270,24 @@ def copy_go_licenses(repo_root: Path, output: Path) -> None:
     shutil.copy2(module / "go.sum", destination / "go.sum")
 
 
-def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs: int, installer_ui: str = "gotk") -> None:
+def source_provenance(repo_root: Path, installer_ui: str) -> dict:
+    # An archive checkout has no .git; the build caller supplies its base commit.
+    commit = os.environ.get("KIKI_SOURCE_COMMIT", "")
+    if commit and (len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit)):
+        raise GraphicsError("KIKI_SOURCE_COMMIT must be a full lowercase Git commit")
+    inputs = ["tools/ki2graphics.py", "tools/ki2refreshinstaller.py",
+              "distro/recipes/installer-gui.toml",
+              "distro/sources/ki2ctl/usr/share/ki2/package-groups.json"]
+    inputs += [str(p.relative_to(repo_root)).replace("\\", "/")
+               for p in sorted((repo_root / "cmd" / ("kiki-installer-gtk" if installer_ui == "c" else "kiki-installer-gotk")).iterdir())
+               if p.is_file() and p.suffix in {".c", ".h", ".css", ".go", ".mod", ".sum"}]
+    return {"base_commit": commit or None,
+            "input_sha256": {name: sha256(repo_root / name) for name in inputs},
+            "cpu_compile_goal": "x86-64-v2" if installer_ui == "c" else "compatibility-build",
+            "whole_runtime_cpu_certified": False}
+
+
+def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs: int, installer_ui: str = "c") -> None:
     require_commands(["cc", "meson", "ninja", "pkg-config", "wayland-scanner"])
     require_pkgconfig([
         "gtk4", "libdrm", "libinput", "libseat", "wayland-client",
@@ -436,6 +453,9 @@ def build_runtime(repo_root: Path, output: Path, sources: Path, work: Path, jobs
         "schema": "kiki-graphics-runtime-v1",
         "bootstrap": "host-abi",
         "installer_ui": installer_ui,
+        "source_provenance": source_provenance(repo_root, installer_ui),
+        "installer_binary_sha256": hashlib.sha256((output / "usr/bin/kiki-installer-gtk").read_bytes()).hexdigest(),
+        "catalog_sha256": hashlib.sha256((repo_root / "distro/sources/ki2ctl/usr/share/ki2/package-groups.json").read_bytes()).hexdigest(),
         "cage": {"version": CAGE_VERSION, "url": CAGE_URL, "sha256": CAGE_SHA256},
         "wlroots": {"version": WLROOTS_VERSION, "url": WLROOTS_URL, "sha256": WLROOTS_SHA256},
         "seatd": {
@@ -466,8 +486,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--sources", type=Path)
     result.add_argument("--work", type=Path)
     result.add_argument("--jobs", type=int, default=max(1, min(4, os.cpu_count() or 1)))
-    result.add_argument("--installer-ui", choices=("c", "gotk"), default="gotk",
-                        help="select the Go Scratch Pad UI (default) or legacy C frontend")
+    result.add_argument("--installer-ui", choices=("c", "gotk"), default="c",
+                        help="C/GTK4 official frontend (default); gotk is an explicit compatibility build")
     return result
 
 

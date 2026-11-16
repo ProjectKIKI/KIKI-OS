@@ -559,6 +559,7 @@ static long spawn_graphical_program(const char *path, char **argv) {
         "XKB_DEFAULT_LAYOUT=kr",
         "FONTCONFIG_PATH=/etc/fonts",
         "KIKI_INSTALLER_TUI=/usr/bin/kiki-installer-tui",
+        "KIKI_INSTALLER_FRONTEND=gtk",
         NULL,
     };
     long pid = ksys(SYS_fork, 0, 0, 0, 0, 0, 0);
@@ -2515,12 +2516,15 @@ static int verify_install_media(const char *media_root) {
     mkdir_p("/run/kiki", 0755);
     if (!write_text_file_mode("/run/kiki/selected-packages", names, 0600)) return 0;
     remove_file("/run/kiki/resolved-packages");
+    remove_file("/run/kiki/verified-origin");
     char *argv[] = {
         "/usr/bin/python3", "-B", "/usr/lib/kiki-installer/ki2media.py",
         "--media-root", (char *)media_root,
         "--public-key", "/etc/ki2/trust/installer-repo.ed25519.pub",
         "--selection-file", "/run/kiki/selected-packages",
-        "--resolved-file", "/run/kiki/resolved-packages", NULL,
+        "--resolved-file", "/run/kiki/resolved-packages",
+        "--origin-descriptor", "/etc/kiki/installer-origin.json",
+        "--provenance-file", "/run/kiki/verified-origin", NULL,
     };
     say("Verifying repository signature, index and all package payloads before disk changes...\n");
     if (run_program("/usr/bin/python3", argv) != 0) {
@@ -3326,7 +3330,17 @@ struct gui_install_request {
     int package_count;
 };
 
+static const char *request_frontend = "gtk";
+
 struct install_plan {
+    char frontend[16];
+    char channel[96];
+    char source_commit[41];
+    char source_state[32];
+    char source_archive_sha256[65];
+    char source_tree_sha256[65];
+    char input_manifest_sha256[65];
+    char repository_index_sha256[65];
     int quick_mode;
     int unattended_mode;
     int auto_layout;
@@ -3949,6 +3963,11 @@ static size_t append_yaml_kv_u64(char *yaml, size_t yaml_size, size_t out, const
 }
 
 static void build_install_plan(struct install_plan *plan, int quick_mode, int unattended_mode, int auto_layout, int has_swap, const char *media_root, const char *index_path, const char *target, const char *esp_part, const char *swap_part, const char *root_part, const char *hostname, u64 disk_mib, u64 mem_mib, u64 esp_mib, u64 swap_mib, u64 root_mib, const struct account_setup *account, const struct network_setup *network) {
+    copy_string(plan->frontend, sizeof(plan->frontend), unattended_mode ? "unattended" : "cli");
+    copy_string(plan->channel, sizeof(plan->channel), "unknown");
+    plan->source_state[0] = 0;
+    plan->source_commit[0] = plan->source_archive_sha256[0] = plan->source_tree_sha256[0] = 0;
+    plan->input_manifest_sha256[0] = plan->repository_index_sha256[0] = 0;
     plan->quick_mode = quick_mode;
     plan->unattended_mode = unattended_mode;
     plan->auto_layout = auto_layout;
@@ -3987,13 +4006,23 @@ static int write_install_plan_yaml(const char *path, const struct install_plan *
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "  ", "schema", "kiki-install-plan-v1");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "  ", "api_version", "kiki.io/v1alpha1");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "  ", "kind", "InstallPlan");
-    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "  ", "generated_by", "kiki-stage1-tui");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "  ", "generated_by", "kiki-stage1");
+    out = append_string(yaml, sizeof(yaml), out, "  generation:\n");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "frontend", plan->frontend);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "planner", kstrcmp(plan->frontend, "gtk") == 0 || kstrcmp(plan->frontend, "tui") == 0 ? "kiki-installer-tui" : "kiki-stage1");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "executor", "kiki-stage1");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "source_commit", plan->source_commit);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "source_state", plan->source_state);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "source_archive_sha256", plan->source_archive_sha256);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "source_tree_sha256", plan->source_tree_sha256);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "input_manifest_sha256", plan->input_manifest_sha256);
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "  ", "mode", plan->unattended_mode ? "unattended" : plan->quick_mode ? "quick-vm" : "guided");
     out = append_string(yaml, sizeof(yaml), out, "  source:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "type", "local-installer-media");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "media_root", plan->media_root);
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "repo_index", plan->index_path);
-    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "channel", "stage2-v2");
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "channel", plan->channel);
+    out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "index_sha256", plan->repository_index_sha256);
     out = append_yaml_kv_bool(yaml, sizeof(yaml), out, "    ", "disconnected_install", 1);
     out = append_string(yaml, sizeof(yaml), out, "  target:\n");
     out = append_yaml_kv_string(yaml, sizeof(yaml), out, "    ", "disk", plan->target_disk);
@@ -4428,6 +4457,21 @@ static void collect_gui_account_setup(struct account_setup *account, const struc
     say("Administrator password was supplied by the GTK installer and removed from the runtime request file.\n");
 }
 
+static int load_verified_plan_origin(struct install_plan *plan) {
+    char content[2048];
+    if (!read_text_file("/run/kiki/verified-origin", content, sizeof(content))) return 0;
+#define ORIGIN_FIELD(name) if (request_value(content, #name, plan->name, sizeof(plan->name)) != 1) return 0;
+    ORIGIN_FIELD(channel)
+    ORIGIN_FIELD(source_commit)
+    ORIGIN_FIELD(source_state)
+    ORIGIN_FIELD(source_archive_sha256)
+    ORIGIN_FIELD(source_tree_sha256)
+    ORIGIN_FIELD(input_manifest_sha256)
+    ORIGIN_FIELD(repository_index_sha256)
+#undef ORIGIN_FIELD
+    return 1;
+}
+
 static void run_guided_package_installer_with_request(int quick_mode, int unattended_mode, const struct gui_install_request *gui_request) {
     char media_root[256];
     char index_path[384];
@@ -4768,6 +4812,11 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
 
     struct install_plan plan;
     build_install_plan(&plan, quick_mode, unattended_mode, auto_layout, has_swap, media_root, index_path, target, esp_part, swap_part, root_part, hostname, disk_mib, mem_mib, esp_mib, swap_mib, root_mib, &account, &network);
+    if (gui_request) copy_string(plan.frontend, sizeof(plan.frontend), request_frontend);
+    if (!load_verified_plan_origin(&plan)) {
+        say("Verified installer provenance is missing. No disk changes started.\n");
+        return;
+    }
     if (!write_install_plan_yaml(INSTALL_PLAN_PATH, &plan)) {
         say("Failed to write declarative install plan.\n");
         return;
@@ -5134,6 +5183,11 @@ static int try_graphical_installer(void) {
     } else {
         say("udev runtime is unavailable; Cage will use the existing device nodes.\n");
     }
+    char planner_media_root[256];
+    if (!find_install_media_root(planner_media_root, sizeof(planner_media_root))) {
+        say("Cannot mount local media for the graphical planner; falling back to the TUI.\n");
+        return 0;
+    }
     char *argv[] = {"/usr/bin/cage", "--", "/usr/bin/kiki-installer-gtk", NULL};
     remove_file(GUI_INSTALL_REQUEST_PATH);
     remove_file(GUI_INSTALL_PROGRESS_PATH);
@@ -5181,6 +5235,7 @@ static int try_graphical_installer(void) {
         say("Cannot load the graphical install request.\n");
         write_gui_install_progress("failed", 1, "설치 요청 오류", "설치 요청을 읽거나 검증할 수 없습니다.");
     } else {
+        request_frontend = "gtk";
         run_guided_package_installer_with_request(0, 0, &request);
         if (!gui_install_succeeded) {
             write_gui_install_progress("failed", gui_install_last_percent, "설치 실패",
@@ -5225,6 +5280,11 @@ static int try_fullscreen_tui_installer(void) {
         say("Full-screen TUI is not present in this initramfs; falling back to the CLI.\n");
         return 0;
     }
+    char planner_media_root[256];
+    if (!find_install_media_root(planner_media_root, sizeof(planner_media_root))) {
+        say("Cannot mount local media for the TUI planner; falling back to the CLI.\n");
+        return 0;
+    }
     char *argv[] = {
         "/usr/bin/kiki-installer-tui",
         "--fullscreen",
@@ -5264,8 +5324,10 @@ static int try_fullscreen_tui_installer(void) {
                 remove_file(GUI_INSTALL_REQUEST_PATH);
                 write_gui_install_progress("failed", 1, "Log error", "Cannot open installer log or terminal.");
             } else {
-                if (load_gui_install_request(&request))
+                if (load_gui_install_request(&request)) {
+                    request_frontend = "tui";
                     run_guided_package_installer_with_request(0, 0, &request);
+                }
                 for (size_t i = 0; i < sizeof(request); i++) ((volatile char *)&request)[i] = 0;
                 if (!gui_install_succeeded)
                     write_gui_install_progress("failed", gui_install_last_percent, "Install failed", "See /run/kiki/tui-install.log");
@@ -5539,21 +5601,31 @@ def format_iso_build_stamp(build_date: str, revision: str) -> str:
     return f"{clean_date}-{clean_revision}"
 
 
-def iso_build_info(repo_root: Path) -> dict[str, Any]:
+def iso_build_info(repo_root: Path, build_inputs: Path | None = None) -> dict[str, Any]:
     build_date = os.environ.get("KIKI_ISO_DATE") or dt.datetime.now().strftime("%Y%m%d")
     revision = os.environ.get("KIKI_ISO_REV") or git_output(repo_root, "rev-list", "--count", "HEAD") or "unknown"
-    commit = git_output(repo_root, "rev-parse", "--short", "HEAD") or "unknown"
+    commit = git_output(repo_root, "rev-parse", "HEAD") or "unknown"
+    if git_output(repo_root, "rev-parse", "--show-toplevel") != str(repo_root):
+        commit = "unknown"
     status = git_output(repo_root, "status", "--porcelain")
     stamp = format_iso_build_stamp(build_date, revision)
     if status:
         stamp = f"{stamp}-dirty-{safe_filename_component(commit)}"
-    return {
+    info = {
         "date": build_date,
         "revision": f"rev{revision}" if not str(revision).startswith("rev") else str(revision),
         "commit": commit,
         "dirty": bool(status),
         "stamp": stamp,
     }
+    if build_inputs is not None:
+        import ki2provenance
+        try:
+            info.update(ki2provenance.load_build_inputs(repo_root, build_inputs))
+        except (ValueError, OSError, KeyError) as exc:
+            raise BootIsoError(str(exc)) from exc
+        info['stamp'] = format_iso_build_stamp(build_date, revision) + ('-dirty-' if info['dirty'] else '-') + info['commit'][:12]
+    return info
 
 
 def read_repo_channel(repo_dir: Path, arch: str) -> str | None:
@@ -6164,7 +6236,7 @@ def add_media_verifier(root: Path, packages_dir: Path, public_key: Path) -> None
     restore_installer_partition_runtime(root, latest_package(packages_dir, "util-linux"))
     scripts = root / "usr/lib/kiki-installer"
     scripts.mkdir(parents=True, exist_ok=True)
-    for name in ("ki2media.py", "ki2repo.py", "ki2build.py", "ki2disk.py", "ki2network.py"):
+    for name in ("ki2media.py", "ki2repo.py", "ki2build.py", "ki2disk.py", "ki2network.py", "ki2provenance.py"):
         shutil.copy2(Path(__file__).resolve().parent / name, scripts / name)
     trust = root / "etc/ki2/trust/installer-repo.ed25519.pub"
     trust.parent.mkdir(parents=True, exist_ok=True)
@@ -6190,6 +6262,7 @@ def build_initramfs(
     packages_dir: Path | None = None,
     media_public_key: Path | None = None,
     installer_catalog: dict | None = None,
+    installer_origin: dict | None = None,
 ) -> None:
     root = work_dir / "initramfs-root"
     if root.exists():
@@ -6211,6 +6284,8 @@ def build_initramfs(
         if media_public_key is None or not media_public_key.is_file():
             raise BootIsoError("installer requires --media-public-key pointing to a trusted Ed25519 public key")
         add_media_verifier(root, packages_dir, media_public_key)
+        if installer_origin is not None:
+            (root / "etc/kiki/installer-origin.json").write_text(json.dumps(installer_origin, sort_keys=True) + "\n", encoding="utf-8")
     if install_image:
         install_dir = root / "install"
         install_dir.mkdir(parents=True, exist_ok=True)
@@ -6725,13 +6800,16 @@ def command_build(args: argparse.Namespace) -> None:
     repo_dir = (args.repo_dir or repo_root / "dist" / "ki2" / "repo").resolve()
     packages_dir = (args.packages_dir or repo_root / "dist" / "ki2" / "packages" / args.arch).resolve()
     suffix = "installer" if args.mode == "installer" else "installed" if args.mode == "installed" else "boot"
-    build_info = iso_build_info(repo_root)
+    build_info = iso_build_info(repo_root, args.build_inputs)
     release_name = iso_release_name(repo_dir, args.arch, args.profile, args.release_name)
     output = (args.output or default_iso_output(repo_root, release_name, suffix, args.arch, build_info)).resolve()
     label = args.label or f"KIKI_{args.profile}_{suffix}_{args.arch}".replace("-", "_").upper()
     installer = args.mode == "installer"
     installer_catalog = None
+    installer_origin = None
     if installer and not args.no_payload:
+        import ki2provenance
+        installer_origin = ki2provenance.media_origin(build_info, repo_dir, args.arch)
         installer_catalog = verify_installer_default_packages(repo_dir, args.arch, args.profile)
     installed = args.mode == "installed"
     hyperv_vhdx = args.hyperv_vhdx.resolve() if args.hyperv_vhdx else default_hyperv_vhdx_output(repo_root, args.profile, args.arch).resolve()
@@ -6817,6 +6895,7 @@ def command_build(args: argparse.Namespace) -> None:
                 packages_dir=packages_dir if installer else None,
                 media_public_key=args.media_public_key,
                 installer_catalog=installer_catalog,
+                installer_origin=installer_origin,
             )
 
         tree_dir = args.keep_tree or work_dir / "iso-tree"
@@ -6840,6 +6919,8 @@ def command_build(args: argparse.Namespace) -> None:
             release_name=release_name,
             brand_dir=repo_root / "assets/brand" if installer else None,
         )
+        if args.build_inputs is not None:
+            shutil.copyfile(args.build_inputs, tree_dir / "kiki/build-inputs.json")
         if args.dry_run:
             print(f"would build bootable ISO: {output}")
             if installer and not args.no_install_image and not args.no_hyperv_vhdx:
@@ -6859,6 +6940,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--arch", default="x86_64")
     parser.add_argument("--profile", default="bootstrap-stage1")
     parser.add_argument("--release-name", default=None, help="release/channel name for default ISO filenames; defaults to repository metadata channel")
+    parser.add_argument("--build-inputs", type=Path, default=None, help="verified source archive and input SHA receipt")
     parser.add_argument("--rootfs-dir", type=Path, default=None)
     parser.add_argument("--repo-dir", type=Path, default=None)
     parser.add_argument("--packages-dir", type=Path, default=None)

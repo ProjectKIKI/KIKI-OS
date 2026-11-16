@@ -1115,7 +1115,7 @@ int main(void) {
         self.assertIn("kiki-install-plan-v1", ki2bootiso.INIT_C)
         self.assertIn("/run/kiki/install-plan.yaml", ki2bootiso.INIT_C)
         self.assertIn("/var/lib/ki2/install-plan.yaml", ki2bootiso.INIT_C)
-        self.assertIn('"channel", "stage2-v2"', ki2bootiso.INIT_C)
+        self.assertIn('"channel", plan->channel', ki2bootiso.INIT_C)
         self.assertIn("selected_kubernetes_role", ki2bootiso.INIT_C)
         self.assertIn("selected_kubeadm_template", ki2bootiso.INIT_C)
         self.assertIn("kubeadm.k8s.io/v1beta4", ki2bootiso.INIT_C)

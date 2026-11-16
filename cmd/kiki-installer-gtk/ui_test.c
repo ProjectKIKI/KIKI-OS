@@ -8,6 +8,7 @@ static const char *test_backend_path;
 #define GUI_REBOOT_REQUEST_PATH test_reboot_path
 #define GUI_REBOOT_REQUEST_TMP_PATH test_reboot_tmp
 #define GUI_INSTALL_BACKEND_LOG_PATH test_backend_path
+#define PLAN_TIMEOUT_MS 5000
 #define main kiki_application_main
 #include "main.c"
 #undef main
@@ -19,6 +20,17 @@ static void settle(void) {
         g_usleep(1000);
     } while (g_get_monotonic_time() < until);
 }
+
+static void wait_for_plan(InstallerUI *ui) {
+    gint64 until = g_get_monotonic_time() + 15000000;
+    while (ui->planning && g_get_monotonic_time() < until) {
+        g_main_context_iteration(NULL, FALSE);
+        g_usleep(1000);
+    }
+    g_assert_false(ui->planning);
+}
+
+static gboolean heartbeat(gpointer data) { (*(guint *)data)++; return G_SOURCE_CONTINUE; }
 
 static void screenshot(InstallerUI *ui, const char *directory, const char *name) {
     settle();
@@ -100,6 +112,10 @@ int main(int argc, char **argv) {
     screenshot(ui, argv[2], "network-800.png");
     gtk_editable_set_text(GTK_EDITABLE(ui->hostname), "local-ui-test");
     g_assert_cmpstr(gtk_editable_get_text(GTK_EDITABLE(ui->disk)), ==, "");
+    gtk_stack_set_visible_child_name(ui->stack, "disk");
+    navigate(ui->next_button, ui);
+    g_assert_cmpstr(gtk_stack_get_visible_child_name(ui->stack), ==, "disk");
+    g_assert_true(gtk_widget_has_css_class(GTK_WIDGET(ui->status), "error"));
     gtk_drop_down_set_selected(ui->disk_device, ui->disks->len + 1);
     gtk_editable_set_text(GTK_EDITABLE(ui->disk), "/dev/vda");
     gtk_editable_set_text(GTK_EDITABLE(ui->plan_path), plan);
@@ -110,6 +126,12 @@ int main(int argc, char **argv) {
     g_autofree char *review_text = gtk_text_buffer_get_text(ui->review, &begin, &end, FALSE);
     g_assert_nonnull(strstr(review_text, "local-ui-test"));
     g_autoptr(GError) error = NULL;
+    begin_plan(ui, FALSE);
+    wait_for_plan(ui);
+    g_assert_false(gtk_widget_has_css_class(GTK_WIDGET(ui->status), "error"));
+    g_autofree char *server_plan = NULL;
+    g_assert_true(g_file_get_contents(plan, &server_plan, NULL, NULL));
+    g_assert_nonnull(strstr(server_plan, "server-core"));
     ui->media_catalog = g_key_file_new();
     g_key_file_set_boolean(ui->media_catalog, "profile desktop-gnome", "available", TRUE);
     g_key_file_set_uint64(ui->media_catalog, "profile desktop-gnome", "packages", 170);
@@ -132,8 +154,10 @@ int main(int argc, char **argv) {
     settle();
     screenshot(ui, argv[2], "desktop-gnome-800.png");
     gtk_stack_set_visible_child_name(ui->stack, "review");
-    g_assert_true(write_plan_file(ui, &error));
-    g_assert_no_error(error);
+    begin_plan(ui, FALSE);
+    g_assert_true(ui->planning);
+    wait_for_plan(ui);
+    g_assert_false(gtk_widget_has_css_class(GTK_WIDGET(ui->status), "error"));
     g_autofree char *desktop_plan = NULL;
     g_assert_true(g_file_get_contents(plan, &desktop_plan, NULL, NULL));
     g_assert_nonnull(strstr(desktop_plan, "kiki-gnome-desktop"));
@@ -166,10 +190,55 @@ int main(int argc, char **argv) {
     g_assert_cmpstr(contents, ==, unchanged);
     g_assert_false(g_file_test(temporary, G_FILE_TEST_EXISTS));
     g_unlink(request);
+    /* All mutable inputs, not only the disk, invalidate the destructive approval. */
+    gtk_editable_set_text(GTK_EDITABLE(ui->hostname), "changed-host");
+    g_assert_false(gtk_check_button_get_active(ui->destructive_confirm));
+    gtk_check_button_set_active(ui->destructive_confirm, TRUE);
+    gtk_drop_down_set_selected(ui->swap_mode, 2);
+    g_assert_false(gtk_check_button_get_active(ui->destructive_confirm));
+    gtk_check_button_set_active(ui->destructive_confirm, TRUE);
+    gtk_editable_set_text(GTK_EDITABLE(ui->admin_password), "changed-fixture-password");
+    g_assert_false(gtk_check_button_get_active(ui->destructive_confirm));
+    gtk_editable_set_text(GTK_EDITABLE(ui->admin_password), "fixture-password-only");
+    /* A slow planner keeps the UI alive; duplicate, cancelled and expired plans never install. */
+    g_autofree char *slow = g_build_filename(fixture, "slow-planner", NULL);
+    g_assert_true(g_file_set_contents(slow, "#!/usr/bin/python3\nimport time\ntime.sleep(30)\n", -1, NULL));
+    g_assert_cmpint(g_chmod(slow, 0700), ==, 0);
+    g_setenv("KIKI_INSTALLER_TUI", slow, TRUE);
+    guint ticks = 0;
+    guint clock = g_timeout_add(10, heartbeat, &ticks);
+    gtk_check_button_set_active(ui->destructive_confirm, TRUE);
+    start_install(NULL, ui);
+    GSubprocess *pending = ui->plan_process;
+    start_install(NULL, ui);
+    g_assert_true(pending == ui->plan_process);
+    g_assert_true(installer_close_requested(window, ui));
+    settle();
+    g_assert_cmpuint(ticks, >, 0);
+    cancel_plan(NULL, ui);
+    wait_for_plan(ui);
+    g_assert_false(ui->install_started);
+    g_assert_false(g_file_test(request, G_FILE_TEST_EXISTS));
+    gtk_check_button_set_active(ui->destructive_confirm, TRUE);
+    start_install(NULL, ui);
+    wait_for_plan(ui);
+    g_assert_true(ui->plan_timed_out);
+    g_assert_false(ui->install_started);
+    g_assert_false(g_file_test(request, G_FILE_TEST_EXISTS));
+    g_source_remove(clock);
+    g_assert_true(g_file_set_contents(slow, "#!/usr/bin/python3\nimport sys\nprint('fixture planner failure', file=sys.stderr)\nsys.exit(9)\n", -1, NULL));
+    gtk_check_button_set_active(ui->destructive_confirm, TRUE);
+    start_install(NULL, ui);
+    wait_for_plan(ui);
+    g_assert_false(ui->install_started);
+    g_assert_false(g_file_test(request, G_FILE_TEST_EXISTS));
+    g_unlink(slow);
+    g_setenv("KIKI_INSTALLER_TUI", argv[1], TRUE);
     gtk_editable_set_text(GTK_EDITABLE(ui->disk), "/dev/vdb");
     g_assert_false(gtk_check_button_get_active(ui->destructive_confirm));
     gtk_check_button_set_active(ui->destructive_confirm, TRUE);
     start_install(NULL, ui);
+    wait_for_plan(ui);
     g_assert_true(ui->install_started);
     g_assert_cmpstr(gtk_stack_get_visible_child_name(ui->stack), ==, "progress");
     g_assert_true(installer_close_requested(window, ui));
@@ -204,6 +273,6 @@ int main(int argc, char **argv) {
     screenshot(ui, argv[2], "welcome-en-800.png");
     gtk_window_destroy(window);
     g_unlink(request); g_unlink(progress); g_unlink(reboot); g_unlink(plan); g_unlink(backend); g_rmdir(fixture);
-    g_print("PASS: rendered GTK, 800x600 navigation, fresh review, real Go plan, consent, exclusive request, progress, failure, completion, reboot request (isolated fixtures only)\n");
+    g_print("PASS: rendered GTK, 800x600 navigation, fresh review, real Go plan, consent, exclusive request, full consent invalidation, responsive cancellation/timeout, progress, failure, completion, reboot request (isolated fixtures only)\n");
     return 0;
 }
