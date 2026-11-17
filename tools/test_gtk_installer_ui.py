@@ -12,7 +12,7 @@ import unittest
 class GtkInstallerUITests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if sys.platform != "linux" or not all(shutil.which(tool) for tool in ("cc", "pkg-config", "go", "xvfb-run")):
+        if sys.platform != "linux" or not all(shutil.which(tool) for tool in ("cc", "pkg-config", "go", "Xvfb")):
             raise unittest.SkipTest("Linux, GTK 4 development files, Go and Xvfb required")
         flags = subprocess.run(["pkg-config", "--cflags", "--libs", "gtk4"], capture_output=True, text=True)
         if flags.returncode:
@@ -34,7 +34,8 @@ class GtkInstallerUITests(unittest.TestCase):
     def run_probe(self, name, *args, display=False):
         command = [str(self.work / name), *map(str, args)]
         if display:
-            command = ["xvfb-run", "-a", *command]
+            command = [sys.executable, str(self.repo / "tools/ki2xvfb.py"),
+                       "--artifacts", str(self.artifacts), "--", *command]
         result = subprocess.run(command, cwd=self.repo, env=self.env, capture_output=True, text=True, timeout=90)
         (self.artifacts / f"{name}.log").write_text(result.stdout + result.stderr, encoding="utf-8")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
