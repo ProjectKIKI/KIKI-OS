@@ -3386,11 +3386,11 @@ static int is_valid_username(const char *value) {
     return 1;
 }
 
-static void collect_account_setup(struct account_setup *account, int quick_mode, int unattended_mode) {
+static int collect_account_setup(struct account_setup *account, int unattended_mode) {
     char input[128];
     char confirm[128];
     copy_string(account->admin_user, sizeof(account->admin_user), "kiki");
-    copy_string(account->admin_password, sizeof(account->admin_password), "kiki");
+    account->admin_password[0] = 0;
     account->lock_root = 1;
 
     say("\nUser setup\n");
@@ -3398,8 +3398,13 @@ static void collect_account_setup(struct account_setup *account, int quick_mode,
     say("Root login is disabled by default. The kiki user is added to the sudo group.\n");
     say("Password input is visible on this early installer console.\n");
     if (unattended_mode) {
+#ifdef KIKI_LAB_INSTALL
+        copy_string(account->admin_password, sizeof(account->admin_password), "kiki");
         say("Autoinstall uses lab defaults: user kiki, password kiki, root locked.\n");
-        return;
+        return 1;
+#else
+        return 0;
+#endif
     }
     say("Admin username [kiki]: ");
     if (read_line(input, sizeof(input)) == 0 && input[0]) {
@@ -3411,25 +3416,25 @@ static void collect_account_setup(struct account_setup *account, int quick_mode,
         }
     }
 
-    if (quick_mode) {
-        say("Admin password [kiki]: ");
-    } else {
-        say("Admin password [kiki for lab]: ");
+    say("Admin password (8 to 95 characters): ");
+    if (read_line(input, sizeof(input)) != 0 || kstrlen(input) < 8 ||
+        kstrlen(input) >= sizeof(account->admin_password)) {
+        say("Invalid admin password length. Installation cancelled.\n");
+        return 0;
     }
-    if (read_line(input, sizeof(input)) == 0 && input[0]) {
-        say("Confirm admin password: ");
-        if (read_line(confirm, sizeof(confirm)) == 0 && kstrcmp(input, confirm) == 0) {
-            copy_string(account->admin_password, sizeof(account->admin_password), input);
-        } else {
-            say("Password confirmation did not match. Using lab default password: kiki\n");
-        }
+    say("Confirm admin password: ");
+    if (read_line(confirm, sizeof(confirm)) != 0 || kstrcmp(input, confirm) != 0) {
+        say("Password confirmation did not match. Installation cancelled.\n");
+        return 0;
     }
+    copy_string(account->admin_password, sizeof(account->admin_password), input);
 
     say("Disable direct root login? [Y/n]: ");
     if (read_line(input, sizeof(input)) == 0 && (kstrcmp(input, "n") == 0 || kstrcmp(input, "N") == 0)) {
         account->lock_root = 0;
         say("Root login will be enabled with the same password as the admin user.\n");
     }
+    return 1;
 }
 
 static void collect_network_setup(struct network_setup *network, int quick_mode) {
@@ -3837,9 +3842,11 @@ static int write_target_login_notice(const char *target_root, const struct accou
     out = append_string(text, sizeof(text), out, account->admin_user);
     out = append_string(text, sizeof(text), out, "\n");
     out = append_string(text, sizeof(text), out, "  password: configured during installation");
+#ifdef KIKI_LAB_INSTALL
     if (kstrcmp(account->admin_password, "kiki") == 0) {
         out = append_string(text, sizeof(text), out, " (lab default: kiki)");
     }
+#endif
     append_string(text, sizeof(text), out, "\n\n");
     return write_text_file(path, text);
 }
@@ -3851,7 +3858,7 @@ static int write_target_sudoers(const char *target_root) {
     return write_text_file_mode(path, "%sudo ALL=(ALL:ALL) ALL\n", 0440);
 }
 
-static int apply_target_account_setup(const char *target_root, const struct account_setup *account) {
+static int apply_target_account_setup(const char *target_root, const struct account_setup *account, int unattended_mode) {
     char chpasswd_input[256];
     size_t out = 0;
     char *argv_useradd[] = {
@@ -3870,7 +3877,8 @@ static int apply_target_account_setup(const char *target_root, const struct acco
     say("Creating admin user: ");
     say(account->admin_user);
     say("\n");
-    if (account->lock_root && kstrcmp(account->admin_password, "kiki") == 0) {
+    if (unattended_mode) {
+#ifdef KIKI_LAB_INSTALL
         say("Writing lab default admin account directly for deterministic VM login.\n");
         if (!write_target_lab_admin_account(target_root, account)) {
             return 0;
@@ -3884,6 +3892,9 @@ static int apply_target_account_setup(const char *target_root, const struct acco
             say("sudo binary is not installed yet; sudoers policy is ready for the sudo package.\n");
         }
         return 1;
+#else
+        return 0;
+#endif
     }
 
     if (selected_index("kiki-gnome-desktop") >= 0) {
@@ -4800,7 +4811,7 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
         if (!account.admin_password[0]) return;
     } else {
         collect_network_setup(&network, quick_mode || unattended_mode);
-        collect_account_setup(&account, quick_mode, unattended_mode);
+        if (!collect_account_setup(&account, unattended_mode)) return;
     }
     if (selected_index("kiki-gnome-desktop") >= 0)
         copy_string(selected_ai_mode, sizeof(selected_ai_mode), "off");
@@ -4951,7 +4962,7 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
     if (!refresh_target_gsettings_cache("/mnt/target")) goto target_configuration_failed;
     if (gui_request)
         write_gui_install_progress("running", 90, "계정 설정", "관리자 계정과 시스템 권한을 구성하고 있습니다.");
-    if (!apply_target_account_setup("/mnt/target", &account)) {
+    if (!apply_target_account_setup("/mnt/target", &account, unattended_mode)) {
         say("Account setup failed. Target disk is partially installed.\n");
         ksys(SYS_umount2, (long)"/mnt/esp", 0, 0, 0, 0, 0);
         ksys(SYS_umount2, (long)"/mnt/target", 0, 0, 0, 0, 0);
@@ -5095,11 +5106,15 @@ static int maybe_run_cmdline_autoinstall(void) {
     if (!cmdline_value("kiki.autoinstall", mode, sizeof(mode))) {
         return 0;
     }
+#ifdef KIKI_LAB_INSTALL
     if (kstrcmp(mode, "erase") == 0 || kstrcmp(mode, "quick-vm") == 0 || kstrcmp(mode, "yes") == 0 || kstrcmp(mode, "1") == 0) {
         run_guided_package_installer(1, 1);
         return 1;
     }
     say("Ignoring unknown kiki.autoinstall value. Use erase or quick-vm.\n");
+#else
+    say("Lab autoinstall is unavailable on this media.\n");
+#endif
     return 0;
 }
 
@@ -6107,6 +6122,7 @@ def compile_static_init(
     cc: str,
     installer: bool = False,
     installed: bool = False,
+    lab_autoinstall: bool = False,
 ) -> None:
     compiler = shutil.which(cc) or (cc if Path(cc).exists() else None)
     if not compiler:
@@ -6141,6 +6157,10 @@ def compile_static_init(
     ]
     if installer:
         cmd.append("-DKIKI_ENABLE_INSTALLER=1")
+    if lab_autoinstall:
+        if not installer:
+            raise BootIsoError("lab autoinstall requires installer mode")
+        cmd.append("-DKIKI_LAB_INSTALL=1")
     if installed:
         cmd.append("-DKIKI_INSTALLED_STAGE1=1")
     cmd.extend(["-o", str(output), str(source)])
@@ -6263,6 +6283,7 @@ def build_initramfs(
     media_public_key: Path | None = None,
     installer_catalog: dict | None = None,
     installer_origin: dict | None = None,
+    lab_autoinstall: bool = False,
 ) -> None:
     root = work_dir / "initramfs-root"
     if root.exists():
@@ -6271,7 +6292,8 @@ def build_initramfs(
         (root / dirname).mkdir(parents=True, exist_ok=True)
     (root / "tmp").chmod(0o1777)
 
-    compile_static_init(root / "init", work_dir, cc=cc, installer=installer, installed=installed)
+    compile_static_init(root / "init", work_dir, cc=cc, installer=installer, installed=installed,
+                        lab_autoinstall=lab_autoinstall)
     installer_runtime: dict[str, Any] | None = None
     if installer:
         if packages_dir is None or not packages_dir.exists():
@@ -6795,6 +6817,8 @@ def default_hyperv_vhdx_output(repo_root: Path, profile: str, arch: str) -> Path
 
 
 def command_build(args: argparse.Namespace) -> None:
+    if args.lab_autoinstall and (args.mode != "installer" or args.initramfs is not None):
+        raise BootIsoError("--lab-autoinstall requires installer mode and a locally built initramfs")
     repo_root = args.repo_root.resolve()
     rootfs_dir = (args.rootfs_dir or repo_root / "dist" / "rootfs" / args.profile).resolve()
     repo_dir = (args.repo_dir or repo_root / "dist" / "ki2" / "repo").resolve()
@@ -6896,6 +6920,7 @@ def command_build(args: argparse.Namespace) -> None:
                 media_public_key=args.media_public_key,
                 installer_catalog=installer_catalog,
                 installer_origin=installer_origin,
+                lab_autoinstall=args.lab_autoinstall,
             )
 
         tree_dir = args.keep_tree or work_dir / "iso-tree"
@@ -6954,6 +6979,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--media-public-key", type=Path, default=None,
                         help="trusted Ed25519 repository PUBLIC key to embed in installer initramfs")
     parser.add_argument("--mode", choices=("smoke", "installer", "installed"), default="smoke")
+    parser.add_argument("--lab-autoinstall", action="store_true",
+                        help="enable the fixed-account autoinstall path on isolated test media")
     parser.add_argument("--no-payload", action="store_true")
     parser.add_argument("--no-install-image", action="store_true")
     parser.add_argument("--embed-install-image", action="store_true")
