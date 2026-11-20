@@ -59,6 +59,7 @@ typedef unsigned long long u64;
 #define MS_PRIVATE (1UL << 18)
 #define EBUSY 16
 #define EINTR 4
+#define ENOTTY 25
 
 #define SYS_read 0
 #define SYS_write 1
@@ -100,6 +101,22 @@ typedef unsigned long long u64;
 #define GUI_REBOOT_REQUEST_PATH "/run/kiki/gui-reboot.request"
 
 #define BLKRRPART 0x125f
+#define KIKI_TCGETS 0x5401
+#define KIKI_TCSETS 0x5402
+#define KIKI_ECHO 0000010
+#define KIKI_ECHONL 0000100
+
+/* Linux x86-64 kernel termios layout for the TCGETS/TCSETS ioctls. */
+struct kiki_termios {
+    unsigned int input_flags;
+    unsigned int output_flags;
+    unsigned int control_flags;
+    unsigned int local_flags;
+    unsigned char line;
+    unsigned char control_chars[19];
+};
+
+_Static_assert(sizeof(struct kiki_termios) == 36, "unexpected kernel termios layout");
 
 #define LINUX_REBOOT_MAGIC1 0xfee1dead
 #define LINUX_REBOOT_MAGIC2 672274793
@@ -741,23 +758,26 @@ static int fd_is_set(unsigned long *set, int fd) {
     return (set[(unsigned long)fd / (8 * sizeof(unsigned long))] & (1UL << ((unsigned long)fd % (8 * sizeof(unsigned long))))) != 0;
 }
 
-static int read_line(char *buffer, size_t size) {
-    if (!size) {
-        return -1;
-    }
-    buffer[0] = 0;
+#define KIKI_CONSOLE_INPUTS 4
 
-    int fds[8];
+static int open_console_inputs(int fds[KIKI_CONSOLE_INPUTS]) {
     int count = 0;
     fds[count++] = STDIN_FILENO;
     const char *targets[] = {"/dev/tty0", "/dev/console", "/dev/ttyS0", NULL};
-    for (int i = 0; targets[i] && count < (int)(sizeof(fds) / sizeof(fds[0])); i++) {
+    for (int i = 0; targets[i] && count < KIKI_CONSOLE_INPUTS; i++) {
         int fd = kopen(targets[i], O_RDONLY | O_NOCTTY | O_NONBLOCK);
-        if (fd >= 0) {
-            fds[count++] = fd;
-        }
+        if (fd >= 0) fds[count++] = fd;
     }
+    return count;
+}
 
+static void close_console_inputs(const int *fds, int count) {
+    for (int i = 1; i < count; i++) kclose(fds[i]);
+}
+
+static int read_console_line(const int *fds, int count, char *buffer, size_t size) {
+    if (!size) return -1;
+    buffer[0] = 0;
     size_t used = 0;
     for (;;) {
         unsigned long set[16];
@@ -789,9 +809,6 @@ static int read_line(char *buffer, size_t size) {
             }
             if (ch == '\n' || ch == '\r') {
                 buffer[used] = 0;
-                for (int j = 1; j < count; j++) {
-                    kclose(fds[j]);
-                }
                 return 0;
             }
             if ((ch == '\b' || ch == 127) && used > 0) {
@@ -805,10 +822,78 @@ static int read_line(char *buffer, size_t size) {
         }
     }
 
-    for (int i = 1; i < count; i++) {
-        kclose(fds[i]);
-    }
+
     return -1;
+}
+
+static int read_line(char *buffer, size_t size) {
+    int fds[KIKI_CONSOLE_INPUTS];
+    int count = open_console_inputs(fds);
+    int result = read_console_line(fds, count, buffer, size);
+    close_console_inputs(fds, count);
+    return result;
+}
+
+static long console_termios(int fd, long request, struct kiki_termios *settings) {
+    long result;
+    do {
+        result = ksys(SYS_ioctl, fd, request, (long)settings, 0, 0, 0);
+    } while (result == -EINTR);
+    return result;
+}
+
+static int read_confirmed_password(char *password, size_t size) {
+    int fds[KIKI_CONSOLE_INPUTS];
+    struct kiki_termios saved[KIKI_CONSOLE_INPUTS];
+    int terminal[KIKI_CONSOLE_INPUTS] = {0};
+    int changed[KIKI_CONSOLE_INPUTS] = {0};
+    char input[128], confirmation[128];
+    int count = open_console_inputs(fds);
+    const char *error = "Could not disable terminal echo. Installation cancelled.\n";
+    password[0] = 0;
+
+    /* Save every setting before changing any. Console paths can alias the same tty. */
+    for (int i = 0; i < count; i++) {
+        long result = console_termios(fds[i], KIKI_TCGETS, &saved[i]);
+        if (result < 0 && result != -ENOTTY) goto restore;
+        terminal[i] = result == 0;
+    }
+    for (int i = 0; i < count; i++) {
+        if (!terminal[i] || !(saved[i].local_flags & (KIKI_ECHO | KIKI_ECHONL))) continue;
+        struct kiki_termios hidden = saved[i];
+        hidden.local_flags &= ~(KIKI_ECHO | KIKI_ECHONL);
+        if (console_termios(fds[i], KIKI_TCSETS, &hidden) != 0) goto restore;
+        changed[i] = 1;
+    }
+
+    say("Admin password (8 to 95 bytes): ");
+    int result = read_console_line(fds, count, input, sizeof(input));
+    say("\n");
+    if (result != 0 || kstrlen(input) < 8 || kstrlen(input) >= size) {
+        error = "Invalid admin password length. Installation cancelled.\n";
+        goto restore;
+    }
+    say("Confirm admin password: ");
+    result = read_console_line(fds, count, confirmation, sizeof(confirmation));
+    say("\n");
+    if (result != 0 || kstrcmp(input, confirmation) != 0) {
+        error = "Password confirmation did not match. Installation cancelled.\n";
+        goto restore;
+    }
+    error = NULL;
+
+restore:
+    for (int i = count - 1; i >= 0; i--) {
+        if (changed[i] && console_termios(fds[i], KIKI_TCSETS, &saved[i]) != 0)
+            error = "Could not restore terminal settings. Installation cancelled.\n";
+    }
+    close_console_inputs(fds, count);
+    if (error) {
+        say(error);
+        return 0;
+    }
+    copy_string(password, size, input);
+    return 1;
 }
 
 static void tui_clear(void) {
@@ -3388,7 +3473,6 @@ static int is_valid_username(const char *value) {
 
 static int collect_account_setup(struct account_setup *account, int unattended_mode) {
     char input[128];
-    char confirm[128];
     copy_string(account->admin_user, sizeof(account->admin_user), "kiki");
     account->admin_password[0] = 0;
     account->lock_root = 1;
@@ -3396,7 +3480,6 @@ static int collect_account_setup(struct account_setup *account, int unattended_m
     say("\nUser setup\n");
     say("----------\n");
     say("Root login is disabled by default. The kiki user is added to the sudo group.\n");
-    say("Password input is visible on this early installer console.\n");
     if (unattended_mode) {
 #ifdef KIKI_LAB_INSTALL
         copy_string(account->admin_password, sizeof(account->admin_password), "kiki");
@@ -3416,18 +3499,7 @@ static int collect_account_setup(struct account_setup *account, int unattended_m
         }
     }
 
-    say("Admin password (8 to 95 characters): ");
-    if (read_line(input, sizeof(input)) != 0 || kstrlen(input) < 8 ||
-        kstrlen(input) >= sizeof(account->admin_password)) {
-        say("Invalid admin password length. Installation cancelled.\n");
-        return 0;
-    }
-    say("Confirm admin password: ");
-    if (read_line(confirm, sizeof(confirm)) != 0 || kstrcmp(input, confirm) != 0) {
-        say("Password confirmation did not match. Installation cancelled.\n");
-        return 0;
-    }
-    copy_string(account->admin_password, sizeof(account->admin_password), input);
+    if (!read_confirmed_password(account->admin_password, sizeof(account->admin_password))) return 0;
 
     say("Disable direct root login? [Y/n]: ");
     if (read_line(input, sizeof(input)) == 0 && (kstrcmp(input, "n") == 0 || kstrcmp(input, "N") == 0)) {
