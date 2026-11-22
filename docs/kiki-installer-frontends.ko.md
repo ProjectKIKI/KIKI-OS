@@ -73,6 +73,10 @@ Go 도구의 `--mode unattended`는 계획을 생성한다. 이 옵션으로 Sta
 `kiki.timezone`, `kiki.ai`, `kiki.ai-endpoint`를 사용한다. 일반 설치 ISO는 시험용
 무인 설치 요청을 거부한다. 시험 미디어는 별도 VM과 승인된 시험 디스크에서만 쓴다.
 
+OpenStack의 서명 config drive는 시드의 관리자 계정을 공통 Stage-1 설치기에 전달하고
+InstallPlan에 `frontend: "unattended"`를 기록한다.
+[OpenStack 설치 자동화](iso-cloud-automation-20261030.ko.md)
+
 ## GTK 4 실행
 
 ### Dark-blue 브랜딩 (후속 빌드 대상)

@@ -148,7 +148,9 @@ llama.cpp 기반 로컬 런타임과 `tty1` AI 콘솔을 구성하고, `tty2`는
 
 아래 커널 인자는 `ki2bootiso.py --lab-autoinstall`로 별도 제작한 시험 미디어에서만 사용한다.
 일반 설치 미디어는 이 요청을 거부하고 대화형 설치 경로로 돌아간다.
-운영용 자격 증명을 비대화형으로 공급하는 경로는 제공 범위가 정해진 뒤 별도로 검증한다.
+OpenStack에서는 승인된 서명 config drive로 계정과 설치 대상을 지정할 수 있다.
+후보 ISO와 운영 환경 조합별로 설치·부팅·SSH 인증을 확인한다.
+[OpenStack 설치 자동화](iso-cloud-automation-20261030.ko.md)
 
 ```text
 kiki.autoinstall=erase
