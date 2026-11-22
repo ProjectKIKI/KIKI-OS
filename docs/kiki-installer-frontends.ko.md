@@ -64,12 +64,14 @@ build/kiki-installer-tui --write \
   --verify-key /etc/ki2/trust/repository.pub
 ```
 
-ISO의 Stage-1 무인 설치는 기존 커널 인자
+Go 도구의 `--mode unattended`는 계획을 생성한다. 이 옵션으로 Stage-1 설치를 실행하거나
+운영 자격 증명을 공급할 수 없다.
+
+`--lab-autoinstall`로 제작한 시험 ISO의 Stage-1 무인 설치는 아래 커널 인자를 사용한다.
 `kiki.autoinstall=erase|quick-vm`과 `kiki.profile`, `kiki.runtime`,
 `kiki.target`, `kiki.hostname`, `kiki.locale`, `kiki.keymap`,
-`kiki.timezone`, `kiki.ai`, `kiki.ai-endpoint`를 사용한다. 이 경로는 명시된
-경우에만 콘솔의
-파괴적 확인을 생략한다.
+`kiki.timezone`, `kiki.ai`, `kiki.ai-endpoint`를 사용한다. 일반 설치 ISO는 시험용
+무인 설치 요청을 거부한다. 시험 미디어는 별도 VM과 승인된 시험 디스크에서만 쓴다.
 
 ## GTK 4 실행
 
