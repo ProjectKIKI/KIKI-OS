@@ -3930,7 +3930,7 @@ static int write_target_sudoers(const char *target_root) {
     return write_text_file_mode(path, "%sudo ALL=(ALL:ALL) ALL\n", 0440);
 }
 
-static int apply_target_account_setup(const char *target_root, const struct account_setup *account, int unattended_mode) {
+static int apply_target_account_setup(const char *target_root, const struct account_setup *account, int lab_account_mode) {
     char chpasswd_input[256];
     size_t out = 0;
     char *argv_useradd[] = {
@@ -3949,7 +3949,7 @@ static int apply_target_account_setup(const char *target_root, const struct acco
     say("Creating admin user: ");
     say(account->admin_user);
     say("\n");
-    if (unattended_mode) {
+    if (lab_account_mode) {
 #ifdef KIKI_LAB_INSTALL
         say("Writing lab default admin account directly for deterministic VM login.\n");
         if (!write_target_lab_admin_account(target_root, account)) {
@@ -4537,7 +4537,7 @@ static void collect_gui_account_setup(struct account_setup *account, const struc
     copy_string(account->admin_user, sizeof(account->admin_user), request->admin_user);
     copy_string(account->admin_password, sizeof(account->admin_password), request->admin_password);
     account->lock_root = 1;
-    say("Administrator password was supplied by the GTK installer and removed from the runtime request file.\n");
+    say("Administrator password was read from the runtime request, which has been removed.\n");
 }
 
 static int load_verified_plan_origin(struct install_plan *plan) {
@@ -4895,7 +4895,7 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
 
     struct install_plan plan;
     build_install_plan(&plan, quick_mode, unattended_mode, auto_layout, has_swap, media_root, index_path, target, esp_part, swap_part, root_part, hostname, disk_mib, mem_mib, esp_mib, swap_mib, root_mib, &account, &network);
-    if (gui_request) copy_string(plan.frontend, sizeof(plan.frontend), request_frontend);
+    if (gui_request && !unattended_mode) copy_string(plan.frontend, sizeof(plan.frontend), request_frontend);
     if (!load_verified_plan_origin(&plan)) {
         say("Verified installer provenance is missing. No disk changes started.\n");
         return;
@@ -4916,7 +4916,9 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
     size_t out = 0;
     out = append_string(expected, sizeof(expected), out, "INSTALL ");
     append_string(expected, sizeof(expected), out, auto_layout ? target : root_part);
-    if (gui_request) {
+    if (gui_request && unattended_mode) {
+        say("\nSigned cloud seed confirmed the installation target.\n");
+    } else if (gui_request) {
         say("\nGraphical confirmation accepted\n");
         say("-------------------------------\n");
         say("The GTK installer confirmed: ");
@@ -5034,7 +5036,8 @@ static void run_guided_package_installer_with_request(int quick_mode, int unatte
     if (!refresh_target_gsettings_cache("/mnt/target")) goto target_configuration_failed;
     if (gui_request)
         write_gui_install_progress("running", 90, "계정 설정", "관리자 계정과 시스템 권한을 구성하고 있습니다.");
-    if (!apply_target_account_setup("/mnt/target", &account, unattended_mode)) {
+    /* A verified cloud request carries its own credentials, even without an interactive frontend. */
+    if (!apply_target_account_setup("/mnt/target", &account, unattended_mode && !gui_request)) {
         say("Account setup failed. Target disk is partially installed.\n");
         ksys(SYS_umount2, (long)"/mnt/esp", 0, 0, 0, 0, 0);
         ksys(SYS_umount2, (long)"/mnt/target", 0, 0, 0, 0, 0);

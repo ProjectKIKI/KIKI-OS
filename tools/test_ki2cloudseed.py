@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import ki2cloudseed as cloud
+import ki2bootiso
 
 
 class CloudSeedTests(unittest.TestCase):
@@ -44,6 +45,12 @@ class CloudSeedTests(unittest.TestCase):
 
     def test_backend_hook_fails_on_drift(self):
         with self.assertRaisesRegex(ValueError,'does not match backend'):cloud.inject_init('unexpected backend')
+
+    def test_cloud_request_keeps_unattended_plan_and_uses_supplied_account(self):
+        backend = cloud.inject_init(ki2bootiso.INIT_C)
+        self.assertIn('run_guided_package_installer_with_request(0, 1, &cloud_request);', backend)
+        self.assertIn('if (gui_request && !unattended_mode) copy_string(plan.frontend', backend)
+        self.assertIn('apply_target_account_setup("/mnt/target", &account, unattended_mode && !gui_request)', backend)
 
     def test_scsi_vpd_serial_matches_only_the_explicit_volume(self):
         with tempfile.TemporaryDirectory() as temp:
