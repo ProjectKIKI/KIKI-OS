@@ -1,5 +1,19 @@
 # KIKI OS
 
+## 현재 안정 버전 · KIKI OS v1.3 LTS
+
+**공식 릴리즈는 `v1.3.0`입니다.** 안정 채널은 2026년 11월 25일부터
+2028년 11월 25일까지 24개월간 지원합니다.
+
+- [공식 홈페이지](https://www.kikios.kr/)
+- [Stage 1~3 → R1 웹 로드맵](https://www.kikios.kr/#roadmap)
+- [공식 다운로드 안내](https://www.kikios.kr/#download) · [GitHub 릴리즈 및 검증 파일](https://github.com/ProjectKIKI/KIKI-OS/releases/tag/v1.3.0)
+- [GNOME 설치 ISO](https://github.com/ProjectKIKI/KIKI-OS/releases/download/v1.3.0/kiki-os-1.3.0-gnome.iso) · [Minimal 설치 ISO](https://github.com/ProjectKIKI/KIKI-OS/releases/download/v1.3.0/kiki-os-1.3.0-minimal.iso) · [오프라인 업데이트 ISO](https://github.com/ProjectKIKI/KIKI-OS/releases/download/v1.3.0/kiki-os-1.3.0-update.iso)
+- [KIKI Build 웹 콘솔](https://cloud-7-3b778824-09936d.lab.terminal-lab.kr/) · 로그인 필요
+
+Stage 1~3은 개발 이력이며 웹 로드맵의 R1은 v1.3 LTS 정식 공개 시점입니다.
+[Gitea `stage3`](https://git.vlab.dustbox.kr/dustbox/kiki-os/src/branch/stage3)는 개발 브랜치로 유지합니다.
+
 ![KIKI · 키키 로고](assets/brand/kikios-kiki-wordmark-v1.png)
 
 **첫 부팅부터 쿠버네티스 노드까지.**
@@ -10,10 +24,7 @@ OS입니다. ISO 또는 디스크 이미지로 부팅하면 네트워크 준비,
 현재 저장소는 KIKI OS의 빌드 시스템, `.ki2` 패키지 형식, 서명 저장소, 루트
 파일시스템 조립, BIOS/UEFI 설치 미디어, CLI/TUI/GUI 인스톨러와 빌드 웹 콘솔을 함께 다룹니다.
 
-## 프로젝트와 빌드 서비스
-
-- [KIKI OS 공식 홈페이지](https://www.dustbox.kr/kiki-os/) (프로젝트 소개와 다운로드 안내)
-- [KIKI Build 웹 콘솔](https://cloud-7-3b778824-09936d.lab.terminal-lab.kr/login) (로그인 필요)
+## 빌드 서비스
 
 로그인 후 패키지·커널 빌드, 릴리즈별 패키지·ISO 생성 및 버전 관리,
 Gitea 소스 동기화와 빌드 진행·로그 조회를 이용할 수 있습니다.
@@ -42,11 +53,11 @@ Gitea 소스 동기화와 빌드 진행·로그 조회를 이용할 수 있습�
 소스와 Build 릴리즈 안내는 공개 GitHub·Gitea 저장소에서 제공합니다. 빌드 웹 콘솔은 로그인이 필요합니다. Native GNOME의 빌드 순서와
 보존 SDK 요구사항은 [native 빌드 안내](tools/gnome_native/README.ko.md)를 따릅니다.
 
-## Stage3 초기 기준선 (2026-09-29)
+## 개발 이력 · Stage 3 초기 기준선 (2026-09-29)
 
-Stage1은 부팅·설치 기준선, Stage2는 패키지 관리자·Kubernetes 준비 기준선이다.
-현재 Stage3는 진행 중이며 완료된 운영 배포판을 뜻하지 않는다. 일반 서버 빌드는
-`distro/build-plans/stage3-server-core.yaml`에서 Ed25519 서명과 rootfs를 다룬다.
+Stage 1에서 부팅·설치 기준선을, Stage 2에서 패키지 관리자와 Kubernetes 노드 준비 기준선을 잡았습니다.
+2026년 9월의 Stage 3 초기 기준선은 `distro/build-plans/stage3-server-core.yaml`을 통해
+일반 서버 빌드의 Ed25519 서명과 루트 파일시스템을 다뤘습니다.
 Podman r21은 119개 서명 KI2가 포함된 별도 시험용 ISO 후보이며, KIKI VM에서의
 설치·부팅·컨테이너·Quadlet 검증 전이다. [r21 상태와 해시](docs/kiki-podman-r21-release.ko.md)를 확인한다.
 
@@ -88,9 +99,11 @@ SHA 검사가 실제 VM 설치·커널 부팅·GNOME 로그인 검증을 대신�
 - 개발자 Gitea: <https://git.vlab.dustbox.kr/dustbox/kiki-os>
 - 개발자 GitHub: <https://github.com/ProjectKIKI/KIKI-OS>
 
-## 현재 상태
+## 구현 기반과 개발 방향
 
-KIKI OS는 아직 초기 개발 단계입니다. 목표는 범용 서버 설치 미디어가 아니라, 쿠버네티스 노드 수명주기 자동화를 위한 재현 가능한 독립 배포판입니다.
+v1.3 LTS는 GNOME·Minimal 설치 ISO, 오프라인 업데이트 ISO와 서명된 KI2 안정 채널을 제공합니다.
+쿠버네티스 노드 수명주기 자동화는 계속 개발하고 있으며, 클러스터 초기화·조인과
+실장비 호환성은 다음 검증 범위입니다.
 
 - 1단계 설치기가 있습니다.
 - `.ki2 패키지 -> 저장소 -> 루트 파일시스템 -> 부팅 미디어` 파이프라인이 있습니다.
