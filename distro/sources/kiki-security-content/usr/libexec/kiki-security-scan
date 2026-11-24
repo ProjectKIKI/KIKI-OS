@@ -26,7 +26,8 @@ def observe():
  probe('root_uid_unique',lambda:'yes' if [(p.pw_name,p.pw_uid) for p in pwd.getpwall() if p.pw_uid==0]==[('root',0)] else 'no')
  try:
   text=command(['/usr/sbin/sshd','-T','-C','user=root,host=localhost,addr=127.0.0.1'])
-  config=dict(line.split(None,1) for line in text.splitlines() if ' ' in line)
+  pairs=(line.split(maxsplit=1) for line in text.splitlines())
+  config={pair[0].lower():pair[1] for pair in pairs if len(pair)==2}
   values['ssh_root_login']=config.get('permitrootlogin','unknown');values['ssh_empty_password']=config.get('permitemptypasswords','unknown')
  except Exception as e:
   for key in ['ssh_root_login','ssh_empty_password']:values[key]='unknown';errors[key]=type(e).__name__

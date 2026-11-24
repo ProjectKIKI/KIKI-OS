@@ -1,7 +1,7 @@
 [[recipe]]
 name = "kiki-security-content"
 version = "1.0.0"
-release = 2
+release = 3
 summary = "KIKI read-only OpenSCAP baseline and effective-setting collector"
 license = "GPL-3.0-or-later"
 tier = "base"
