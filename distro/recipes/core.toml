@@ -8,7 +8,7 @@
 [[recipe]]
 name = "base-files"
 version = "0.1.0"
-release = 28
+release = 39
 summary = "KIKI filesystem skeleton, os-release, and default system layout"
 license = "GPL-3.0-or-later"
 tier = "base"

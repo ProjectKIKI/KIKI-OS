@@ -1,6 +1,9 @@
 NAME="KIKI OS"
 ID=kiki
-PRETTY_NAME="KIKI OS 0.1"
-VERSION_ID="0.1"
-HOME_URL="https://example.invalid/kiki"
-BUG_REPORT_URL="https://example.invalid/kiki/issues"
+PRETTY_NAME="KIKI OS 1.3.0 LTS"
+VERSION="1.3.0 LTS"
+VERSION_ID="1.3.0"
+VARIANT_ID=rc
+BUILD_ID="1.3.0"
+HOME_URL="https://www.dustbox.kr/kiki-os/"
+BUG_REPORT_URL="https://github.com/ProjectKIKI/KIKI-OS/issues"

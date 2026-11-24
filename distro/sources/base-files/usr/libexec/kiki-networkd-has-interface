@@ -1,0 +1,39 @@
+#!/bin/sh
+# Leave the wait enabled for plausible uplinks and for incomplete detection.
+interfaces=${1:-/sys/class/net}
+networkctl=${2:-/usr/bin/networkctl}
+if [ ! -d "$interfaces" ] || [ ! -r "$interfaces" ] || [ ! -x "$interfaces" ]; then
+    exit 0
+fi
+[ -e "$interfaces/lo" ] || exit 0
+
+is_unmanaged_fallback() {
+    wanted=$1
+    while read -r index link kind operational setup extra; do
+        [ "$link" = "$wanted" ] || continue
+        [ "$setup" = unmanaged ] && [ -z "$extra" ]
+        return $?
+    done <<EOF
+$links
+EOF
+    return 1
+}
+
+fallbacks=
+for link in "$interfaces"/*; do
+    [ -e "$link" ] || continue
+    case ${link##*/} in
+        lo) continue ;;
+        dummy0|sit0)
+            [ ! -e "$link/device" ] || exit 0
+            fallbacks="$fallbacks ${link##*/}" ;;
+        *) exit 0 ;;
+    esac
+done
+if [ -n "$fallbacks" ]; then
+    links=$(LC_ALL=C "$networkctl" --no-pager --no-legend list 2>/dev/null) || exit 0
+    for fallback in $fallbacks; do
+        is_unmanaged_fallback "$fallback" || exit 0
+    done
+fi
+exit 1
